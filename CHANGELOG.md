@@ -6,6 +6,7 @@ Changes to Music Player are documented here. The app name, executable, package i
 
 ## [1.0.0]
 
+- Correct Setup's WebView2 prerequisite detection for machine-wide and per-user installations. Reuse an installed runtime without a network request, explain when installation is required, and provide a manual/offline recovery path.
 - Use album artwork as the default accent for new profiles and appearance resets, preserving existing saved theme choices.
 - Fix Load more across library views, preserve complete album/artist/genre contents, and retain duplicate queue identities while paging.
 - Use independent music output buffers for crossfade, wait for incoming playback, and restore correctly on failure, pause or seek.
