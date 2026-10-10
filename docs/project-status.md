@@ -1,13 +1,21 @@
 # Project status
 
-Updated: 2026-10-10. Music Player 1.0.0 is published. Results below refer to
-immutable tested revisions and the verified public assets. The user's
+Updated: 2026-10-11. Music Player 1.0.0's installer correction is being prepared
+for republication at the user's explicit request under the same `v1.0.0` tag.
+Setup now uses Microsoft's documented `pv` registry detection before invoking
+the WebView2 bootstrapper, explains missing prerequisites, and supports manual
+offline runtime installation. The GitHub setup-upgrade test requires the
+existing-runtime skip path. No local build or installation tests are being run;
+the replacement must pass the complete signed GitHub release pipeline.
+
+The results below record the original release and do not validate the corrected
+installer. The user's
 running instance remains untouched. Windows UI/package tests use disposable
 GitHub runners. No release binaries are downloaded to the user's PC.
 
-## Music Player 1.0.0 release revision
+## Original Music Player 1.0.0 release revision
 
-Release tag `v1.0.0` points to `3328407d5df3f68674f02c116a88372e336c4e9e`.
+The original release tag `v1.0.0` pointed to `3328407d5df3f68674f02c116a88372e336c4e9e`.
 PRs [#2](https://github.com/kalabhaftu/music-player/pull/2) and
 [#9](https://github.com/kalabhaftu/music-player/pull/9) were protected-squash-merged.
 The release commit was created on GitHub.com by `web-flow`; GitHub reports
@@ -32,7 +40,8 @@ gh release view v1.0.0 --repo kalabhaftu/music-player --json tagName,isDraft,isP
 The release includes both portable ZIPs, both setup installers, the combined
 MSIX bundle, public certificate, signing instructions, dependency notices,
 verification and MSIX uninstall helpers, SHA-256 manifest and detached signature.
-There are **no remaining mandatory release gates**. Physical endpoint tests
+The original release gates passed; the installer correction requires a new
+signed release workflow before replacement assets are published. Physical endpoint tests
 skipped on hosted runners and codec/hardware coverage limits remain documented;
 they are not represented as universally tested behavior.
 

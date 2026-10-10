@@ -15,6 +15,7 @@ function Run-Installer([string] $File,[string[]] $Arguments){
     $evidence=[IO.Path]::GetFullPath('artifacts/ui-evidence')
     New-Item -ItemType Directory -Path $evidence -Force | Out-Null
     $log=Join-Path $evidence "$Architecture-installer-$script:installerAttempt.log"
+    $script:lastInstallerLog=$log
     $process=Start-Process -FilePath $File -ArgumentList ($Arguments+@('/LOG="'+$log+'"')) -WindowStyle Hidden -Wait -PassThru
     if($process.ExitCode -notin @(0,3010)){throw "Installer exited with $($process.ExitCode)."}
 }
@@ -43,6 +44,7 @@ Copy-Item -LiteralPath $sourceMusic -Destination $ownedMusic
 $ownedHash=(Get-FileHash -LiteralPath $ownedMusic -Algorithm SHA256).Hash
 # Replace the previous-version installation with the final signed installer.
 Run-Installer $setup @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$install`"")
+if(!(Select-String -LiteralPath $script:lastInstallerLog -SimpleMatch 'WebView2 Runtime already installed; skipping runtime installation.' -Quiet)){throw 'Setup upgrade did not skip installation of the existing WebView2 Runtime.'}
 if(!(Test-Path -LiteralPath $sentinel)){throw 'Setup upgrade removed user data.'}
 if(!(Test-Path -LiteralPath $ownedMusic) -or (Get-FileHash -LiteralPath $ownedMusic -Algorithm SHA256).Hash -ne $ownedHash){throw 'Setup upgrade removed or changed a user-owned file in the install folder.'}
 if((Get-ItemProperty -LiteralPath $registration).DisplayVersion -ne '1.0.0'){throw 'Setup did not register the final upgraded version.'}
