@@ -13,7 +13,7 @@ $sentinel=Join-Path $private 'msix-upgrade.txt'
 'Persist this previous installation data' | Set-Content $sentinel
 Add-AppxPackage -Path $bundle
 $package=Get-AppxPackage 'Kalabhaftu.MusicPlayer'
-if($package.Version -ne [version]'1.0.0.0' -or !(Test-Path $sentinel)){throw 'MSIX upgrade failed to retain prior data.'}
+if($package.Version -ne [version]([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.AppxPackageVersion -or !(Test-Path $sentinel)){throw 'MSIX upgrade failed to retain prior data.'}
 $exe=Join-Path $package.InstallLocation 'MusicPlayer.exe'
 $env:MUSICPLAYER_TEST_OUTPUT='artifacts/ui-evidence/msix'
 $interactionError=$null

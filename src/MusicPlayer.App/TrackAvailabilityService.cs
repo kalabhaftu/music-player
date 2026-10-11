@@ -7,7 +7,8 @@ namespace MusicPlayer.App;
 internal sealed class TrackAvailabilityService(
     LibraryStore store,
     LibraryQueryService queries,
-    LibraryLocationService locations)
+    LibraryLocationService locations,
+    string artworkDirectory)
 {
     public AvailabilityReconciliation ReconcileIndexedTracks(IEnumerable<string>? unavailableRoots = null, IEnumerable<string>? incompletePaths = null,
         IEnumerable<string>? scanRoots = null)
@@ -25,13 +26,15 @@ internal sealed class TrackAvailabilityService(
           var offset = 0;
           while (true)
           {
-            var paths = store.GetTrackPaths(groupColumn: scope is null ? null : "folder", groupValue: scope, offset: offset, pageSize: pageSize);
+            var paths = store.GetTrackPaths(groupColumn: scope is null ? null : "folder", groupValue: scope, offset: offset, pageSize: pageSize, includeUnavailable: true);
             if (paths.Count == 0) break;
             var removedFromPage = new List<string>();
             foreach (var path in paths)
             {
+                if (protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path))) { unavailable++; continue; }
                 if (File.Exists(path))
                 {
+                    store.ReinstateTrack(path);
                     if (queries.SetTrackUnavailable(path, false)) recovered++;
                     continue;
                 }
@@ -43,7 +46,7 @@ internal sealed class TrackAvailabilityService(
 
             if (removedFromPage.Count > 0)
             {
-                store.RemoveTracks(removedFromPage);
+                store.PurgeDeletedTracks(removedFromPage);
                 removed.AddRange(removedFromPage);
                 // Deletions collapse the ordered result set; revisit this page's offset
                 // so the shifted tracks are not skipped.
@@ -55,6 +58,11 @@ internal sealed class TrackAvailabilityService(
             }
           }
         }
+        // Include saved references whose index row was pruned during scanning.
+        var orphaned = store.GetReferencedPaths().Where(path => !File.Exists(path) &&
+            !protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path)).ToArray();
+        if (orphaned.Length > 0) { store.PurgeDeletedTracks(orphaned); removed.AddRange(orphaned); }
+        if (removed.Count > 0) store.PruneUnreferencedArtwork(artworkDirectory);
         return new(removed, unavailable, recovered);
     }
 
@@ -62,26 +70,30 @@ internal sealed class TrackAvailabilityService(
     {
         queries.SetTrackUnavailable(path, true);
         var confirmedMissing = IsConfirmedMissingFile(path);
-        if (confirmedMissing) store.RemoveTracks([path]);
+        if (confirmedMissing)
+        {
+            store.PurgeDeletedTracks([path]);
+            store.PruneUnreferencedArtwork(artworkDirectory);
+        }
         return confirmedMissing;
     }
 
-    public bool MarkAvailable(string path) => queries.SetTrackUnavailable(path, false);
+    public bool MarkAvailable(string path)
+    {
+        store.ReinstateTrack(path);
+        return queries.SetTrackUnavailable(path, false);
+    }
 
     public int MarkUnavailableRoots(IEnumerable<string> roots)
     {
         var marked = 0;
         foreach (var root in roots)
-        {
-            const int pageSize = 800;
-            for (var offset = 0; ; offset += pageSize)
+            for (var offset = 0; ; offset += 800)
             {
-                var paths = store.GetTrackPaths(groupColumn: "folder", groupValue: root, offset: offset, pageSize: pageSize);
-                foreach (var path in paths)
-                    if (queries.SetTrackUnavailable(path, true)) marked++;
-                if (paths.Count < pageSize) break;
+                var paths = store.GetTrackPaths(groupColumn: "folder", groupValue: root, offset: offset, pageSize: 800, includeUnavailable: true);
+                marked += paths.Count;
+                if (paths.Count < 800) break;
             }
-        }
         return marked;
     }
 
@@ -106,7 +118,7 @@ internal sealed class TrackAvailabilityService(
             const int pageSize = 800;
             for (var offset = 0; ; offset += pageSize)
             {
-                var paths = store.GetTrackPaths(groupColumn: "folder", groupValue: path, offset: offset, pageSize: pageSize);
+                var paths = store.GetTrackPaths(groupColumn: "folder", groupValue: path, offset: offset, pageSize: pageSize, includeUnavailable: true);
                 foreach (var trackPath in paths) candidates.Add(trackPath);
                 if (paths.Count < pageSize) break;
             }
@@ -118,10 +130,14 @@ internal sealed class TrackAvailabilityService(
             // Rename/delete notifications can race a replacement at the same path.
             if (File.Exists(path) || !IsConfirmedMissingFile(path)) continue;
             queries.SetTrackUnavailable(path, true);
-            if (store.GetTrack(path) is not null) confirmedMissing.Add(path);
+            confirmedMissing.Add(path);
         }
 
-        if (confirmedMissing.Count > 0) store.RemoveTracks(confirmedMissing);
+        if (confirmedMissing.Count > 0)
+        {
+            store.PurgeDeletedTracks(confirmedMissing);
+            store.PruneUnreferencedArtwork(artworkDirectory);
+        }
         return candidates.Where(path => queries.IsTrackUnavailable(path)).ToArray();
     }
 

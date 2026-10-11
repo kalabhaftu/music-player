@@ -31,6 +31,10 @@ jobs:
       - name: Test core
         run: dotnet test tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj --configuration Release --no-restore
 
+      - name: Validate shared release metadata
+        shell: pwsh
+        run: ./packaging/windows/Test-ReleaseMetadata.ps1
+
       - name: Test library pagination, lyrics and theme contrast
         run: node --test tests/MusicPlayer.Ui.Tests/lyrics-theme.test.mjs tests/MusicPlayer.Ui.Tests/library-pagination.test.mjs
 
@@ -110,6 +114,7 @@ jobs:
           $arch = '${{ matrix.arch }}'.ToLowerInvariant()
           $packageName = "MusicPlayer-ci-$arch-portable"
           $exe = Join-Path $PWD "artifacts/$packageName/MusicPlayer.exe"
+          & tests/MusicPlayer.Ui.Tests/Test-ShellRegistration.ps1 -Executable $exe
           & tests/MusicPlayer.Ui.Tests/Run-Smoke.ps1 -Executable $exe
       - name: Upload runtime evidence
         if: always()

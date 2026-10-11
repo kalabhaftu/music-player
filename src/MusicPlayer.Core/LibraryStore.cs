@@ -116,7 +116,7 @@ public sealed partial class LibraryStore
             else File.Move(rebuiltPath, _databasePath);
             foreach (var suffix in new[] { "-wal", "-shm", "-journal" })
                 try { File.Delete(_databasePath + suffix); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-            _fingerprintSnapshotCurrent = false;
+            InvalidateFingerprintState();
             _log.Warning("database", $"Rebuilt the corrupt library index from a clean schema. Preserved recoverable settings={state.Settings.Count}, playlists={state.Playlists.Count}; the previous index is archived in the Recovery folder.");
             return true;
         }
@@ -241,7 +241,7 @@ public sealed partial class LibraryStore
         {
             using var connection = Open();
             Upsert(connection, null, track);
-            _fingerprintSnapshotCurrent = false;
+            InvalidateFingerprintState();
         }
     }
 
@@ -253,7 +253,7 @@ public sealed partial class LibraryStore
             using var transaction = connection.BeginTransaction();
             foreach (var track in tracks) Upsert(connection, transaction, track);
             transaction.Commit();
-            _fingerprintSnapshotCurrent = false;
+            InvalidateFingerprintState();
         }
     }
 
@@ -273,7 +273,7 @@ public sealed partial class LibraryStore
                 command.ExecuteNonQuery();
             }
             transaction.Commit();
-            _fingerprintSnapshotCurrent = false;
+            InvalidateFingerprintState();
         }
     }
 
@@ -328,7 +328,7 @@ public sealed partial class LibraryStore
             """;
         var removed = remove.ExecuteNonQuery();
         transaction.Commit();
-        if (removed > 0) _fingerprintSnapshotCurrent = false;
+        if (removed > 0) InvalidateFingerprintState();
         return removed;
         }
     }
@@ -447,7 +447,7 @@ public sealed partial class LibraryStore
     public IReadOnlyList<Track> GetTracksPage(
         string? search = null, TrackSort sort = TrackSort.Title, bool descending = false,
         string? filter = null, string? groupColumn = null, string? groupValue = null,
-        int offset = 0, int pageSize = 200, bool hideExactDuplicates = false, CancellationToken cancellationToken = default)
+        int offset = 0, int pageSize = 200, bool hideExactDuplicates = false, CancellationToken cancellationToken = default, bool includeUnavailable = false)
     {
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
         if (pageSize is < 1 or > 800) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be between 1 and 800 tracks.");
@@ -461,12 +461,12 @@ public sealed partial class LibraryStore
     /// <summary>Returns path-only queue entries in the same stable order as the matching track query.</summary>
     public IReadOnlyList<string> GetTrackPaths(string? search = null, TrackSort sort = TrackSort.Title, bool descending = false,
         string? filter = null, string? groupColumn = null, string? groupValue = null, int offset = 0, int? pageSize = null,
-        bool hideExactDuplicates = false, CancellationToken cancellationToken = default)
+        bool hideExactDuplicates = false, CancellationToken cancellationToken = default, bool includeUnavailable = false)
     {
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
         if (pageSize is < 1 or > 800) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be between 1 and 800 paths.");
-        var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue);
-        if (hideExactDuplicates) EnsureExactFingerprintsCurrent(cancellationToken);
+        var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue, includeUnavailable);
+        if (hideExactDuplicates && !UseCachedFingerprints) PrepareExactFingerprints(cancellationToken);
         using var connection = Open();
         using var command = connection.CreateCommand();
         var prefix = hideExactDuplicates ? BuildDeduplicatedCte(query) : string.Empty;
@@ -486,7 +486,7 @@ public sealed partial class LibraryStore
         CancellationToken cancellationToken = default, bool fingerprintsAlreadyCurrent = false)
     {
         var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue);
-        if (hideExactDuplicates && !fingerprintsAlreadyCurrent) EnsureExactFingerprintsCurrent(cancellationToken);
+        if (hideExactDuplicates && !UseCachedFingerprints && !fingerprintsAlreadyCurrent) PrepareExactFingerprints(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -525,7 +525,7 @@ public sealed partial class LibraryStore
     }
 
     private TrackQuery BuildTrackQuery(string? search, TrackSort sort, bool descending, string? filter,
-        string? groupColumn, string? groupValue)
+        string? groupColumn, string? groupValue, bool includeUnavailable = false)
     {
         var videoPatterns = sort == TrackSort.Type || filter == "videos"
             ? _videoExtensions.Select(extension => $"%{EscapeLike(extension)}").ToArray()
@@ -561,7 +561,7 @@ public sealed partial class LibraryStore
         var ftsPhrase = ftsTerms.Length == 0 ? null : string.Join(" AND ", ftsTerms.Select(QuoteFtsTerm));
         if (ftsPhrase is not null)
             searchPredicate = $"tracks.rowid IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH $ftsPhrase) AND {searchPredicate}";
-        var where = $"{predicate} AND {groupPredicate} AND {searchPredicate}";
+        var where = $"{predicate} AND {groupPredicate} AND {searchPredicate}" + (includeUnavailable ? "" : " AND musicplayer_visible(tracks.path)");
         var fullOrderBy = $"{orderBy} {(descending ? "DESC" : "ASC")}, title COLLATE NOCASE, path COLLATE NOCASE, path";
         object groupParameter = string.IsNullOrWhiteSpace(groupValue) || groupColumn == "folder" ? DBNull.Value : groupValue;
         string? folderPrefix = null;
@@ -640,7 +640,7 @@ public sealed partial class LibraryStore
     }
 
     private static string VisibleGroupPredicate(string column) =>
-        $"trim({column})<>'' AND lower(trim({column})) NOT IN ('undefined','null')";
+        $"musicplayer_visible(path) AND trim({column})<>'' AND lower(trim({column})) NOT IN ('undefined','null')";
 
     public IReadOnlyList<LibraryGroup> GetArtistAlbumsPage(string artist, int offset = 0, int pageSize = 50)
     {
@@ -658,7 +658,7 @@ public sealed partial class LibraryStore
     public IReadOnlyList<string> GetFolders()
     {
         using var connection = Open(); using var command = connection.CreateCommand();
-        command.CommandText = "SELECT path FROM tracks";
+        command.CommandText = "SELECT path FROM tracks WHERE musicplayer_visible(path)";
         using var reader = command.ExecuteReader();
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var folders = new HashSet<string>(comparer);
@@ -670,7 +670,7 @@ public sealed partial class LibraryStore
     public LibraryStats GetLibraryStats()
     {
         using var connection = Open(); using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*),COALESCE(SUM(file_size),0) FROM tracks";
+        command.CommandText = "SELECT COUNT(*),COALESCE(SUM(file_size),0) FROM tracks WHERE musicplayer_visible(path)";
         using var reader = command.ExecuteReader();
         return reader.Read() ? new(reader.GetInt32(0), reader.GetInt64(1)) : new(0, 0);
     }
@@ -685,8 +685,8 @@ public sealed partial class LibraryStore
             var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
             using var command = connection.CreateCommand();
             command.CommandText = OperatingSystem.IsWindows()
-                ? "SELECT COUNT(*) FROM tracks WHERE path LIKE $pattern ESCAPE '\\' COLLATE NOCASE"
-                : "SELECT COUNT(*) FROM tracks WHERE path LIKE $pattern ESCAPE '\\'";
+                ? "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\' COLLATE NOCASE"
+                : "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\'";
             Add(command, "$pattern", EscapeLike(prefix) + "%");
             counts[rawRoot] = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
@@ -738,12 +738,17 @@ public sealed partial class LibraryStore
 
     public void SaveSession(PlaybackSession session)
     {
-        using var connection = Open();
-        using var transaction = connection.BeginTransaction();
-        ReplaceSessionQueue(connection, transaction, session.Queue);
-        WriteSessionState(connection, transaction, session, create: true);
-        transaction.Commit();
+        lock (_sessionGate)
+        {
+            session = SanitizeSession(session, includeQueue: true);
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            ReplaceSessionQueue(connection, transaction, session.Queue);
+            WriteSessionState(connection, transaction, session, create: true);
+            transaction.Commit();
+        }
     }
+
 
     public PlaybackSession? LoadSession()
     {
@@ -1258,7 +1263,14 @@ public sealed partial class LibraryStore
         }
     }
 
-    private SqliteConnection Open() { var connection = new SqliteConnection(_connectionString); connection.Open(); return connection; }
+    private SqliteConnection Open()
+    {
+        var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        var visibility = _hidden;
+        connection.CreateFunction<string, bool>("musicplayer_visible", path => !visibility.Contains(path), isDeterministic: true);
+        return connection;
+    }
 
     private static void BindTrack(SqliteCommand command, Track t)
     {

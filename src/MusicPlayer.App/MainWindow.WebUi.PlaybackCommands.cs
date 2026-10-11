@@ -42,13 +42,7 @@ public sealed partial class MainWindow
                 return null;
             }
             case "playPause":
-                TogglePlayback(() =>
-                {
-                    var firstPath = _libraryQueries.CurrentTrackPaths().FirstOrDefault();
-                    if (firstPath is null || _store.GetTrack(firstPath) is not { } first) return false;
-                    _playbackQueue.Replace([firstPath], 0); PlayTrack(first, false, 0);
-                    return true;
-                });
+                TogglePlayback(StartPlaybackFromCurrentLibraryView);
                 return null;
             case "previous": PlayPreviousTrack(); return null;
             case "next": PlayNextTrack(); return null;
@@ -112,14 +106,14 @@ public sealed partial class MainWindow
             {
                 var track = RequireTrack(payload, "id");
                 EnsureQueueInitialized();
-                _playbackQueue.InsertNext(track.Path, _playback.CurrentTrack?.Path);
+                _playbackQueue.InsertNext(track.Path, RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }
             case "addToQueue":
             {
                 var track = RequireTrack(payload, "id");
-                _playbackQueue.Append([track.Path], _playback.CurrentTrack?.Path);
+                _playbackQueue.Append([track.Path], RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }

@@ -50,7 +50,7 @@ public sealed partial class MainWindow : Window
 
     private void ClearUpcomingQueue()
     {
-        _playbackQueue.ClearUpcoming(_playback.CurrentTrack?.Path);
+        _playbackQueue.ClearUpcoming(RetainedCurrentPath);
         SaveSession();
         PublishQueueStateIfChanged();
     }
@@ -103,7 +103,11 @@ public sealed partial class MainWindow : Window
                 return;
             case PlaybackCommandKind.Resumed:
                 _playbackListening.MarkResumed(_playback.Position);
-                if (result.Track is { } resumedTrack) UpdateSystemMediaControls(resumedTrack, true);
+                if (result.Track is { } resumedTrack)
+                {
+                    Title = NativeWindowTitle.ForTrack(resumedTrack);
+                    UpdateSystemMediaControls(resumedTrack, true);
+                }
                 PublishPlaybackState();
                 return;
             case PlaybackCommandKind.PositionReset:
@@ -115,6 +119,7 @@ public sealed partial class MainWindow : Window
             case PlaybackCommandKind.StopPlayback:
                 CancelCrossfadeAndRestoreQueue();
                 _playback.Stop();
+                Title = NativeWindowTitle.ForTrack(null);
                 if (_systemControls is not null) _systemControls.PlaybackStatus = MediaPlaybackStatus.Stopped;
                 if (result.QueueChanged) PublishQueueState(force: true);
                 PublishPlaybackState();
@@ -124,7 +129,7 @@ public sealed partial class MainWindow : Window
                 {
                     var fileConfirmedMissing = ReconcileMissingTrack(missing.Path);
                     var notice = fileConfirmedMissing
-                        ? $"File not found: {Path.GetFileName(missing.Path)}. Its stale library entry was removed; playlist and queue references were kept."
+                        ? $"File not found: {Path.GetFileName(missing.Path)}. Its library, playlist and queue entries were removed."
                         : $"The file location is unavailable: {Path.GetFileName(missing.Path)}. Its library and playlist references were kept; reconnect the drive and rescan when it is available.";
                     _ = ShowNoticeAsync(notice, InfoBarSeverity.Warning);
                 }
@@ -173,7 +178,7 @@ public sealed partial class MainWindow : Window
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be added."); return; }
 
             _store.UpsertTracks(tracks);
-            _playbackQueue.Append(tracks.Select(track => track.Path), _playback.CurrentTrack?.Path);
+            _playbackQueue.Append(tracks.Select(track => track.Path), RetainedCurrentPath);
             PublishLibraryChanged();
             SaveSession();
             PublishQueueStateIfChanged();
@@ -270,6 +275,15 @@ public sealed partial class MainWindow : Window
         return result.Kind == PlaybackCommandKind.Resumed;
     }
 
+    private bool StartPlaybackFromCurrentLibraryView()
+    {
+        var firstPath = _libraryQueries.CurrentTrackPaths().FirstOrDefault();
+        if (firstPath is null || _store.GetTrack(firstPath) is not { } first) return false;
+        _playbackQueue.Replace([firstPath], 0);
+        PlayTrack(first, false, 0);
+        return true;
+    }
+
     private void PausePlayback()
     {
         CancelCrossfadeAndRestoreQueue();
@@ -321,20 +335,20 @@ public sealed partial class MainWindow : Window
         _crossfadeInProgress = false;
         _queueIndex = _crossfadeSourceQueueIndex is { } sourceIndex && sourceIndex >= 0 && sourceIndex < _queue.Count
             ? sourceIndex
-            : _playbackQueue.FindIndex(_playback.CurrentTrack?.Path);
+            : _playbackQueue.FindIndex(RetainedCurrentPath);
         _crossfadeSourceQueueIndex = null;
     }
 
     private bool ToggleShuffle()
     {
-        _playbackQueue.ToggleShuffle(GetCurrentQueuePaths(), _playback.CurrentTrack?.Path);
+        _playbackQueue.ToggleShuffle(GetCurrentQueuePaths(), RetainedCurrentPath);
         EnsureQueueInitialized();
         return _shuffle;
     }
 
     private void EnsureQueueInitialized()
     {
-        if (_queue.Count == 0) _playbackQueue.EnsureQueue(GetCurrentQueuePaths(), _playback.CurrentTrack?.Path);
+        if (_queue.Count == 0) _playbackQueue.EnsureQueue(GetCurrentQueuePaths(), RetainedCurrentPath);
     }
 
     private void CycleRepeatMode() => _playbackQueue.CycleRepeatMode();
@@ -467,7 +481,7 @@ public sealed partial class MainWindow : Window
         _crossfadeFailureSource = _playback.CurrentTrack?.Path;
         _queueIndex = _crossfadeSourceQueueIndex is { } sourceIndex && sourceIndex >= 0 && sourceIndex < _queue.Count
             ? sourceIndex
-            : _playbackQueue.FindIndex(_playback.CurrentTrack?.Path);
+            : _playbackQueue.FindIndex(RetainedCurrentPath);
         _crossfadeSourceQueueIndex = null;
         _ = ShowNoticeAsync($"Could not start {track.Title} during crossfade. Playback will continue; see the local log for details.", InfoBarSeverity.Error);
     });
@@ -483,7 +497,7 @@ public sealed partial class MainWindow : Window
             var fileConfirmedMissing = ReconcileMissingTrack(track.Path);
             PublishPlaybackState();
             var notice = fileConfirmedMissing
-                ? $"File not found: {Path.GetFileName(track.Path)}. Its stale library entry was removed; playlist and queue references were kept."
+                ? $"File not found: {Path.GetFileName(track.Path)}. Its library, playlist and queue entries were removed."
                 : $"The file location is unavailable: {Path.GetFileName(track.Path)}. Its library and playlist references were kept; reconnect the drive and rescan when it is available.";
             _ = ShowNoticeAsync(notice, InfoBarSeverity.Warning);
             return;
@@ -491,10 +505,25 @@ public sealed partial class MainWindow : Window
         _ = ShowNoticeAsync($"Could not play {track.Title}. See Settings → Open log folder for details.", InfoBarSeverity.Error);
     });
 
+    private void ApplyPurgedTracks(IReadOnlyList<string> paths)
+    {
+        if (_windowClosed) return;
+        if (_crossfadeInProgress && paths.Any(path => SameTrack(path, _playback.CurrentTrack?.Path) ||
+            (_queueIndex >= 0 && _queueIndex < _queue.Count && SameTrack(path, _queue[_queueIndex])))) CancelCrossfadeAndRestoreQueue();
+        if (paths.Any(path => SameTrack(path, _playback.CurrentTrack?.Path))) _playbackQueue.ClearAbRepeat();
+        _playbackQueue.RemovePaths(paths);
+        _libraryQueries.ForgetDeletedPaths(paths);
+        SaveSession();
+        PublishLibraryChanged();
+        PublishQueueState(force: true);
+    }
+
+    private string? RetainedCurrentPath => _playback.CurrentTrack is { } current && !_store.WasPurged(current.Path) ? current.Path : null;
+
     private bool ReconcileMissingTrack(string path)
     {
         var confirmedMissing = _trackAvailability.MarkUnavailable(path);
-        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = true });
+        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = true });
         PublishLibraryChanged();
         PublishQueueState(force: true);
         return confirmedMissing;
@@ -522,7 +551,7 @@ public sealed partial class MainWindow : Window
 
         var fileConfirmedMissing = ReconcileMissingTrack(path);
         var notice = fileConfirmedMissing
-            ? $"File not found: {Path.GetFileName(path)}. Its stale library entry was removed; playlist and queue references were kept."
+            ? $"File not found: {Path.GetFileName(path)}. Its library, playlist and queue entries were removed."
             : $"The file location is unavailable: {Path.GetFileName(path)}. Its library and playlist references were kept; reconnect the drive and rescan when it is available.";
         await ShowNoticeAsync(notice, InfoBarSeverity.Warning);
         return null;
@@ -530,6 +559,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateCurrentTrack(Track track)
     {
+        Title = NativeWindowTitle.ForTrack(track);
         if (_store.GetSetting("accent-mode") == "Artwork") _ = ApplyArtworkAccentAsync(track.ArtworkPath);
         _webBridge?.SendEvent("trackChanged", new { track = _libraryQueries.TrackDto(track, true), playing = _playback.IsPlaying,
             positionSeconds = Math.Max(0, _playback.Position) / 1000d, durationSeconds = Math.Max(0, _playback.Duration) / 1000d,
@@ -586,7 +616,7 @@ public sealed partial class MainWindow : Window
         {
             var savedQueueIndex = _crossfadeInProgress ? _crossfadeSourceQueueIndex ?? _queueIndex : _queueIndex;
             var revision = _playbackQueue.ContentRevision;
-            var state = _playbackQueue.CreateSession(_playback.CurrentTrack?.Path, Math.Max(0, _playback.Position), savedQueueIndex, includeQueue: false);
+            var state = _playbackQueue.CreateSession(RetainedCurrentPath, Math.Max(0, _playback.Position), savedQueueIndex, includeQueue: false);
             if (_savedQueueRevision != revision || !_store.SaveSessionState(state))
             {
                 _store.SaveSession(state with { Queue = _queue.ToArray() });
@@ -606,6 +636,7 @@ public sealed partial class MainWindow : Window
         StopMountedDriveRefresh();
         PersistPendingVolumeSetting();
         CloseVideoPlaybackWindow(pauseVideo: true);
+        _store.TracksPurged -= OnTracksPurged;
         SaveSession(); _clock.Stop(); _playback.Dispose(); _libraryScan.Cancel();
         WebUi.Close();
         _libraryFileWatcher.Dispose();

@@ -36,6 +36,21 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<string> _knownMountedDriveRoots = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private Timer? _mountedDriveRefreshTimer;
 
+    private int _duplicatePreparationActive;
+    private async Task PrepareDuplicatesInBackgroundAsync()
+    {
+        if (Interlocked.Exchange(ref _duplicatePreparationActive, 1) != 0) return;
+        try
+        {
+            await Task.Delay(1000);
+            if (_windowClosed || _libraryScan.IsRunning) return;
+            await Task.Run(() => _store.PrepareExactFingerprints());
+            if (!_windowClosed) PublishLibraryChanged();
+        }
+        catch (Exception ex) { LocalAppLog.Shared.Warning("duplicates", "Background duplicate verification will retry after the next library scan.", ex); }
+        finally { Volatile.Write(ref _duplicatePreparationActive, 0); }
+    }
+
     private void StartStartupScan()
     {
         var roots = _libraryLocations.GetLibraryRoots().ToList();
@@ -92,11 +107,18 @@ public sealed partial class MainWindow : Window
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var available = LibraryScanner.DefaultRoots().Select(Path.GetFullPath).ToArray();
         string[] newlyMounted;
+        bool mountsChanged;
         lock (_mountedDriveGate)
         {
+            mountsChanged = !_knownMountedDriveRoots.SetEquals(available);
             newlyMounted = available.Where(root => !_knownMountedDriveRoots.Contains(root)).ToArray();
             _knownMountedDriveRoots.Clear();
             foreach (var root in available) _knownMountedDriveRoots.Add(root);
+        }
+        if (mountsChanged)
+        {
+            _libraryQueries.SetUnavailableRoots(_libraryLocations.GetLibraryRoots().Where(root => !Directory.Exists(root)));
+            PublishLibraryChanged();
         }
         if (newlyMounted.Length == 0) return;
 
@@ -126,7 +148,7 @@ public sealed partial class MainWindow : Window
             {
                 if (_windowClosed) return;
                 foreach (var path in result.RemovedPaths)
-                    _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = true });
+                    _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = true });
                 PublishLibraryChanged();
             });
         }
@@ -219,7 +241,9 @@ public sealed partial class MainWindow : Window
                 {
                     _scanCurrentPath = "Scan complete";
                     var unavailableRoots = result.UnavailableRoots ?? Array.Empty<string>();
-                    if (reconcileWholeLibrary) _libraryQueries.SetUnavailableRoots(unavailableRoots);
+                    if (reconcileWholeLibrary) _libraryQueries.SetUnavailableRoots(
+                        _libraryLocations.GetLibraryRoots().Where(root => !Directory.Exists(root))
+                            .Concat(unavailableRoots).Concat(result.IncompletePaths ?? Array.Empty<string>()));
                     if (unavailableRoots.Count > 0)
                     {
                         _trackAvailability.MarkUnavailableRoots(unavailableRoots);
@@ -232,7 +256,7 @@ public sealed partial class MainWindow : Window
                             _webBridge?.SendEvent("trackAvailabilityChanged", new { id, fileUnavailable = true });
                     }
                     foreach (var path in _trackAvailability.ClearUnavailableTracksThatExist())
-                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = false });
+                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = false });
 
                     // Reconcile every indexed path after a successful scan. This also
                     // catches files deleted before the watcher started or outside the
@@ -241,9 +265,9 @@ public sealed partial class MainWindow : Window
                     var reconciliation = await Task.Run(() => _trackAvailability.ReconcileIndexedTracks(
                         unavailableRoots, result.IncompletePaths ?? Array.Empty<string>(), reconcileWholeLibrary ? null : scanRoots));
                     foreach (var path in reconciliation.RemovedPaths)
-                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = true });
+                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = true });
                     foreach (var path in _trackAvailability.ClearUnavailableTracksThatExist())
-                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = false });
+                        _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = false });
 
                     var heading = forceRefresh ? "Index rebuilt" : "Scan complete";
                     var removedCount = result.Removed + reconciliation.RemovedPaths.Count;
@@ -267,6 +291,7 @@ public sealed partial class MainWindow : Window
                     SetScanOutcome("complete", message);
                 }
                 PublishLibraryChanged(); PublishScanState();
+                _ = PrepareDuplicatesInBackgroundAsync();
             }
         }
         catch (OperationCanceledException)

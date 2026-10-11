@@ -45,6 +45,9 @@ internal static class GitHubUpdates
         GitHubRelease? cachedRelease,
         CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        cancellationToken = timeout.Token;
         using var request = new HttpRequestMessage(HttpMethod.Get, ReleasesApi);
         if (IsEligible(cachedRelease, includePrerelease) && EntityTagHeaderValue.TryParse(etag, out var parsedEtag))
             request.Headers.IfNoneMatch.Add(parsedEtag);
@@ -75,6 +78,9 @@ internal static class GitHubUpdates
 
     public static async Task<IReadOnlyList<GitHubRelease>> GetReleaseHistoryAsync(CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        cancellationToken = timeout.Token;
         using var response = await Client.GetAsync(ReleasesApi, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var releases = await response.Content.ReadFromJsonAsync<GitHubRelease[]>(cancellationToken: cancellationToken).ConfigureAwait(false);

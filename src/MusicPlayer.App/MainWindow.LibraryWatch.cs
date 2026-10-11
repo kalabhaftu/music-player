@@ -19,7 +19,7 @@ public sealed partial class MainWindow
             {
                 if (_windowClosed) return;
                 foreach (var path in unavailable)
-                    _webBridge?.SendEvent("trackAvailabilityChanged", new { id = _libraryQueries.TrackId(path), fileUnavailable = true });
+                    _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = true });
 
                 PublishLibraryChanged();
                 PublishQueueState(force: true);
@@ -28,7 +28,7 @@ public sealed partial class MainWindow
                 if (currentWasRemoved)
                 {
                     PublishPlaybackState();
-                    _ = ShowNoticeAsync("The current song was removed from its folder. Its saved playlist and queue references were kept.", InfoBarSeverity.Warning);
+                    _ = ShowNoticeAsync("The current song was removed from its folder. Confirmed deletions are removed from saved playlists and the queue.", InfoBarSeverity.Warning);
                 }
             });
         }

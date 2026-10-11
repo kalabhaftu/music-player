@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
             var hwnd = WindowNative.GetWindowHandle(this);
             var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Title = string.Empty;
+            appWindow.Title = NativeWindowTitle.ForTrack(_playback.CurrentTrack);
             var iconPath = ActiveProductIconPath();
             if (File.Exists(iconPath))
             {
@@ -198,10 +198,12 @@ public sealed partial class MainWindow : Window
         _webBridge?.SendEvent("updateCheckState", new { checking = true });
         try
         {
-            var assembly = typeof(MainWindow).Assembly;
-            var currentVersionText = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                ?? assembly.GetName().Version?.ToString(3);
-            var current = ReleaseVersion.TryParse(currentVersionText, out var parsedCurrent) ? parsedCurrent : new ReleaseVersion(0, 1, 0, null);
+            var currentVersionText = ApplicationVersion.Resolve(typeof(MainWindow).Assembly);
+            if (!ReleaseVersion.TryParse(currentVersionText, out var current))
+            {
+                if (force) await ShowNoticeAsync("The installed version could not be determined.", InfoBarSeverity.Warning);
+                return;
+            }
             var channel = current.IsPrerelease ? "preview" : "stable";
             var sameChannel = string.Equals(_store.GetSetting("update-release-channel"), channel, StringComparison.Ordinal);
             var cachedRelease = sameChannel
@@ -218,7 +220,12 @@ public sealed partial class MainWindow : Window
             _webAvailableRelease = null;
             var release = result.Release;
             _webBridge?.SendEvent("latestReleaseChanged", new { release = release is null ? null : new { tag = release.Tag, url = release.Url } });
-            if (release is null || !ReleaseVersion.TryParse(release.Tag, out var latest) || latest.CompareTo(current) <= 0)
+            if (ApplicationVersion.Compare(currentVersionText, release?.Tag) == UpdateComparison.NoEligibleRelease)
+            {
+                if (force) await ShowNoticeAsync("No eligible release is currently available on GitHub.");
+                return;
+            }
+            if (ApplicationVersion.Compare(currentVersionText, release?.Tag) == UpdateComparison.CurrentRelease)
             {
                 if (force) await ShowNoticeAsync("You are using the latest available release.");
                 return;
@@ -440,7 +447,11 @@ public sealed partial class MainWindow : Window
             {
                 if (_tray is not null) { _tray.UpdateIcon(ActiveProductIconPath()); return; }
                 _tray = new TrayIconService(WindowNative.GetWindowHandle(this), ActiveProductIconPath(),
-                    () => DispatcherQueue.TryEnqueue(() => { var hwnd = WindowNative.GetWindowHandle(this); TrayIconService.RestoreWindow(hwnd); Activate(); }));
+                    () => DispatcherQueue.TryEnqueue(() => { var hwnd = WindowNative.GetWindowHandle(this); TrayIconService.RestoreWindow(hwnd); Activate(); }),
+                    () => DispatcherQueue.TryEnqueue(() => TogglePlayback(StartPlaybackFromCurrentLibraryView)),
+                    () => DispatcherQueue.TryEnqueue(PlayPreviousTrack),
+                    () => DispatcherQueue.TryEnqueue(PlayNextTrack),
+                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer));
             }
             else { _tray?.Dispose(); _tray = null; }
         }
@@ -462,6 +473,14 @@ public sealed partial class MainWindow : Window
         return Path.Combine(AppContext.BaseDirectory, "Assets", $"MusicPlayer-{suffix}.ico");
     }
 
+    private void ExitMusicPlayer()
+    {
+        var tray = _tray;
+        _tray = null;
+        tray?.Dispose();
+        Close();
+    }
+
     private Task ShowNoticeAsync(string message, InfoBarSeverity severity = InfoBarSeverity.Informational)
     {
         _webBridge?.SendEvent("notification", new { message, severity = severity.ToString() });
@@ -474,5 +493,5 @@ public sealed partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private void WebUiFailureClose_Click(object sender, RoutedEventArgs e) => Close();
+    private void WebUiFailureClose_Click(object sender, RoutedEventArgs e) => ExitMusicPlayer();
 }

@@ -16,6 +16,25 @@ The older results below record the original release. Windows UI/package tests
 use disposable GitHub runners. No release binaries are downloaded by the agent
 to the user's PC.
 
+## Active 1.0.1 candidate
+
+The 1.0.1 work is on `codex/music-player-1.0.1`, based on current `main` and
+including tray controls from `a05f8ed`. It sets assembly/file version 1.0.1
+and MSIX identity version 1.0.1.0. The approved changes restore Explorer menu
+labels and icons, preserve album-art thumbnails, add Windows Default Apps
+guidance, keep playback stable when queueing files, set useful taskbar titles,
+remove confirmed deletions from saved state, hide disconnected-drive tracks,
+cache library pages, and keep hashing and GitHub requests out of browsing.
+
+Local verification on this candidate: `dotnet build` for the x64 WinUI app
+passed with no warnings; all **113 core tests**, **47 frontend tests**, and
+**19 native playback tests** passed. PowerShell and WebView script syntax checks
+passed, as did shared release metadata validation. The isolated installed
+setup/MSIX lifecycle, Explorer registry, representative-format, comparative
+100,000-track performance, GitHub CI and release gates are still pending. No
+1.0.1 tag or release has been created. The final local x64 installer will be
+built once from the same verified merged commit used by the GitHub release.
+
 ## Local installer investigation
 
 The user subsequently requested local installer builds after installation reported
@@ -34,9 +53,11 @@ checks source hashes before compilation, validates the timestamped pinned
 signatures without importing certificate trust, and can verify all installed
 payload hashes plus the embedded uninstaller signature with `-Install`.
 The signature helper accepted the intact older signed setup and rejected the
-damaged download; both new PowerShell scripts passed parsing checks. Actual
-local compilation/installation is **pending**: Inno Setup 7.1.0 (14,304,168 bytes)
-and LibVLC 3.0.24 (145,225,266 bytes) downloads stalled on this connection.
+damaged download. After the dependencies became available, the local x64
+1.0.0 setup was built, signed with the persistent self-signed certificate,
+hash-checked against its payload and installed. The 1.0.1 setup is intentionally
+deferred until its exact merged source commit is ready; the cached app payload
+must be rebuilt once for that commit.
 
 ## Original Music Player 1.0.0 release revision
 

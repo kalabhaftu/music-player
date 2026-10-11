@@ -10,6 +10,7 @@ namespace MusicPlayer.App;
 internal sealed class PlaybackQueueCoordinator
 {
     private readonly List<string> _entries = [];
+    private bool _currentEntryRemoved;
 
     public IReadOnlyList<string> Entries => _entries;
     public long ContentRevision { get; private set; }
@@ -95,8 +96,11 @@ internal sealed class PlaybackQueueCoordinator
         return _entries.FindIndex(entry => SamePath(entry, path));
     }
 
-    public void SetCurrentIndex(int index) =>
+    public void SetCurrentIndex(int index)
+    {
         CurrentIndex = index >= 0 && index < _entries.Count ? index : -1;
+        _currentEntryRemoved = false;
+    }
 
     public void ShuffleUpcoming(int startIndex)
     {
@@ -118,6 +122,18 @@ internal sealed class PlaybackQueueCoordinator
         var entry = _entries[index];
         _entries.RemoveAt(index);
         _entries.Insert(targetIndex, entry);
+        ContentRevision++;
+        return true;
+    }
+
+    public bool RemovePaths(IReadOnlyList<string> paths)
+    {
+        var removed = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var oldIndex = CurrentIndex;
+        _currentEntryRemoved |= oldIndex >= 0 && oldIndex < _entries.Count && removed.Contains(_entries[oldIndex]);
+        var retainedBeforeCurrent = _entries.Take(Math.Clamp(oldIndex + 1, 0, _entries.Count)).Count(path => !removed.Contains(path));
+        if (_entries.RemoveAll(path => removed.Contains(path)) == 0) return false;
+        CurrentIndex = retainedBeforeCurrent - 1;
         ContentRevision++;
         return true;
     }
@@ -227,7 +243,7 @@ internal sealed class PlaybackQueueCoordinator
     }
 
     public int NextIndex(bool automatic) =>
-        QueueNavigation.NextIndex(_entries.Count, CurrentIndex, automatic, RepeatMode);
+        QueueNavigation.NextIndex(_entries.Count, CurrentIndex, automatic && !_currentEntryRemoved, RepeatMode);
 
     public void CycleRepeatMode() => RepeatMode = QueueNavigation.CycleRepeatMode(RepeatMode);
 

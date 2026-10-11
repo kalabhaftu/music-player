@@ -22,12 +22,12 @@ $appKey = 'HKCU:\Software\Classes\Applications\MusicPlayer.exe'
 $storedExecutable = Join-Path $integrationRoot 'ExecutablePath'
 
 function Set-DefaultValue([string] $Path, [string] $Value) {
-    New-Item -Path $Path -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path -Force | Out-Null }
     Set-Item -LiteralPath $Path -Value $Value
 }
 
 function Set-StringValue([string] $Path, [string] $Name, [string] $Value) {
-    New-Item -Path $Path -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path -Force | Out-Null }
     New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType String -Force | Out-Null
 }
 
@@ -102,15 +102,16 @@ foreach ($extension in $legacyExtensions) {
     Remove-ItemProperty -LiteralPath "$capabilities\FileAssociations" -Name $extension -ErrorAction SilentlyContinue
 }
 
-New-Item -Path $integrationRoot -Force | Out-Null
+if (-not (Test-Path -LiteralPath $integrationRoot)) { New-Item -Path $integrationRoot -Force | Out-Null }
+$iconReference = '"' + $executable + '",0'
 Set-DefaultValue $storedExecutable $executable
 Set-StringValue $registeredAppsKey $ApplicationName $capabilitiesRelativePath
 Set-StringValue $capabilities 'ApplicationName' $ApplicationName
 Set-StringValue $capabilities 'ApplicationDescription' 'Offline music library and player'
-Set-StringValue $capabilities 'ApplicationIcon' "$executable,0"
+Set-StringValue $capabilities 'ApplicationIcon' $iconReference
 
 Set-DefaultValue "$appKey\shell\open\command" ('"' + $executable + '" "%1"')
-Set-DefaultValue "$appKey\DefaultIcon" "$executable,0"
+Set-DefaultValue "$appKey\DefaultIcon" $iconReference
 foreach ($extension in $extensions) {
     $progId = "$associationName.$($extension.TrimStart('.'))"
     Set-StringValue "$appKey\SupportedTypes" $extension ''
@@ -118,7 +119,9 @@ foreach ($extension in $extensions) {
     $openWithProgIds = "HKCU:\Software\Classes\$extension\OpenWithProgids"
     Set-StringValue $openWithProgIds $progId ''
     Set-DefaultValue "HKCU:\Software\Classes\$progId" "$ApplicationName audio file"
-    Set-DefaultValue "HKCU:\Software\Classes\$progId\DefaultIcon" "$executable,0"
+    Set-DefaultValue "HKCU:\Software\Classes\$progId\DefaultIcon" $iconReference
+    # Let Windows apply our corner badge to thumbnails supplied by existing handlers.
+    Set-StringValue "HKCU:\Software\Classes\$progId" 'TypeOverlay' $iconReference
     Set-DefaultValue "HKCU:\Software\Classes\$progId\shell\open\command" ('"' + $executable + '" "%1"')
 
     foreach ($action in @(
@@ -127,7 +130,7 @@ foreach ($extension in $extensions) {
     )) {
         $verb = "HKCU:\Software\Classes\SystemFileAssociations\$extension\shell\$($action.Key)"
         Set-DefaultValue $verb $action.Label
-        Set-StringValue $verb 'Icon' "$executable,0"
+        Set-StringValue $verb 'Icon' $iconReference
         # A Player verb lets Explorer invoke this once for a multi-file selection.
         # The app parses the resulting activation arguments into one ordered queue
         # (or one playlist), instead of launching an action separately per file.

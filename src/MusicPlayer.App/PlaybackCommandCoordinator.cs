@@ -114,11 +114,11 @@ internal sealed class PlaybackCommandCoordinator(
         var changedWhileSkipping = false;
         for (var attempt = 0; attempt <= queue.Entries.Count; attempt++)
         {
-            var next = queue.NextIndex(automatic);
+            var next = queue.NextIndex(automatic && !changedWhileSkipping);
             if (next < 0) break;
             if (ResolveQueueTrack(next) is not { } track)
             {
-                if (next == queue.CurrentIndex) break;
+                if (next == queue.CurrentIndex) { changedWhileSkipping = true; continue; }
                 queue.SetCurrentIndex(next);
                 changedWhileSkipping = true;
                 continue;
@@ -158,7 +158,7 @@ internal sealed class PlaybackCommandCoordinator(
     }
 
     private Track? ResolveQueueTrack(int index) =>
-        index >= 0 && index < queue.Entries.Count ? resolveTrack(queue.Entries[index]) : null;
+        index >= 0 && index < queue.Entries.Count && File.Exists(queue.Entries[index]) ? resolveTrack(queue.Entries[index]) : null;
 
     private static bool SameTrack(string? left, string? right) =>
         left is not null && right is not null && left.Equals(right, StringComparison.OrdinalIgnoreCase);

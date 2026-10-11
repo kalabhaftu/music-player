@@ -9,15 +9,6 @@ using Windows.ApplicationModel.Activation;
 
 namespace MusicPlayer.App;
 
-internal enum FileActivationAction
-{
-    Play,
-    AddToQueue,
-    CreatePlaylist
-}
-
-internal sealed record FileActivationRequest(FileActivationAction Action, IReadOnlyList<string> Paths);
-
 internal static class Program
 {
     private const string InstanceKey = "music-player-main";
@@ -189,54 +180,12 @@ internal static class Program
 
     private static FileActivationRequest ParseActivation(AppActivationArguments? activation, string[] commandLineArguments)
     {
-        var paths = new List<string>();
-        if (activation?.Kind == ExtendedActivationKind.File && activation.Data is IFileActivatedEventArgs fileActivation)
-        {
-            foreach (var file in fileActivation.Files) paths.Add(file.Path);
-            return new(FileActivationAction.Play, NormalizeSupportedPaths(paths));
-        }
-
         var arguments = commandLineArguments.Length > 0
             ? commandLineArguments
-            : activation?.Data is ILaunchActivatedEventArgs launch
-                ? ParseArguments(launch.Arguments)
-                : [];
-
-        var action = FileActivationAction.Play;
-        var firstPath = 0;
-        if (arguments.Length > 0)
-        {
-            action = arguments[0].ToLowerInvariant() switch
-            {
-                "--add-to-queue" => FileActivationAction.AddToQueue,
-                "--create-playlist" => FileActivationAction.CreatePlaylist,
-                _ => FileActivationAction.Play
-            };
-            if (arguments[0].StartsWith("--", StringComparison.Ordinal)) firstPath = 1;
-        }
-
-        for (var index = firstPath; index < arguments.Length; index++) paths.Add(arguments[index]);
-        return new(action, NormalizeSupportedPaths(paths));
-    }
-
-    private static IReadOnlyList<string> NormalizeSupportedPaths(IEnumerable<string> paths)
-    {
-        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-        var result = new List<string>();
-        var seen = new HashSet<string>(comparer);
-        foreach (var path in paths)
-        {
-            try
-            {
-                var fullPath = Path.GetFullPath(path);
-                if (File.Exists(fullPath) && (LibraryScanner.IsSupportedAudioFile(fullPath) || LibraryScanner.IsVideoFile(fullPath)) && seen.Add(fullPath)) result.Add(fullPath);
-            }
-            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or PathTooLongException)
-            {
-                LocalAppLog.Shared.Warning("activation", "An invalid file path was ignored during activation.", ex);
-            }
-        }
-        return result;
+            : activation?.Data is ILaunchActivatedEventArgs launch ? ParseArguments(launch.Arguments) : [];
+        if (activation?.Kind == ExtendedActivationKind.File && activation.Data is IFileActivatedEventArgs files)
+            return FileActivation.Parse(arguments, files.Verb, files.Files.Select(file => file.Path));
+        return FileActivation.Parse(arguments);
     }
 
     private static string[] ParseArguments(string arguments)

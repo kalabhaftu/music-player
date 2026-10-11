@@ -24,7 +24,7 @@ public sealed class LibraryBrowsingTests : IDisposable
         var path = Path.Combine(_root, file + ".flac");
         File.WriteAllBytes(path, [1, 2, 3, 4]);
         var now = DateTime.UtcNow;
-        return new(path, file, artist, album, artist, genre, 0, 1, TimeSpan.FromSeconds(3), 4, now, now);
+        return new(path, file, artist, album, artist, genre, 0, 1, TimeSpan.FromSeconds(3), 4, File.GetLastWriteTimeUtc(path), now);
     }
 
     [Theory]
@@ -35,6 +35,7 @@ public sealed class LibraryBrowsingTests : IDisposable
     public void Duplicate_hiding_preserves_collection_contents_and_their_playback_queues(string view, string column, string? value)
     {
         _store.UpsertTracks([Track("first", "Album"), Track("copy", "Album")]);
+        _store.PrepareExactFingerprints();
         _store.SetSetting("hide-exact-duplicates", "true");
         Assert.Equal(1, _store.CountTracks(hideExactDuplicates: true));
         value ??= _root;
@@ -57,6 +58,7 @@ public sealed class LibraryBrowsingTests : IDisposable
     public void The_duplicate_setting_still_controls_the_songs_list(bool hide, int expected)
     {
         _store.UpsertTracks([Track("first", "Album"), Track("copy", "Album")]);
+        _store.PrepareExactFingerprints();
         _store.SetSetting("hide-exact-duplicates", hide ? "true" : "false");
         using var request = JsonDocument.Parse("{\"view\":\"Songs\"}");
         var page = JsonSerializer.SerializeToElement(_queries.TrackPage(request.RootElement));

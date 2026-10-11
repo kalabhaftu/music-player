@@ -4,6 +4,17 @@ Changes to Music Player are documented here. The app name, executable, package i
 
 ## [Unreleased]
 
+- Keep Music Player running when its window closes if notification-area mode is enabled; add tray actions for Open, Previous, Play/Pause, Next, and Quit.
+
+## [1.0.1]
+
+- Restore Music Player's Explorer context-menu labels and icons without replacing other applications' registrations; add the app icon to associated file types while preserving Windows album-art thumbnails.
+- Add a Settings shortcut to Windows Default Apps when Music Player is not the effective handler for registered audio formats.
+- Preserve playback, the current queue occurrence, duplicates, and position when files are added to the queue through the app or Explorer; give the Windows taskbar a useful idle and playing title.
+- Remove confirmed-deleted tracks from library, playlists, queue, and saved playback state, while hiding tracks on disconnected drives and retaining those entries for reconnection.
+- Cache up to six library pages for immediate back-and-forth navigation, avoid hashing files in browsing requests, and return local version/About information without waiting for GitHub.
+- Compare releases from one local version source and report the latest release only after a successful online comparison.
+
 ## [1.0.0]
 
 - Correct Setup's WebView2 prerequisite detection for machine-wide and per-user installations. Reuse an installed runtime without a network request, explain when installation is required, and provide a manual/offline recovery path.

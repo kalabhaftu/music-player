@@ -24,7 +24,7 @@ internal sealed class PlayerSettingsService(LibraryStore store)
         ["songColumnWidths"] = "song-column-widths"
     };
 
-    public object ProjectWebSettings(string resolvedTheme, string? artworkAccent, object? artworkPalette)
+    public object ProjectWebSettings(string resolvedTheme, string? artworkAccent, object? artworkPalette, bool needsDefaultSelection = true)
     {
         var stored = store.GetSettings("");
         string Value(string key, string fallback) => stored.TryGetValue(key, out var value) ? value : fallback;
@@ -53,7 +53,8 @@ internal sealed class PlayerSettingsService(LibraryStore store)
             rightPanelOpen = PanelOpen(),
             rightPanelWidth = Value("right-panel-width", "294"), sidebarCollapsed = Collapsed(),
             songColumnWidths = ReadSongColumnWidths(),
-            indexedLibraryBytes = store.GetLibraryStats().TotalBytes
+            indexedLibraryBytes = store.GetLibraryStats().TotalBytes,
+            needsDefaultSelection
         };
     }
 

@@ -9,16 +9,21 @@ public sealed partial class LibraryStore
     /// Returns false if a full session has not been saved yet.</summary>
     public bool SaveSessionState(PlaybackSession session)
     {
-        using var connection = Open();
-        using var transaction = connection.BeginTransaction();
-        using var exists = connection.CreateCommand();
-        exists.Transaction = transaction;
-        exists.CommandText = "SELECT 1 FROM playback_session WHERE id=1";
-        if (exists.ExecuteScalar() is null) return false;
-        WriteSessionState(connection, transaction, session, create: false);
-        transaction.Commit();
-        return true;
+        lock (_sessionGate)
+        {
+            session = SanitizeSession(session, includeQueue: false);
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using var exists = connection.CreateCommand();
+            exists.Transaction = transaction;
+            exists.CommandText = "SELECT 1 FROM playback_session WHERE id=1";
+            if (exists.ExecuteScalar() is null) return false;
+            WriteSessionState(connection, transaction, session, create: false);
+            transaction.Commit();
+            return true;
+        }
     }
+
 
     private static void WriteSessionState(SqliteConnection connection, SqliteTransaction transaction,
         PlaybackSession session, bool create)

@@ -15,6 +15,48 @@ public sealed class PlaybackIntegrationTests : IDisposable
     public PlaybackIntegrationTests() => Directory.CreateDirectory(_root);
 
     [Fact]
+    public async Task Enqueue_preserves_playing_position_paused_state_duplicates_and_idle_state()
+    {
+        var first = Wave("enqueue-playing", 12); var second = Wave("enqueue-next", 4);
+        using var playback = new PlaybackService("--aout=dummy", "--no-video-title-show");
+        var queue = new PlaybackQueueCoordinator();
+        queue.Append([first.Path, first.Path], null);
+        Assert.Null(playback.CurrentTrack); Assert.False(playback.IsPlaying); Assert.Equal(-1, queue.CurrentIndex);
+        queue.SetCurrentIndex(1); playback.Play(first);
+        await WaitFor(() => playback.IsPlaying && playback.Position > 900);
+        var before = playback.Position;
+        queue.Append([second.Path, first.Path], first.Path);
+        await Task.Delay(200);
+        Assert.True(playback.IsPlaying); Assert.Equal(first.Path, playback.CurrentTrack!.Path);
+        Assert.InRange(playback.Position, before, before + 1500);
+        Assert.Equal(1, queue.CurrentIndex);
+        Assert.Equal(new[] { first.Path, first.Path, second.Path, first.Path }, queue.Entries);
+        playback.Pause(); await WaitFor(() => !playback.IsPlaying);
+        before = playback.Position; queue.Append([second.Path], first.Path); await Task.Delay(200);
+        Assert.False(playback.IsPlaying); Assert.InRange(playback.Position, before - 100, before + 100);
+        queue.RemovePaths([first.Path]);
+        Assert.Equal(-1, queue.CurrentIndex);
+        Assert.Equal(new[] { second.Path, second.Path }, queue.Entries);
+    }
+
+    [Fact]
+    public async Task Advancement_and_crossfade_skip_missing_entries_without_losing_duplicate_occurrences()
+    {
+        var first = Wave("skip-first", 8); var next = Wave("skip-next", 8);
+        var missing = Path.Combine(_root, "deleted.wav");
+        using var playback = new PlaybackService("--aout=dummy", "--no-video-title-show");
+        var queue = new PlaybackQueueCoordinator();
+        queue.Replace([first.Path, missing, next.Path, next.Path], 0);
+        var commands = new PlaybackCommandCoordinator(queue, playback,
+            path => path == first.Path ? first : path == next.Path ? next : first with { Path = path }, () => queue.Entries);
+        commands.StartTrack(first, false, 0); await WaitFor(() => playback.IsPlaying);
+        Assert.Equal(PlaybackCommandKind.AdvanceFallback, commands.PrepareCrossfade(1, 500).Kind);
+        var result = commands.Advance(false, 500, false);
+        Assert.Equal(PlaybackCommandKind.CrossfadeRequested, result.Kind);
+        Assert.Equal(2, queue.CurrentIndex); Assert.Equal(next.Path, result.Track!.Path);
+    }
+
+    [Fact]
     public async Task Natural_end_advances_the_queue_and_reports_each_track_once()
     {
         var first = Wave("first", 1);
