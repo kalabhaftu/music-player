@@ -1,17 +1,42 @@
 # Project status
 
-Updated: 2026-10-11. Music Player 1.0.0's installer correction is being prepared
-for republication at the user's explicit request under the same `v1.0.0` tag.
+Updated: 2026-10-11. Music Player 1.0.0's installer correction was republished
+at the user's explicit request under the same `v1.0.0` tag.
 Setup now uses Microsoft's documented `pv` registry detection before invoking
 the WebView2 bootstrapper, explains missing prerequisites, and supports manual
 offline runtime installation. The GitHub setup-upgrade test requires the
-existing-runtime skip path. No local build or installation tests are being run;
-the replacement must pass the complete signed GitHub release pipeline.
+existing-runtime skip path. PR [#13](https://github.com/kalabhaftu/music-player/pull/13)
+was protected-squash-merged as `4ad9d48245267abe93a031a655904bdbf5b8f87a`
+with GitHub's verified commit signature. The replacement
+[release workflow 38088845287](https://github.com/kalabhaftu/music-player/actions/runs/38088845287)
+passed its signed build and package checks and published all 12 assets at
+**2026-10-10 22:05:12 UTC**.
 
-The results below record the original release and do not validate the corrected
-installer. The user's
-running instance remains untouched. Windows UI/package tests use disposable
-GitHub runners. No release binaries are downloaded to the user's PC.
+The older results below record the original release. Windows UI/package tests
+use disposable GitHub runners. No release binaries are downloaded by the agent
+to the user's PC.
+
+## Local installer investigation
+
+The user subsequently requested local installer builds after installation reported
+corrupted source files. `MusicPlayer-Setup-x64 (1).exe` in Downloads has the same
+71,726,824-byte size as the current release asset but SHA-256
+`47dd0d1f2c24a15964a5f1cb8fa832178c27e344ba9d719ff6b5e619e757c117`,
+rather than GitHub's published
+`07811e85a5e97998d9fbfda58586d59ba0fa28ee1a87ffb2ff5a7b4f03f60d3e`.
+Windows Authenticode also reports a digest mismatch (`0x80096010`): the downloaded
+signed bytes are damaged. The point at which those bytes changed is unknown.
+Skipping damaged DLLs cannot produce a valid installation.
+
+`Build-MusicPlayerInstaller.bat` stages one x64 app payload, signs it with the
+existing persistent project key, and reuses it for installer-only edits. It
+checks source hashes before compilation, validates the timestamped pinned
+signatures without importing certificate trust, and can verify all installed
+payload hashes plus the embedded uninstaller signature with `-Install`.
+The signature helper accepted the intact older signed setup and rejected the
+damaged download; both new PowerShell scripts passed parsing checks. Actual
+local compilation/installation is **pending**: Inno Setup 7.1.0 (14,304,168 bytes)
+and LibVLC 3.0.24 (145,225,266 bytes) downloads stalled on this connection.
 
 ## Original Music Player 1.0.0 release revision
 
@@ -49,8 +74,8 @@ The retained `codex/update-verification-status` branch preserves baseline
 `9759726` for reproducible comparisons after squash merges. The obsolete branches
 and unused worktree have been removed; their complete verified bundles remain
 outside the repository. No additional release dependency is required from the
-user. Exact offline local builds would need uncached LibVLC 3.0.24; the existing
-local player uses cached 3.0.23.1. No dependency download was started locally.
+user. Those old local outputs and LibVLC 3.0.23.1 were subsequently removed at
+the user's request. New local installer builds require restoring LibVLC 3.0.24.
 
 ## Reviewed implementation
 
