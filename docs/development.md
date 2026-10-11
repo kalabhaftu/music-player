@@ -24,6 +24,27 @@ dotnet run --project src/MusicPlayer.App/MusicPlayer.App.csproj
 
 `dotnet run` restores packages as needed, builds the app, and starts that build from the checkout. It does not produce the release ZIP, setup installer, or MSIX bundle. The first launch discovers mounted local drives automatically; use **Folders** to choose locations explicitly. Do not launch another checkout while your existing Music Player instance is running.
 
+## Local setup builds
+
+Install Inno Setup 7 once and use PowerShell 7. `Build-MusicPlayerInstaller.bat` uses the existing
+project certificate in the current user's certificate store and Windows SDK
+`signtool`; it never exports the private key or installs certificate trust.
+The first run publishes and signs one x64 payload. Later runs verify and reuse
+that cached payload, then replace the same installer output:
+
+```powershell
+.\Build-MusicPlayerInstaller.bat
+.\Build-MusicPlayerInstaller.bat -Install
+# Include app-source or dependency changes, rather than only installer changes:
+.\Build-MusicPlayerInstaller.bat -RebuildApp
+```
+
+The installer and its checksum are under `artifacts/local-installer`. The optional
+installation check preserves saved user data and verifies all installed payload
+files against the cache. It refuses to stop a running player. The builder works
+from any current directory; keep the BAT in the checkout root. App dependencies
+and the Microsoft WebView2 bootstrapper are downloaded once and retained.
+
 ## UI and application services
 
 The WinUI window is the native shell for the local WebView2 UI. Frontend sources live under `src/MusicPlayer.App/WebUI`: `index.html`, shared stylesheets, and vanilla JavaScript modules for the typed bridge, library rendering, playback presentation, and app interactions. MSBuild embeds those files in the app assembly, and the C# WebView2 bridge serves them from memory, so releases do not expose a loose `WebUI` directory. The C# bridge remains explicit; query, playlist, settings, metadata, folder, scan, queue, and playback rules are kept in focused C# services/coordinators rather than duplicated in JavaScript.
