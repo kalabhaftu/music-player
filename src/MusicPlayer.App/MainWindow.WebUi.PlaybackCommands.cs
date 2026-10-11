@@ -42,13 +42,7 @@ public sealed partial class MainWindow
                 return null;
             }
             case "playPause":
-                TogglePlayback(() =>
-                {
-                    var firstPath = _libraryQueries.CurrentTrackPaths().FirstOrDefault();
-                    if (firstPath is null || _store.GetTrack(firstPath) is not { } first) return false;
-                    _playbackQueue.Replace([firstPath], 0); PlayTrack(first, false, 0);
-                    return true;
-                });
+                TogglePlayback(StartPlaybackFromCurrentLibraryView);
                 return null;
             case "previous": PlayPreviousTrack(); return null;
             case "next": PlayNextTrack(); return null;

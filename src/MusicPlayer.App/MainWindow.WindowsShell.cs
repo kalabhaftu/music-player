@@ -440,7 +440,11 @@ public sealed partial class MainWindow : Window
             {
                 if (_tray is not null) { _tray.UpdateIcon(ActiveProductIconPath()); return; }
                 _tray = new TrayIconService(WindowNative.GetWindowHandle(this), ActiveProductIconPath(),
-                    () => DispatcherQueue.TryEnqueue(() => { var hwnd = WindowNative.GetWindowHandle(this); TrayIconService.RestoreWindow(hwnd); Activate(); }));
+                    () => DispatcherQueue.TryEnqueue(() => { var hwnd = WindowNative.GetWindowHandle(this); TrayIconService.RestoreWindow(hwnd); Activate(); }),
+                    () => DispatcherQueue.TryEnqueue(() => TogglePlayback(StartPlaybackFromCurrentLibraryView)),
+                    () => DispatcherQueue.TryEnqueue(PlayPreviousTrack),
+                    () => DispatcherQueue.TryEnqueue(PlayNextTrack),
+                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer));
             }
             else { _tray?.Dispose(); _tray = null; }
         }
@@ -462,6 +466,14 @@ public sealed partial class MainWindow : Window
         return Path.Combine(AppContext.BaseDirectory, "Assets", $"MusicPlayer-{suffix}.ico");
     }
 
+    private void ExitMusicPlayer()
+    {
+        var tray = _tray;
+        _tray = null;
+        tray?.Dispose();
+        Close();
+    }
+
     private Task ShowNoticeAsync(string message, InfoBarSeverity severity = InfoBarSeverity.Informational)
     {
         _webBridge?.SendEvent("notification", new { message, severity = severity.ToString() });
@@ -474,5 +486,5 @@ public sealed partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private void WebUiFailureClose_Click(object sender, RoutedEventArgs e) => Close();
+    private void WebUiFailureClose_Click(object sender, RoutedEventArgs e) => ExitMusicPlayer();
 }

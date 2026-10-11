@@ -270,6 +270,15 @@ public sealed partial class MainWindow : Window
         return result.Kind == PlaybackCommandKind.Resumed;
     }
 
+    private bool StartPlaybackFromCurrentLibraryView()
+    {
+        var firstPath = _libraryQueries.CurrentTrackPaths().FirstOrDefault();
+        if (firstPath is null || _store.GetTrack(firstPath) is not { } first) return false;
+        _playbackQueue.Replace([firstPath], 0);
+        PlayTrack(first, false, 0);
+        return true;
+    }
+
     private void PausePlayback()
     {
         CancelCrossfadeAndRestoreQueue();

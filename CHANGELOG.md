@@ -4,6 +4,8 @@ Changes to Music Player are documented here. The app name, executable, package i
 
 ## [Unreleased]
 
+- Keep Music Player running when its window closes if notification-area mode is enabled; add tray actions for Open, Previous, Play/Pause, Next, and Quit.
+
 ## [1.0.0]
 
 - Correct Setup's WebView2 prerequisite detection for machine-wide and per-user installations. Reuse an installed runtime without a network request, explain when installation is required, and provide a manual/offline recovery path.
