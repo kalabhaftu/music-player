@@ -52,7 +52,7 @@ public sealed partial class MainWindow
                 SetImmersiveMode(payload.TryGetProperty("enabled", out var immersive) && immersive.ValueKind == JsonValueKind.True);
                 return null;
             case "openDefaultApps":
-                if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps"))) throw new InvalidOperationException("Windows Settings could not be opened.");
+                await DefaultAppsService.OpenAsync();
                 return null;
             case "copyTrackPath":
             {

@@ -106,14 +106,14 @@ public sealed partial class MainWindow
             {
                 var track = RequireTrack(payload, "id");
                 EnsureQueueInitialized();
-                _playbackQueue.InsertNext(track.Path, _playback.CurrentTrack?.Path);
+                _playbackQueue.InsertNext(track.Path, RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }
             case "addToQueue":
             {
                 var track = RequireTrack(payload, "id");
-                _playbackQueue.Append([track.Path], _playback.CurrentTrack?.Path);
+                _playbackQueue.Append([track.Path], RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }

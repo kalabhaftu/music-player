@@ -116,7 +116,7 @@ test("navigation during Load more ignores the old response without changing the 
 test("refresh after paging starts from the beginning instead of discarding the first page",async()=>{
   const all=groups(65),offsets=[];
   const f=fixture("Albums",async(_name,{offset,pageSize})=>{offsets.push(offset);return {groups:all.slice(offset,offset+pageSize),totalCount:65};});
-  await f.views.renderView();await f.views.loadMore(f.button());await f.views.renderView();
+  await f.views.renderView();await f.views.loadMore(f.button());f.views.invalidateCache();await f.views.renderView();
   assert.deepEqual(offsets,[0,60,0]);assert.deepEqual(f.state.items,all.slice(0,60));
 });
 
@@ -168,4 +168,36 @@ for(const [filter,key,size] of [["song","songs",40],["album","albums",24],["arti
   await f.views.renderView();
   assert.deepEqual(offsets,[size*5,size]);assert.equal(f.state.searchPages[key],1);
   assert.equal(f.state.searchResults[key].items.length,1);assert(f.root.innerHTML.includes("Page 2 of 2"));
+});
+
+
+test("cached navigation paints immediately, avoids another query and stays bounded at six contexts",async()=>{
+  let requests=0;
+  const f=fixture("Albums",async()=>{requests++;return {groups:groups(2),totalCount:2};});
+  await f.views.renderView();const first=f.root.innerHTML;
+  f.state.view="Artists";await f.views.renderView();
+  f.state.view="Albums";const ready=f.views.renderView();
+  assert.equal(f.root.innerHTML,first);await ready;assert.equal(requests,2);
+  for(let i=0;i<20;i++){f.state.search=String(i);await f.views.renderView();assert(f.views.cacheSize()<=6);}
+  f.views.invalidateCache();assert.equal(f.views.cacheSize(),0);
+});
+
+test("cache invalidation rejects an old response and changing sort produces a different page",async()=>{
+  const pending=deferred();let requests=0;
+  const f=fixture("Albums",async()=>{requests++;return requests===1?pending.promise:{groups:groups(1),totalCount:1};});
+  const old=f.views.renderView();f.views.invalidateCache();f.state.descending=true;
+  await f.views.renderView();pending.resolve({groups:groups(2),totalCount:2});
+  assert.equal(await old,false);assert.equal(f.state.items.length,1);assert.equal(requests,2);
+});
+
+test("offline Settings returns local version without getHome or release history blocking it",async()=>{
+  const f=fixture("Settings",async(name)=>{
+    if(name==="getSettings")return {indexedLibraryBytes:123,needsDefaultSelection:false};
+    if(name==="getAbout")return {version:"1.0.1",components:[]};
+    if(name==="getReleaseHistory")throw new Error("Offline");
+    throw new Error("Unexpected query "+name);
+  });
+  await f.views.renderView();assert(f.root.innerHTML.includes("Version 1.0.1"));
+  assert(f.root.innerHTML.includes("123"));assert(f.root.innerHTML.includes('id="chooseDefaultPlayer" data-action="open-default-apps" hidden'));
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.aboutInfo.version,"1.0.1");
 });

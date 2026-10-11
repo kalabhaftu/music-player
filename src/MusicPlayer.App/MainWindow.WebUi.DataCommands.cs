@@ -18,6 +18,7 @@ public sealed partial class MainWindow
                     _startupBackgroundWorkStarted = true;
                     StartStartupScan();
                     _ = CheckForUpdatesAsync(false);
+                    _ = PrepareDuplicatesInBackgroundAsync();
                 }
                 return null;
             case "getBootstrap":
@@ -37,6 +38,7 @@ public sealed partial class MainWindow
                     repeatA = _repeatA?.TotalSeconds, repeatB = _repeatB?.TotalSeconds,
                     queue = QueueDtos(Math.Max(0, _queueIndex), 30), queueOffset = Math.Max(0, _queueIndex), queueTotal = _queue.Count, queueIndex = _queueIndex,
                     panel = _store.GetSetting("right-sidebar-mode") == "Info" ? "info" : "queue",
+                    version = ApplicationVersion.Resolve(typeof(MainWindow).Assembly), libraryRevision = _libraryRevision,
                     settings = settingState, resolvedTheme = ShellRoot.ActualTheme == ElementTheme.Light ? "Light" : "Dark", scan = ScanDto(),
                     updateCheckActive = Volatile.Read(ref _updateCheckActive) != 0,
                     updateAvailable = _webAvailableRelease is { } available ? new { tag = available.Tag, url = available.Url } : null,
@@ -44,13 +46,14 @@ public sealed partial class MainWindow
                         ? new { tag = latest.Tag, url = latest.Url } : null
                 };
             }
-            case "getAbout": return await AboutInfoAsync();
+            case "getAbout": return await Task.Run(AboutInfo);
+            case "getReleaseHistory": return (await GitHubUpdates.GetReleaseHistoryAsync()).Select(release => new { tag = release.Tag, url = release.Url, prerelease = release.Prerelease }).ToArray();
             case "getHome": return await Task.Run(() => _libraryQueries.HomeData(Int(payload, "pageSize", 8)));
             case "beginSearch": _libraryQueries.BeginSearch(Long(payload, "requestId")); return null;
             case "search": return await _libraryQueries.SearchAsync(payload);
             case "getTracks":
             {
-                // Persist view state on the UI dispatcher, then perform disk hashing,
+                // Persist view state on the UI dispatcher, then perform
                 // SQLite paging and DTO projection on a worker thread.
                 var query = _libraryQueries.PrepareTrackPage(payload);
                 return await Task.Run(() => _libraryQueries.TrackPage(query));
@@ -109,13 +112,10 @@ public sealed partial class MainWindow
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(key, out var value) && value.TryGetInt64(out var result)
             ? result : 0;
 
-    private static async Task<object> AboutInfoAsync()
+    private static object AboutInfo()
     {
         var assembly = typeof(MainWindow).Assembly;
-        var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        var version = ReleaseVersion.TryParse(informationalVersion, out var parsed)
-            ? $"{parsed.Major}.{parsed.Minor}.{parsed.Patch}{(parsed.PreviewNumber is { } preview ? $"-preview.{preview}" : string.Empty)}"
-            : assembly.GetName().Version?.ToString(3) ?? "Unknown";
+        var version = ApplicationVersion.Resolve(assembly);
         var noticesPath = Path.Combine(AppContext.BaseDirectory, "ThirdPartyNotices.md");
         var components = new List<object>();
         try
@@ -138,25 +138,13 @@ public sealed partial class MainWindow
         {
             LocalAppLog.Shared.Warning("about", "Could not read the bundled third-party notices.", ex);
         }
-        var releases = Array.Empty<object>();
-        try
-        {
-            releases = (await GitHubUpdates.GetReleaseHistoryAsync().ConfigureAwait(true))
-                .Select(release => (object)new { tag = release.Tag, url = release.Url, prerelease = release.Prerelease })
-                .ToArray();
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-        {
-            LocalAppLog.Shared.Warning("about", "Could not load the GitHub release history.", ex);
-        }
         return new
         {
             version,
             repositoryUrl = GitHubUpdates.RepositoryUrl,
             releasesUrl = GitHubUpdates.ReleasesUrl,
             noticesAvailable = File.Exists(noticesPath),
-            components,
-            releases
+            components
         };
     }
 }

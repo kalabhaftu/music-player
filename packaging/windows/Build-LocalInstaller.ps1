@@ -11,7 +11,7 @@ $manifest = Join-Path $work 'payload-sha256.json'
 $publish = Join-Path $work 'publish-x64'
 $cache = Join-Path $env:LOCALAPPDATA 'MusicPlayerBuildTools'
 $project = Join-Path $root 'src\MusicPlayer.App\MusicPlayer.App.csproj'
-if (!$Version) { $Version = [regex]::Match([IO.File]::ReadAllText($project), '<Version>([^<]+)</Version>').Groups[1].Value }
+if (!$Version) { $Version = [regex]::Match([IO.File]::ReadAllText((Join-Path $root 'Directory.Build.props')), '<Version>([^<]+)</Version>').Groups[1].Value }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'A stable MAJOR.MINOR.PATCH app version is required.' }
 
 $compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
@@ -65,12 +65,13 @@ if ($RebuildApp -or !(Test-Path -LiteralPath $manifest)) {
     $entries = @(Get-ChildItem -LiteralPath $payload -File -Recurse | ForEach-Object {
         [pscustomobject]@{path=$_.FullName.Substring($payload.Length + 1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
     })
-    [pscustomobject]@{version=$Version;files=$entries} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifest -Encoding UTF8
+    [pscustomobject]@{version=$Version;sourceCommit=(git -C $root rev-parse HEAD);files=$entries} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifest -Encoding UTF8
     $resolvedPublish = [IO.Path]::GetFullPath($publish)
     if (!$resolvedPublish.StartsWith([IO.Path]::GetFullPath($work) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Publish output is outside the local build workspace.' }
     Remove-Item -LiteralPath $resolvedPublish -Recurse -Force
 }
 $saved = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+if ($saved.sourceCommit -ne (git -C $root rev-parse HEAD)) { throw 'Cached payload belongs to another source revision. Run again with -RebuildApp.' }
 if ($saved.version -ne $Version) { throw 'Cached app version differs. Run again with -RebuildApp.' }
 foreach ($entry in $saved.files) {
     $file = Join-Path $payload $entry.path

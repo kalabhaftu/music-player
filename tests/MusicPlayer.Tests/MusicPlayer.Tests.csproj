@@ -14,5 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/MusicPlayer.Core/MusicPlayer.Core.csproj" />
     <Compile Include="../../src/MusicPlayer.App/LibraryQueryService.cs" Link="LibraryQueryService.cs" />
+    <Compile Include="../../src/MusicPlayer.App/TrackAvailabilityService.cs" Link="TrackAvailabilityService.cs" />
+    <Compile Include="../../src/MusicPlayer.App/LibraryLocationService.cs" Link="LibraryLocationService.cs" />
   </ItemGroup>
 </Project>

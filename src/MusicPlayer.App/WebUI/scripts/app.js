@@ -734,6 +734,7 @@ $("#routeView").addEventListener("click",async e=>{
 });
 $("#modalClose").addEventListener("click",closeModal); $("#modalLayer").addEventListener("click",e=>{if(e.target===$("#modalLayer"))closeModal();});
 
+let libraryRefreshTimer=null;
 onEvent((name,data)=>{
   if(name==="windowRestored"){void (async()=>{await refreshCurrent();const fresh=await call("getBootstrap");state.settings={...state.settings,...fresh.settings};setTheme(state.settings);updateScanPresentation(fresh.scan);applyUpdateCheckState(!!fresh.updateCheckActive);state.latestRelease=fresh.latestRelease||null;state.updateAvailable=fresh.updateAvailable||null;await renderView();})();}
   else if(name==="playbackStateChanged"){
@@ -748,8 +749,16 @@ onEvent((name,data)=>{
   else if(name==="scanChanged")updateScanPresentation(data);
   else if(name==="updateCheckState")applyUpdateCheckState(!!data.checking);
   else if(name==="latestReleaseChanged"){state.latestRelease=data.release||null;state.updateAvailable=data.release||null;if(state.view==="Settings")renderView();}
-  else if(name==="libraryChanged"){if(["Home","Folders","Playlists","Playlist","Album","Artist","Genre","Folder","Albums","Artists","Genres","Favorites","Most Played","Recently Played","Recently Added","With Lyrics","Videos","Songs","Search","Duplicates","Now Playing"].includes(state.view))renderView();}
-  else if(name==="settingsChanged"){const shouldLoadLyrics=!state.settings.autoLoadLyrics&&!!data.autoLoadLyrics;state.settings={...state.settings,...data};setTheme(state.settings);if(shouldLoadLyrics&&state.track)void loadLyricsForTrack(state.track.id,true);}
+  else if(name==="libraryChanged"){
+    state.libraryRevision=data.revision??((state.libraryRevision||0)+1);
+    libraryViews.invalidateCache();clearTimeout(libraryRefreshTimer);
+    libraryRefreshTimer=setTimeout(()=>{if(!["Settings","Audio","Lyrics"].includes(state.view))void renderView();},150);
+  }
+  else if(name==="defaultAppsChanged"){
+    state.settings.needsDefaultSelection=data.needsDefaultSelection;
+    const action=$("#chooseDefaultPlayer");if(action)action.hidden=data.needsDefaultSelection===false;
+  }
+  else if(name==="settingsChanged"){libraryViews.invalidateCache();const shouldLoadLyrics=!state.settings.autoLoadLyrics&&!!data.autoLoadLyrics;state.settings={...state.settings,...data};setTheme(state.settings);if(shouldLoadLyrics&&state.track)void loadLyricsForTrack(state.track.id,true);}
   else if(name==="artworkAccentChanged"){state.settings.artworkAccent=data.color||"";state.settings.artworkPalette=data.palette||null;setTheme(state.settings);}
   else if(name==="notification")toast(data.message||"");
   else if(name==="updateAvailable"){state.updateAvailable=data;state.latestRelease=data;if(state.view==="Settings")renderView();openModal(`Music Player ${esc(data.tag||"")} is available`,"Updates are opened in your browser and are never installed automatically.",`<button class="action" data-modal-close>Later</button><button class="action primary" data-action="open-release" data-url="${esc(data.url||"")}">View release</button>`);}
@@ -760,6 +769,7 @@ async function start() {
   $$("#navigation .nav-item[data-view]").forEach(item=>{const label=item.querySelector("span:not([data-icon])")?.textContent?.trim();if(label){item.setAttribute("aria-label",label);item.title=label;}});
   try {
     const data=await call("getBootstrap");
+    state.version=data.version;state.libraryRevision=data.libraryRevision||0;
     state.track=data.track||null; state.videoSupportEnabled=!!data.videoSupportEnabled;
     state.playing=!!data.playing; state.position=data.positionSeconds||0; state.duration=data.durationSeconds||0;
     state.volume=data.volume??75; state.positionUpdatedAt=performance.now(); state.lastVolume=state.volume||75; state.muted=state.volume===0;

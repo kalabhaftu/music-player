@@ -47,7 +47,8 @@ Run-Installer $setup @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$i
 if(!(Select-String -LiteralPath $script:lastInstallerLog -SimpleMatch 'WebView2 Runtime already installed; skipping runtime installation.' -Quiet)){throw 'Setup upgrade did not skip installation of the existing WebView2 Runtime.'}
 if(!(Test-Path -LiteralPath $sentinel)){throw 'Setup upgrade removed user data.'}
 if(!(Test-Path -LiteralPath $ownedMusic) -or (Get-FileHash -LiteralPath $ownedMusic -Algorithm SHA256).Hash -ne $ownedHash){throw 'Setup upgrade removed or changed a user-owned file in the install folder.'}
-if((Get-ItemProperty -LiteralPath $registration).DisplayVersion -ne '1.0.0'){throw 'Setup did not register the final upgraded version.'}
+if((Get-ItemProperty -LiteralPath $registration).DisplayVersion -ne ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version){throw 'Setup did not register the final upgraded version.'}
+& (Join-Path $PSScriptRoot 'Test-ShellRegistration.ps1') -Executable $exe
 $env:MUSICPLAYER_TEST_OUTPUT='artifacts/ui-evidence/upgraded-setup'
 try { Test-Interaction $exe }
 finally {Remove-Item Env:/MUSICPLAYER_TEST_OUTPUT -ErrorAction SilentlyContinue}

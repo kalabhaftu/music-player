@@ -54,9 +54,12 @@ public sealed partial class MainWindow : Window
     private readonly List<nint> _windowIconHandles = [];
     private string? _nativeWindowIconPath;
 
+    private void OnTracksPurged(IReadOnlyList<string> paths) => DispatcherQueue.TryEnqueue(() => ApplyPurgedTracks(paths));
+
     public MainWindow(LibraryStore store)
     {
         _store = store;
+        _store.TracksPurged += OnTracksPurged;
         if (_store.GetSetting("accent-mode") is null) _store.SetSetting("accent-mode", "Artwork");
         InitializeComponent();
         ShellRoot.ActualThemeChanged += (_, _) => ApplyNativeWindowChrome();
@@ -70,7 +73,8 @@ public sealed partial class MainWindow : Window
         _playback.SetVideoExtensions(videoExtensions);
         _libraryQueries.SetVideoExtensions(videoExtensions);
         _playback.VideoSurfaceRequested = RequestVideoPlaybackSurface;
-        _trackAvailability = new(_store, _libraryQueries, _libraryLocations);
+        _trackAvailability = new(_store, _libraryQueries, _libraryLocations, Path.Combine(_appData, "Artwork"));
+        _libraryQueries.SetUnavailableRoots(_libraryLocations.GetLibraryRoots().Where(root => !Directory.Exists(root)));
         _libraryFileWatcher = new();
         _libraryFileWatcher.PathsRemoved += paths => _ = HandleLibraryPathsRemovedAsync(paths);
         _libraryFileWatcher.RescanRequested += RequestLibraryWatcherRescan;
@@ -101,8 +105,9 @@ public sealed partial class MainWindow : Window
         _noticeDismissTimer.Tick += (_, _) => AppNotice.IsOpen = false;
         Closed += MainWindow_Closed;
         ApplyStoredAppearance();
-        Activated += (_, _) =>
+        Activated += (_, args) =>
         {
+            if (args.WindowActivationState != WindowActivationState.Deactivated) _ = RefreshDefaultAppsAsync();
             ApplyNativeWindowIcon();
             ApplyNativeWindowChrome();
         };

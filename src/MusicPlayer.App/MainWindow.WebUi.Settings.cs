@@ -14,8 +14,23 @@ namespace MusicPlayer.App;
 
 public sealed partial class MainWindow
 {
+    private bool _needsDefaultSelection = true;
+    private bool _refreshingDefaults;
+
+    private async Task RefreshDefaultAppsAsync()
+    {
+        if (_refreshingDefaults || _windowClosed) return;
+        _refreshingDefaults = true;
+        try
+        {
+            _needsDefaultSelection = await Task.Run(DefaultAppsService.NeedsSelection);
+            _webBridge?.SendEvent("defaultAppsChanged", new { needsDefaultSelection = _needsDefaultSelection });
+        }
+        catch (Exception ex) { LocalAppLog.Shared.Warning("associations", "Could not query Windows defaults.", ex); }
+        finally { _refreshingDefaults = false; }
+    }
     private object WebSettings()
-        => _playerSettings.ProjectWebSettings(ShellRoot.ActualTheme == ElementTheme.Light ? "Light" : "Dark", _webArtworkAccent, _webArtworkPalette);
+        => _playerSettings.ProjectWebSettings(ShellRoot.ActualTheme == ElementTheme.Light ? "Light" : "Dark", _webArtworkAccent, _webArtworkPalette, _needsDefaultSelection);
 
     private async Task<object> AudioSettingsAsync()
     {

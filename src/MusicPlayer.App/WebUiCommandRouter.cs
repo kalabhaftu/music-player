@@ -21,7 +21,7 @@ internal sealed class WebUiCommandRouter
         Func<string, JsonElement, Task<object?>> utilities)
     {
         Register(data,
-            "getBootstrap", "uiReady", "getAbout", "getHome", "beginSearch", "search", "getTracks", "getGroups", "getFolders", "getArtistAlbums",
+            "getBootstrap", "uiReady", "getAbout", "getReleaseHistory", "getHome", "beginSearch", "search", "getTracks", "getGroups", "getFolders", "getArtistAlbums",
             "getPlaylists", "getPlaylistTracks", "getQueue", "getCurrentTrack", "getLyrics", "getAudioSettings",
             "getSettings", "getDuplicates", "getDuplicateFiles", "getTrackDetails", "getTags", "getExclusions", "setView");
         Register(playback,

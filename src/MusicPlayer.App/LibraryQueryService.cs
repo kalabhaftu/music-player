@@ -48,6 +48,7 @@ internal sealed class LibraryQueryService
     public LibraryQueryService(LibraryStore store, string appDataDirectory)
     {
         _store = store;
+        _store.UseCachedFingerprints = true;
         _artworkDirectory = Path.GetFullPath(Path.Combine(appDataDirectory, "Artwork"));
     }
 
@@ -439,13 +440,19 @@ internal sealed class LibraryQueryService
     {
         var fullPath = Path.GetFullPath(path);
         lock (_availabilityGate)
-            return unavailable ? _unavailableTrackPaths.Add(fullPath) : _unavailableTrackPaths.Remove(fullPath);
+            {
+                var changed = unavailable ? _unavailableTrackPaths.Add(fullPath) : _unavailableTrackPaths.Remove(fullPath);
+                if (changed) RefreshBrowsingAvailability();
+                return changed;
+            }
     }
 
     public bool IsTrackUnavailable(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        lock (_availabilityGate) return _unavailableTrackPaths.Contains(fullPath);
+        lock (_availabilityGate) if (_unavailableTrackPaths.Contains(fullPath)) return true;
+        lock (_rootAvailabilityGate) return _unavailableRootPaths.Any(root => fullPath.StartsWith(Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
     }
 
     public void SetUnavailableRoots(IEnumerable<string> roots)
@@ -456,6 +463,22 @@ internal sealed class LibraryQueryService
             _unavailableRootPaths.Clear();
             foreach (var root in normalizedRoots) _unavailableRootPaths.Add(root);
         }
+        RefreshBrowsingAvailability();
+    }
+
+    private void RefreshBrowsingAvailability()
+    {
+        // Always acquire these locks in the same order.
+        lock (_availabilityGate) lock (_rootAvailabilityGate)
+            _store.SetBrowsingAvailability(_unavailableRootPaths, _unavailableTrackPaths);
+        InvalidateFolders();
+    }
+
+    public void ForgetDeletedPaths(IReadOnlyList<string> paths)
+    {
+        lock (_trackPathGate) foreach (var path in paths) _trackPaths.Remove(LibraryStore.TrackHandleId(path));
+        lock (_availabilityGate) foreach (var path in paths) _unavailableTrackPaths.Remove(path);
+        RefreshBrowsingAvailability();
     }
 
     public string[] ClearUnavailableTracksThatExist()
@@ -465,12 +488,14 @@ internal sealed class LibraryQueryService
         var available = candidates.Where(File.Exists).ToArray();
         lock (_availabilityGate)
             foreach (var path in available) _unavailableTrackPaths.Remove(path);
+        if (available.Length > 0) RefreshBrowsingAvailability();
         return available;
     }
 
     public string TrackId(string path)
     {
         var id = LibraryStore.TrackHandleId(path);
+        if (_store.WasPurged(path)) return id;
         lock (_trackPathGate)
         {
             if (!_trackPaths.ContainsKey(id) && _trackPaths.Count >= 4096)

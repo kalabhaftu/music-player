@@ -15,7 +15,10 @@ public sealed record TrackPageResult(IReadOnlyList<Track> Tracks, int TotalCount
 public sealed partial class LibraryStore
 {
     private readonly object _fingerprintGate = new();
-    private bool _fingerprintSnapshotCurrent;
+    private volatile bool _fingerprintSnapshotCurrent;
+    private readonly object _fingerprintRefreshGate = new();
+    private long _fingerprintGeneration;
+    private void InvalidateFingerprintState() { Interlocked.Increment(ref _fingerprintGeneration); _fingerprintSnapshotCurrent = false; }
     private DateTime _fingerprintSnapshotValidatedUtc;
     private DateTime _unavailableFingerprintRetryUtc;
     private List<string> _unavailableFingerprintPaths = [];
@@ -37,7 +40,7 @@ public sealed partial class LibraryStore
         int offset = 0, int pageSize = 200, bool hideExactDuplicates = false, CancellationToken cancellationToken = default)
     {
         ValidatePage(offset, pageSize, "tracks");
-        if (hideExactDuplicates) EnsureExactFingerprintsCurrent(cancellationToken);
+        if (hideExactDuplicates && !UseCachedFingerprints) PrepareExactFingerprints(cancellationToken);
         var page = QueryTracks(search, sort, descending, filter, groupColumn, groupValue, offset, pageSize,
             countOnly: false, hideExactDuplicates, cancellationToken, fingerprintsAlreadyCurrent: hideExactDuplicates);
         var total = QueryTracks(search, sort, descending, filter, groupColumn, groupValue, null, 0,
@@ -55,7 +58,7 @@ public sealed partial class LibraryStore
         int offset = 0, int pageSize = 200, CancellationToken cancellationToken = default)
     {
         ValidatePage(offset, pageSize, "duplicate groups");
-        EnsureExactFingerprintsCurrent(cancellationToken);
+        if (!UseCachedFingerprints) PrepareExactFingerprints(cancellationToken);
         var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue);
         return QueryDuplicateGroups(query, offset, pageSize, cancellationToken);
     }
@@ -67,7 +70,7 @@ public sealed partial class LibraryStore
         int offset = 0, int pageSize = 200, CancellationToken cancellationToken = default)
     {
         ValidatePage(offset, pageSize, "duplicate groups");
-        EnsureExactFingerprintsCurrent(cancellationToken);
+        if (!UseCachedFingerprints) PrepareExactFingerprints(cancellationToken);
         var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue);
         var groups = QueryDuplicateGroups(query, offset, pageSize, cancellationToken);
         var total = CountDuplicateGroups(query, cancellationToken);
@@ -76,14 +79,12 @@ public sealed partial class LibraryStore
 
     private IReadOnlyList<ExactDuplicateGroup> QueryDuplicateGroups(TrackQuery query, int offset, int pageSize, CancellationToken cancellationToken)
     {
+        var duplicateSetQuery = UseCachedFingerprints
+            ? "SELECT f.sha256,f.file_size,COUNT(*) AS copy_count FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.file_size=t.file_size AND f.modified_utc=t.modified_utc AND musicplayer_visible(t.path) GROUP BY f.sha256,f.file_size HAVING COUNT(*)>1"
+            : "SELECT sha256,file_size,COUNT(*) AS copy_count FROM track_fingerprints GROUP BY sha256,file_size HAVING COUNT(*)>1";
         using var connection = Open(); using var command = connection.CreateCommand();
         command.CommandText = $"""
-            {BuildFingerprintCte(query)}, duplicate_sets AS (
-              SELECT sha256,file_size,COUNT(*) AS copy_count
-              FROM track_fingerprints
-              GROUP BY sha256,file_size
-              HAVING COUNT(*)>1
-            ), matching_duplicates AS (
+            {BuildFingerprintCte(query)}, duplicate_sets AS ({duplicateSetQuery}), matching_duplicates AS (
               SELECT f.*,d.file_size AS duplicate_file_size,d.copy_count
               FROM filtered_tracks f JOIN duplicate_sets d
                 ON d.sha256=f.exact_fingerprint AND d.file_size=f.fingerprint_size
@@ -112,21 +113,19 @@ public sealed partial class LibraryStore
         string? filter = null, string? groupColumn = null, string? groupValue = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureExactFingerprintsCurrent(cancellationToken);
+        if (!UseCachedFingerprints) PrepareExactFingerprints(cancellationToken);
         var query = BuildTrackQuery(search, sort, descending, filter, groupColumn, groupValue);
         return CountDuplicateGroups(query, cancellationToken);
     }
 
     private int CountDuplicateGroups(TrackQuery query, CancellationToken cancellationToken)
     {
+        var duplicateSetQuery = UseCachedFingerprints
+            ? "SELECT f.sha256,f.file_size FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.file_size=t.file_size AND f.modified_utc=t.modified_utc AND musicplayer_visible(t.path) GROUP BY f.sha256,f.file_size HAVING COUNT(*)>1"
+            : "SELECT sha256,file_size FROM track_fingerprints GROUP BY sha256,file_size HAVING COUNT(*)>1";
         using var connection = Open(); using var command = connection.CreateCommand();
         command.CommandText = $"""
-            {BuildFingerprintCte(query)}, duplicate_sets AS (
-              SELECT sha256,file_size
-              FROM track_fingerprints
-              GROUP BY sha256,file_size
-              HAVING COUNT(*)>1
-            )
+            {BuildFingerprintCte(query)}, duplicate_sets AS ({duplicateSetQuery})
             SELECT COUNT(*) FROM (
               SELECT f.exact_fingerprint,f.fingerprint_size
               FROM filtered_tracks f JOIN duplicate_sets d
@@ -154,14 +153,17 @@ public sealed partial class LibraryStore
         if (sha256 is null || sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
             throw new ArgumentException("A duplicate group key must be a 64-character SHA-256 hex string.", nameof(sha256));
         sha256 = sha256.ToUpperInvariant();
-        EnsureFingerprintGroupCurrent(sha256, cancellationToken);
+        if (!UseCachedFingerprints) EnsureFingerprintGroupCurrent(sha256, cancellationToken);
         using var connection = Open();
         using var count = connection.CreateCommand();
-        count.CommandText = "SELECT COUNT(*) FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.sha256=$hash";
+        var currentFingerprint = UseCachedFingerprints
+            ? " AND f.file_size=t.file_size AND f.modified_utc=t.modified_utc AND musicplayer_visible(t.path)"
+            : string.Empty;
+        count.CommandText = "SELECT COUNT(*) FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.sha256=$hash" + currentFingerprint;
         Add(count, "$hash", sha256);
         var total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT t.* FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.sha256=$hash ORDER BY t.path COLLATE NOCASE,t.path LIMIT $limit OFFSET $offset";
+        command.CommandText = "SELECT t.* FROM tracks t JOIN track_fingerprints f ON f.path=t.path WHERE f.sha256=$hash" + currentFingerprint + " ORDER BY t.path COLLATE NOCASE,t.path LIMIT $limit OFFSET $offset";
         Add(command, "$hash", sha256); Add(command, "$limit", pageSize); Add(command, "$offset", offset);
         using var reader = command.ExecuteReader();
         var tracks = new List<Track>(pageSize);
@@ -171,7 +173,7 @@ public sealed partial class LibraryStore
 
     private void EnsureFingerprintGroupCurrent(string sha256, CancellationToken cancellationToken)
     {
-        lock (_fingerprintGate)
+        lock (_fingerprintRefreshGate)
         {
             var snapshotInvalidated = false;
             string? afterPath = null;
@@ -187,7 +189,7 @@ public sealed partial class LibraryStore
                     {
                         using var connection = Open();
                         WriteFingerprintUpdates(connection, updates);
-                        if (snapshotInvalidated) _fingerprintSnapshotCurrent = false;
+                        if (snapshotInvalidated) InvalidateFingerprintState();
                         cancellationToken.ThrowIfCancellationRequested();
                     }
                     try
@@ -216,7 +218,7 @@ public sealed partial class LibraryStore
                     {
                         using var connection = Open();
                         WriteFingerprintUpdates(connection, updates);
-                        if (snapshotInvalidated) _fingerprintSnapshotCurrent = false;
+                        if (snapshotInvalidated) InvalidateFingerprintState();
                         throw;
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException or NotSupportedException or FormatException)
@@ -229,7 +231,7 @@ public sealed partial class LibraryStore
                 using (var connection = Open()) WriteFingerprintUpdates(connection, updates);
                 afterPath = items[^1].Path;
             }
-            if (snapshotInvalidated) _fingerprintSnapshotCurrent = false;
+            if (snapshotInvalidated) InvalidateFingerprintState();
         }
     }
 
@@ -251,15 +253,15 @@ public sealed partial class LibraryStore
         }
     }
 
-    private static string BuildFingerprintCte(TrackQuery query) => $"""
+    private string BuildFingerprintCte(TrackQuery query) => $"""
         WITH filtered_tracks AS (
           SELECT tracks.*,fingerprints.sha256 AS exact_fingerprint,fingerprints.file_size AS fingerprint_size
-          FROM tracks LEFT JOIN track_fingerprints fingerprints ON fingerprints.path=tracks.path
+          FROM tracks LEFT JOIN track_fingerprints fingerprints ON fingerprints.path=tracks.path {(UseCachedFingerprints ? "AND fingerprints.file_size=tracks.file_size AND fingerprints.modified_utc=tracks.modified_utc" : "")}
           WHERE {query.Where}
         )
         """;
 
-    private static string BuildDeduplicatedCte(TrackQuery query) => $"""
+    private string BuildDeduplicatedCte(TrackQuery query) => $"""
         {BuildFingerprintCte(query)}, ranked_tracks AS (
           SELECT filtered_tracks.*,
             ROW_NUMBER() OVER (
@@ -274,9 +276,9 @@ public sealed partial class LibraryStore
     /// for later searches. Store writes invalidate immediately; a 30-minute maximum age
     /// also catches files changed outside the app even if no library scan was requested.
     /// </summary>
-    private void EnsureExactFingerprintsCurrent(CancellationToken cancellationToken)
+    public void PrepareExactFingerprints(CancellationToken cancellationToken = default)
     {
-        lock (_fingerprintGate)
+        lock (_fingerprintRefreshGate)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_fingerprintSnapshotCurrent && DateTime.UtcNow - _fingerprintSnapshotValidatedUtc < FingerprintSnapshotMaxAge)
@@ -291,8 +293,9 @@ public sealed partial class LibraryStore
                 });
                 _unavailableFingerprintRetryUtc = DateTime.UtcNow;
                 if (!unavailablePathReturned) return;
-                _fingerprintSnapshotCurrent = false;
+                InvalidateFingerprintState();
             }
+            var generation = Interlocked.Read(ref _fingerprintGeneration);
             using var connection = Open();
             using (var create = connection.CreateCommand())
             {
@@ -320,7 +323,7 @@ public sealed partial class LibraryStore
             }
             ProcessFingerprintWork(connection, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            _fingerprintSnapshotCurrent = true;
+            _fingerprintSnapshotCurrent = generation == Interlocked.Read(ref _fingerprintGeneration);
             _fingerprintSnapshotValidatedUtc = DateTime.UtcNow;
             _unavailableFingerprintRetryUtc = DateTime.UtcNow;
         }
@@ -328,7 +331,7 @@ public sealed partial class LibraryStore
 
     internal void InvalidateExactFingerprintSnapshot()
     {
-        lock (_fingerprintGate) _fingerprintSnapshotCurrent = false;
+        InvalidateFingerprintState();
     }
 
     private List<string> StageCurrentFileStates(SqliteConnection connection, CancellationToken cancellationToken)

@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
             var hwnd = WindowNative.GetWindowHandle(this);
             var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Title = string.Empty;
+            appWindow.Title = NativeWindowTitle.ForTrack(_playback.CurrentTrack);
             var iconPath = ActiveProductIconPath();
             if (File.Exists(iconPath))
             {
@@ -198,10 +198,12 @@ public sealed partial class MainWindow : Window
         _webBridge?.SendEvent("updateCheckState", new { checking = true });
         try
         {
-            var assembly = typeof(MainWindow).Assembly;
-            var currentVersionText = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                ?? assembly.GetName().Version?.ToString(3);
-            var current = ReleaseVersion.TryParse(currentVersionText, out var parsedCurrent) ? parsedCurrent : new ReleaseVersion(0, 1, 0, null);
+            var currentVersionText = ApplicationVersion.Resolve(typeof(MainWindow).Assembly);
+            if (!ReleaseVersion.TryParse(currentVersionText, out var current))
+            {
+                if (force) await ShowNoticeAsync("The installed version could not be determined.", InfoBarSeverity.Warning);
+                return;
+            }
             var channel = current.IsPrerelease ? "preview" : "stable";
             var sameChannel = string.Equals(_store.GetSetting("update-release-channel"), channel, StringComparison.Ordinal);
             var cachedRelease = sameChannel
@@ -218,7 +220,12 @@ public sealed partial class MainWindow : Window
             _webAvailableRelease = null;
             var release = result.Release;
             _webBridge?.SendEvent("latestReleaseChanged", new { release = release is null ? null : new { tag = release.Tag, url = release.Url } });
-            if (release is null || !ReleaseVersion.TryParse(release.Tag, out var latest) || latest.CompareTo(current) <= 0)
+            if (ApplicationVersion.Compare(currentVersionText, release?.Tag) == UpdateComparison.NoEligibleRelease)
+            {
+                if (force) await ShowNoticeAsync("No eligible release is currently available on GitHub.");
+                return;
+            }
+            if (ApplicationVersion.Compare(currentVersionText, release?.Tag) == UpdateComparison.CurrentRelease)
             {
                 if (force) await ShowNoticeAsync("You are using the latest available release.");
                 return;

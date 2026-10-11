@@ -25,6 +25,7 @@ try {
             Copy-Item -LiteralPath $fixture -Destination $profile -Recurse
             $env:MUSICPLAYER_TEST_OUTPUT="artifacts/ui-evidence/performance/$count/$($revision.name)"
             $env:MUSICPLAYER_TEST_REVISION=$revision.name
+            $env:MUSICPLAYER_TEST_TRACK_COUNT=[string]$count
             $env:MUSICPLAYER_STARTED_MS=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
             $process=Start-Process (Resolve-Path $revision.exe).Path -PassThru
             $env:MUSICPLAYER_TEST_APP_PID=$process.Id.ToString()
@@ -39,5 +40,5 @@ try {
     }
 } finally {
     Remove-ItemProperty $policy -Name 'MusicPlayer.exe' -ErrorAction SilentlyContinue
-    foreach($variable in @('MUSICPLAYER_TEST_OUTPUT','MUSICPLAYER_TEST_REVISION','MUSICPLAYER_STARTED_MS','MUSICPLAYER_TEST_APP_PID')){Remove-Item "Env:/$variable" -ErrorAction SilentlyContinue}
+    foreach($variable in @('MUSICPLAYER_TEST_OUTPUT','MUSICPLAYER_TEST_REVISION','MUSICPLAYER_TEST_TRACK_COUNT','MUSICPLAYER_STARTED_MS','MUSICPLAYER_TEST_APP_PID')){Remove-Item "Env:/$variable" -ErrorAction SilentlyContinue}
 }

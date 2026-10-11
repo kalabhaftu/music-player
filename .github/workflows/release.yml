@@ -44,7 +44,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $preflightOnly = $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and '${{ inputs.mode }}' -ne 'candidate'
-          $version = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { '1.0.0' } else { $env:GITHUB_REF_NAME.TrimStart('v') }
+          $version = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version } else { $env:GITHUB_REF_NAME.TrimStart('v') }
+          & packaging/windows/Test-ReleaseMetadata.ps1 -ExpectedVersion $version
           $preview = $false
           $notes = ''
           if ($preflightOnly -and $env:GITHUB_REF_NAME -ne 'main') { throw 'Private signing preflight must run from main.' }
@@ -227,7 +228,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           $signed = $env:RELEASE_SIGNED -eq 'true'
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = '1.0.0' }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version }
           $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PWD 'packaging/windows/MusicPlayer-Signing.cer'))
           if ($signed) {
             $pfx = Join-Path $env:RUNNER_TEMP 'music-player-signing.pfx'
@@ -281,7 +282,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           $manifestVersion = "$($version.Split('-')[0]).0"
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = '1.0.0'; $manifestVersion = '1.0.0.0' }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version; $manifestVersion = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.AppxPackageVersion }
           $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PWD 'packaging/windows/MusicPlayer-Signing.cer'))
           dotnet publish src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release -p:Platform=x64 -p:Version=$version -p:AppxPackageVersion=$manifestVersion -p:AppxPackageSigningEnabled=true -p:SignFirstParty=true -p:PackageCertificateThumbprint=$($publicCertificate.Thumbprint) -p:AppxPackageSigningTimestampServerUrl=http://timestamp.digicert.com -p:AppxPackageSigningTimestampDigestAlgorithm=SHA256 -p:AppxBundle=Always -p:AppxBundlePlatforms="x64|ARM64" -p:GenerateAppxPackageOnBuild=true
           if ($LASTEXITCODE -ne 0) { throw 'MSIX bundle packaging/signing failed.' }
@@ -304,7 +305,7 @@ jobs:
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           & packaging/windows/Sign-ReleaseManifest.ps1 `
             -ArtifactDirectory artifacts `
-            -Version $(if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { '1.0.0' } else { $version }) `
+            -Version $(if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version } else { $version }) `
             -PfxPath "$env:RUNNER_TEMP\music-player-signing.pfx" `
             -Password $env:SIGNING_PASSWORD
       # actions/upload-artifact v7, pinned to the verified tag commit.
@@ -444,7 +445,13 @@ jobs:
         run: |
           $candidate = @(Get-ChildItem artifacts/measured-candidate -Recurse -Filter MusicPlayer.exe)
           if ($candidate.Count -ne 1) { throw 'Expected one candidate executable.' }
-          & tests/MusicPlayer.Ui.Tests/Measure-Startup.ps1 -BaselineExecutable artifacts/baseline-package/MusicPlayer.exe -CandidateExecutable $candidate[0].FullName
+          git archive v1.0.0 --format=zip --output=artifacts/navigation-baseline-source.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Could not obtain the preserved 1.0.0 startup baseline.' }
+          Expand-Archive artifacts/navigation-baseline-source.zip artifacts/navigation-baseline-source
+          dotnet publish artifacts/navigation-baseline-source/src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/navigation-baseline-publish -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+          if ($LASTEXITCODE -ne 0) { throw 'Navigation baseline publish failed.' }
+          & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory artifacts/navigation-baseline-publish -DestinationDirectory artifacts/navigation-baseline-package -Version baseline -Architecture x64
+          & tests/MusicPlayer.Ui.Tests/Measure-Startup.ps1 -BaselineExecutable artifacts/navigation-baseline-package/MusicPlayer.exe -CandidateExecutable $candidate[0].FullName
           $before = (Get-ChildItem artifacts/baseline-package -Recurse -File | Measure-Object Length -Sum).Sum
           $after = (Get-ChildItem artifacts/measured-candidate -Recurse -File | Measure-Object Length -Sum).Sum
           $saved = 1 - $after / $before

@@ -62,7 +62,8 @@ public sealed partial class MainWindow
 
     private void PublishScanState() => _webBridge?.SendEvent("scanChanged", ScanDto());
 
-    private void PublishLibraryChanged() { _libraryQueries.InvalidateFolders(); _webBridge?.SendEvent("libraryChanged", new { }); }
+    private long _libraryRevision;
+    private void PublishLibraryChanged() { _libraryQueries.InvalidateFolders(); _webBridge?.SendEvent("libraryChanged", new { revision = ++_libraryRevision }); }
 
     private void PublishSettingsChanged() => _webBridge?.SendEvent("settingsChanged", WebSettings());
 }

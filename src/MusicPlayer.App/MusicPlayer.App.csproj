@@ -8,7 +8,6 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SatelliteResourceLanguages>en;en-US</SatelliteResourceLanguages>
-    <AppxPackageVersion>1.0.0.0</AppxPackageVersion>
     <WindowsPackageType>MSIX</WindowsPackageType>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <Nullable>enable</Nullable>
@@ -18,7 +17,6 @@
     <ApplicationIcon>Assets\MusicPlayer.ico</ApplicationIcon>
     <RootNamespace>MusicPlayer.App</RootNamespace>
     <AssemblyName>MusicPlayer</AssemblyName>
-    <Version>1.0.0</Version>
     <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
     <AppxBundle>Always</AppxBundle>
     <AppxBundlePlatforms>x64|ARM64</AppxBundlePlatforms>
