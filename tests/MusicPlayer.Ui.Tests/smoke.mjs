@@ -47,6 +47,20 @@ async function until(action,message,timeout=120000){
   do{if(await action())return;await new Promise(resolve=>setTimeout(resolve,200));}while(Date.now()<deadline);
   throw new Error(message);
 }
+async function scrollIntoViewAfterRender(selector){
+  let lastError;
+  for(let attempt=0;attempt<5;attempt++){
+    const target=page.locator(selector);
+    await target.waitFor({state:"attached"});
+    try{await target.scrollIntoViewIfNeeded();return;}
+    catch(error){
+      if(!String(error?.message||error).includes("not attached to the DOM"))throw error;
+      lastError=error;
+      await until(async()=>await page.locator(selector).count()===1,"Queue row did not survive its pending render");
+    }
+  }
+  throw lastError||new Error(`Could not scroll ${selector} into view`);
+}
 await until(async()=>!(await page.locator("#routeView").innerText()).includes("Loading your library"),"Initial view did not render");
 assert(!(await page.locator("#routeView").innerText()).includes("could not connect"));
 const usableViewMs=performance.now()-started;
@@ -129,7 +143,12 @@ assert.equal(queueBefore.entries[1].id,queueBefore.entries[2].id);
 await navigate("Queue");
 await until(async()=>await page.locator("[data-queue-drag='1']").count()===1,"Queue did not render");
 assert.equal(await page.locator("[data-queue-drag='1']").isEnabled(),true,"Upcoming queue entry cannot be dragged");
-await page.locator("[data-queue-index='4']").scrollIntoViewIfNeeded();
+await until(async()=>{
+  const queue=await call("getQueue",{pageSize:100});
+  return queue.totalCount===5&&await page.locator(".queue-table tbody tr").count()===5&&await page.locator("[data-queue-index='4']").count()===1;
+},"Queue did not settle before its drag interaction");
+await page.waitForTimeout(400);
+await scrollIntoViewAfterRender("[data-queue-index='4']");
 const pointerEvents=[];
 await page.exposeFunction("recordQueuePointer",event=>pointerEvents.push(event));
 await page.evaluate(()=>{
@@ -190,6 +209,9 @@ await call("playQueueEntry",{index:0});
 await until(async()=>{const state=await call("getCurrentTrack");return state.playing&&state.queueIndex===0;},"Final queue selection did not start");
 await call("playPause");
 await until(async()=>!(await call("getCurrentTrack")).playing,"Final paused state did not settle");
+// Let the runner close this explicitly launched process after tray behavior has
+// been tested; otherwise its window-close path correctly keeps it in the tray.
+await call("updateSettings",{settings:{minimizeToTray:false}});
 const idleBefore=metrics();
 await new Promise(resolve=>setTimeout(resolve,5000));
 const idleAfter=metrics();

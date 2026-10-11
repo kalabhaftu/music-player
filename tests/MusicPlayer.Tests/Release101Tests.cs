@@ -128,7 +128,10 @@ public sealed class Release101Tests : IDisposable
         else Directory.CreateSymbolicLink(link, target);
         var offline = track with { Path = Path.Combine(link, "offline.wav") }; store.UpsertTrack(offline);
         Assert.False(availability.MarkUnavailable(offline.Path)); Assert.NotNull(store.GetTrack(offline.Path));
-        Directory.Delete(link);
+        // On Unix, Directory.Delete follows a dangling directory symlink and
+        // reports that its target is missing; unlink the symlink itself.
+        if (OperatingSystem.IsWindows()) Directory.Delete(link);
+        else File.Delete(link);
     }
 
     [Theory]
