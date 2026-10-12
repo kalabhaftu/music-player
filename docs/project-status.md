@@ -1,6 +1,61 @@
 # Project status
 
-Updated: 2026-10-11. Music Player 1.0.0's installer correction was republished
+Updated: 2026-10-12. Music Player 1.0.1 is published
+at [GitHub Releases](https://github.com/kalabhaftu/music-player/releases/tag/v1.0.1).
+PR [#15](https://github.com/kalabhaftu/music-player/pull/15) was
+protected-squash-merged to `main` as
+`ec1790da37f5bea3b65fedfd496bce5538e73160`; GitHub reports its commit
+signature as verified (`valid`). The release contains the requested tray
+controls from `a05f8ed`, together with the Explorer integration, queue,
+library-cleanup, navigation-cache, and version-check fixes. Tag `v1.0.1`
+points to that verified merge commit. The earlier 1.0.1 candidate and local
+installer deferrals below are superseded by this completed release record.
+Dependabot PRs [#4](https://github.com/kalabhaftu/music-player/pull/4),
+[#5](https://github.com/kalabhaftu/music-player/pull/5),
+[#7](https://github.com/kalabhaftu/music-player/pull/7),
+[#8](https://github.com/kalabhaftu/music-player/pull/8),
+[#11](https://github.com/kalabhaftu/music-player/pull/11), and
+[#12](https://github.com/kalabhaftu/music-player/pull/12) remain open. Their
+recorded Linux/x64/ARM64 CI checks passed on their PR revisions before 1.0.1;
+the updates are not included in the release.
+
+The required PR checks passed in [CI 38150000998](https://github.com/kalabhaftu/music-player/actions/runs/38150000998).
+After merge, [main CI 38150842648](https://github.com/kalabhaftu/music-player/actions/runs/38150842648),
+[signing preflight 38150934938](https://github.com/kalabhaftu/music-player/actions/runs/38150934938),
+and [merged candidate validation 38150998843](https://github.com/kalabhaftu/music-player/actions/runs/38150998843)
+passed. The candidate run passed x64 and ARM64 installed-package checks,
+performance and package-size checks. The tag workflow
+[38152564321](https://github.com/kalabhaftu/music-player/actions/runs/38152564321)
+passed its signed build, validation, and publication checks. It published all
+12 expected assets on 2026-10-11; 1.0.0 remains available unchanged.
+
+Package comparison against `9759726` measured x64 unpacked/ZIP reductions of
+13.99%/13.14% and ARM64 reductions of 13.38%/12.24%. On the 100-track fixture,
+visible library time was 10,453 ms before and 4,708 ms after; uncached navigation
+P95 was 14.6 ms after. On the 100,000-track fixture, visible library time was
+8,341 ms before and 7,088 ms after. The large-fixture after-sample reported
+398,270,464 combined private bytes versus 326,574,080 before, and 9.65625 CPU
+seconds in its ten-second post-settle window versus 0.015625 before. Thus the
+large-fixture memory/CPU samples did not improve, despite passing the current
+automated performance gate; investigate them before claiming broad RAM/CPU
+improvement. The 100,000-track uncached-navigation P95 was 900.6 ms, while the
+later cached navigations were substantially faster. Raw measurements are in
+the performance-job log; the candidate gate’s 500 ms P95 threshold applies to
+the 100-track fixture.
+
+The matching local x64 setup was built from this exact source commit and
+version at `C:\Users\SlimShady\Documents\Projects\music-player\artifacts\local-installer\MusicPlayer-Setup-x64.exe`.
+It is 71,731,544 bytes with SHA-256
+`CA96125DA6621B87C4765319F0908AD4023F570C41A1D980B1D7150A01BED933`.
+Its pinned self-signed `CN=Kalabhaftu` signature and timestamp verified. A
+temporary local-only switch to the Sectigo timestamp service was needed when
+the configured DigiCert timestamp endpoint timed out; the tracked build script
+was restored unchanged afterward. Inno Setup emitted nonfatal deprecation and
+missing-`RunOnceId` warnings. The local installer was not launched by the
+builder. This self-signed certificate is not publicly trusted; Windows
+publisher warnings and the deliberate MSIX trust step remain expected.
+
+Music Player 1.0.0's installer correction was republished
 at the user's explicit request under the same `v1.0.0` tag.
 Setup now uses Microsoft's documented `pv` registry detection before invoking
 the WebView2 bootstrapper, explains missing prerequisites, and supports manual
@@ -16,7 +71,7 @@ The older results below record the original release. Windows UI/package tests
 use disposable GitHub runners. No release binaries are downloaded by the agent
 to the user's PC.
 
-## Active 1.0.1 candidate
+## Historical 1.0.1 candidate checkpoint
 
 The 1.0.1 work is on `codex/music-player-1.0.1`, based on current `main` and
 including tray controls from `a05f8ed`. It sets assembly/file version 1.0.1
@@ -26,14 +81,13 @@ guidance, keep playback stable when queueing files, set useful taskbar titles,
 remove confirmed deletions from saved state, hide disconnected-drive tracks,
 cache library pages, and keep hashing and GitHub requests out of browsing.
 
-Local verification on this candidate: `dotnet build` for the x64 WinUI app
+At this earlier checkpoint, local verification on the candidate: `dotnet build` for the x64 WinUI app
 passed with no warnings; all **113 core tests**, **47 frontend tests**, and
 **19 native playback tests** passed. PowerShell and WebView script syntax checks
 passed, as did shared release metadata validation. The isolated installed
 setup/MSIX lifecycle, Explorer registry, representative-format, comparative
-100,000-track performance, GitHub CI and release gates are still pending. No
-1.0.1 tag or release has been created. The final local x64 installer will be
-built once from the same verified merged commit used by the GitHub release.
+100,000-track performance, GitHub CI and release gates were still pending. The
+current completion evidence is recorded at the top of this file.
 
 ## Local installer investigation
 
