@@ -6,6 +6,12 @@
     Title="Music Player">
     <Grid x:Name="ShellRoot" MinWidth="560" MinHeight="420" Background="Transparent">
         <WebView2 x:Name="WebUi" DefaultBackgroundColor="Transparent" />
+        <Grid x:Name="WebUiLoadingState" Background="#0F1210">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+                <ProgressRing IsActive="True" Width="32" Height="32" />
+                <TextBlock Text="Opening your library…" FontSize="18" Foreground="#F4F6F3" />
+            </StackPanel>
+        </Grid>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" MaxWidth="680" Margin="0,8" Spacing="4">
             <InfoBar x:Name="AppNotice" IsOpen="False" IsClosable="True" Severity="Informational" />
         </StackPanel>

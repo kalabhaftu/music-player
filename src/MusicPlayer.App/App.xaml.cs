@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using MusicPlayer.Core;
 
 namespace MusicPlayer.App;
@@ -7,6 +9,7 @@ public partial class App : Application
 {
     private Window? _window;
     private readonly Queue<FileActivationRequest> _pendingFileActivations = new();
+    private bool _drainingActivations;
     public App()
     {
         UnhandledException += (_, args) => LocalAppLog.Shared.Error("ui-crash", "Unhandled WinUI exception.", args.Exception);
@@ -22,15 +25,33 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var startup = new Window { Title = "Music Player" };
+        var status = new StackPanel { Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        status.Children.Add(new ProgressRing { IsActive = true, Width = 32, Height = 32 });
+        status.Children.Add(new TextBlock { Text = "Opening Music Player…", FontSize = 18 });
+        var shell = new Grid { RequestedTheme = ElementTheme.Dark, Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 15, 18, 16)) };
+        shell.Children.Add(status);startup.Content = shell;
+        startup.AppWindow.Resize(new Windows.Graphics.SizeInt32(960, 640));
+        var cancelled = false;
+        var handedOff = false;
+        startup.Closed += (_, _) => { if (!handedOff) cancelled = true; };
+        startup.Activate();
         try
         {
             // Integrity checks, migrations and recovery finish on a worker before any
             // service can write. The UI dispatcher stays available during disk work.
-            var store = await Task.Run(LibraryStore.InAppData);
-            _window ??= new MainWindow(store);
+            var storeTask = Task.Run(LibraryStore.InAppData);
+            var playbackTask = Task.Run(() => new PlaybackService());
+            await Task.WhenAll(storeTask, playbackTask);
+            if (cancelled) { playbackTask.Result.Dispose(); return; }
+            var early = _pendingFileActivations.ToArray();_pendingFileActivations.Clear();
+            var openingTrack = Program.InitialActivation.Action == FileActivationAction.Play && Program.InitialActivation.Paths.Count > 0;
+            openingTrack |= early.Any(request => request.Action == FileActivationAction.Play && request.Paths.Count > 0);
+            _window ??= new MainWindow(storeTask.Result, playbackTask.Result, openingTrack);
             _window.Activate();
+            handedOff = true;startup.Close();
             HandleActivation(Program.InitialActivation);
-            while (_pendingFileActivations.TryDequeue(out var pending)) HandleActivation(pending);
+            foreach (var pending in early) HandleActivation(pending);
         }
         catch (Exception ex)
         {
@@ -49,19 +70,31 @@ public partial class App : Application
 
         _window.Activate();
         if (request.Paths.Count == 0) return;
+        _pendingFileActivations.Enqueue(request);
+        if (!_drainingActivations) _ = DrainActivationsAsync();
+    }
 
-        var mainWindow = (MainWindow)_window;
-        switch (request.Action)
+    private async Task DrainActivationsAsync()
+    {
+        _drainingActivations = true;
+        try
         {
-            case FileActivationAction.AddToQueue:
-                _ = mainWindow.AddExternalFilesToQueueAsync(request.Paths);
-                break;
-            case FileActivationAction.CreatePlaylist:
-                _ = mainWindow.CreatePlaylistFromExternalFilesAsync(request.Paths);
-                break;
-            default:
-                _ = mainWindow.PlayExternalFilesAsync(request.Paths);
-                break;
+            while (_pendingFileActivations.Count > 0 && _window is MainWindow mainWindow)
+            {
+                await Task.Delay(150);
+                var request = _pendingFileActivations.Dequeue();
+                var paths = request.Paths.ToList();
+                while (_pendingFileActivations.TryPeek(out var next) && next.Action == request.Action)
+                    paths.AddRange(_pendingFileActivations.Dequeue().Paths);
+                var selected = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                switch (request.Action)
+                {
+                    case FileActivationAction.AddToQueue: await mainWindow.AddExternalFilesToQueueAsync(selected); break;
+                    case FileActivationAction.CreatePlaylist: await mainWindow.CreatePlaylistFromExternalFilesAsync(selected); break;
+                    default: await mainWindow.PlayExternalFilesAsync(selected); break;
+                }
+            }
         }
+        finally { _drainingActivations = false; }
     }
 }

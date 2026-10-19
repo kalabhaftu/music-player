@@ -48,6 +48,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
+            WebUiLoadingState.Visibility = Visibility.Collapsed;
             WebUi.Visibility = Visibility.Collapsed;
             WebUiFailureMessage.Text = ex.Message;
             WebUiFailureState.Visibility = Visibility.Visible;

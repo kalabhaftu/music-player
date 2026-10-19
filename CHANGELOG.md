@@ -4,6 +4,13 @@ Changes to Music Player are documented here. The app name, executable, package i
 
 ## [Unreleased]
 
+- Show startup feedback immediately, initialize audio and the library in parallel, and reuse unchanged track metadata when opening files.
+- Keep favorites, settings, and background indexing from replacing the active library page; retain the saved library during launch checks and batch folder changes more conservatively.
+- Keep queue and equalizer controls inside fullscreen, use taller vertical equalizer sliders and shared themed dropdowns, soften corners, and stabilize wrapped lyric transitions.
+- Reapply volume after audio output opens, prepare crossfades earlier, and fall back to the system output when a selected device disconnects.
+- Receive complete Explorer selections for queue and playlist actions, insert additions next, align queue displays, restore smart-page sort defaults, and find lyrics using cleaned upload titles.
+- Index case-insensitive scan lookups, batch excluded-folder writes, throttle scan progress, and stop duplicate hashing during playback. Watcher scans wait for playback to stop and run at most once every five minutes.
+- Preserve loaded pages through fullscreen drawers and window restore, protect dropdowns during settings search, ignore stale playback responses, and recover disconnected audio routes without keeping an outdated queue index.
 - Keep Music Player running when its window closes if notification-area mode is enabled; add tray actions for Open, Previous, Play/Pause, Next, and Quit.
 
 ## [1.0.1]
