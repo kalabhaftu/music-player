@@ -9,7 +9,7 @@
     var(--bg);
 }
 .sidebar {
-  grid-column:1; grid-row:1; min-height:0;
+  grid-column:1; grid-row:1; min-width:0; min-height:0;
   display:flex; flex-direction:column; overflow:hidden;
   padding:12px 12px; background:var(--sidebar-surface);
 }
@@ -72,13 +72,9 @@
 .resize-sidebar { left:var(--sidebar); }
 .resize-panel { right:var(--right); }
 .app.panel-closed .resize-panel { display:none; }
-.app.sidebar-collapsed { --sidebar:78px; }
-.app.sidebar-collapsed .brand { justify-content:center; padding:0; }
-.app.sidebar-collapsed .brand>div,.app.sidebar-collapsed .nav-title,.app.sidebar-collapsed .nav-item>span:not([data-icon]),.app.sidebar-collapsed .nav-item kbd { display:none; }
-.app.sidebar-collapsed .nav-item { justify-content:center; padding:0; }
-.app.sidebar-collapsed .nav-item.active { background:rgba(var(--accent-rgb),.1); }
-.app.sidebar-collapsed .nav-item [data-icon],.app.sidebar-collapsed .nav-item svg { width:21px; height:21px; }
-.app.sidebar-collapsed .nav-section { margin-bottom:6px; }
+.app.sidebar-collapsed { --sidebar:0px; }
+.app.sidebar-collapsed .sidebar { padding:0; visibility:hidden; }
+.app.sidebar-collapsed .resize-sidebar { display:none; }
 .app.panel-closed { grid-template-columns:var(--sidebar) minmax(0,1fr); }
 .app.panel-closed .now-panel { display:none; }
 .app.panel-closed .player { grid-column:1/3; }
@@ -98,7 +94,7 @@
   .content { padding-left:22px; padding-right:20px; }
 }
 @media (max-width:900px) {
-  :root { --sidebar:78px; }
+  :root { --sidebar:0px; }
   .app,.app.panel-open { grid-template-columns:var(--sidebar) minmax(0,1fr); }
   .now-panel { display:none; }
   .app.panel-open .now-panel {
@@ -106,10 +102,6 @@
     display:flex; width:var(--right); max-width:calc(100% - var(--sidebar));
     box-shadow:-16px 0 32px rgba(0,0,0,.32);
   }
-  .app.sidebar-collapsed .brand { justify-content:center; padding:0; }
-  .app.sidebar-collapsed .brand > div,.app.sidebar-collapsed .nav-title,.app.sidebar-collapsed .nav-item>span:not([data-icon]),.app.sidebar-collapsed .nav-item kbd,.app.sidebar-collapsed .storage { display:none; }
-  .app.sidebar-collapsed .nav-item { justify-content:center; padding:0; }
-  .app.sidebar-collapsed .nav-item.active { background:rgba(var(--accent-rgb),.1); }
   .player { grid-column:1/3; grid-template-columns:minmax(160px,.8fr) minmax(300px,1.2fr) minmax(180px,.8fr); }
   .player-right { display:flex; }
   .player-right [data-view="Lyrics"],.player-right [data-view="Audio"] { display:none; }
@@ -117,8 +109,6 @@
   .card-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .folder-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .settings-grid { grid-template-columns:1fr; }
-  .settings-menu { position:static; display:flex; overflow:auto; }
-  .settings-menu button { width:auto; white-space:nowrap; }
 }
 @media (max-width:700px) {
   .topbar { gap:5px; padding:0 8px; }

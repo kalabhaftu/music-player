@@ -126,8 +126,9 @@ body.queue-pointer-dragging { cursor:grabbing; user-select:none; }
 .settings-menu [data-view] { text-align:left; }
 .settings-anchor { scroll-margin-top:12px; }
 @media (max-width:900px) {
-  .settings-menu { overflow:visible; }
-  .settings-menu button { flex:0 1 auto; }
+  .settings-menu { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; }
+  .settings-menu button { min-width:0; flex:initial; white-space:normal; overflow-wrap:anywhere; text-align:center; }
+  .settings-menu button[data-view] { text-align:center; }
   .settings-panel { width:100%; }
   .setting-range-control input { width:min(250px,60vw); }
 }

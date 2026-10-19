@@ -173,9 +173,9 @@ $("#routeView").addEventListener("change",async event=>{const control=event.targ
 $("#routeView").addEventListener("click",async event=>{const control=event.target.closest("[data-setting].toggle");if(!control)return;event.preventDefault();event.stopImmediatePropagation();const key=control.dataset.setting,wasEnabled=control.classList.contains("on"),enabled=!wasEnabled;control.classList.toggle("on",enabled);control.setAttribute("aria-checked",String(enabled));if(await persistSettingControl(control,enabled)){if(key==="autoLoadLyrics"&&!wasEnabled&&enabled&&state.track)void loadLyricsForTrack(state.track.id,true);if(key==="transparentWindow"){const range=$("[data-setting='windowTransparency']");if(range)range.disabled=!enabled;}}},true);
 function applyLayoutPreferences(){
   const savedCollapse=layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??null;
-  const collapsed=savedCollapse===true||(savedCollapse==null&&window.innerWidth<=840);
   const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
-  const sidebarWidth=collapsed?78:expandedWidth;
+  const collapsed=savedCollapse===true||window.innerWidth<expandedWidth+360;
+  const sidebarWidth=collapsed?0:expandedWidth;
   const preferredRightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
   const maxRight=Math.max(240,window.innerWidth-sidebarWidth-360);
   const rightWidth=Math.min(preferredRightWidth,maxRight);
@@ -197,7 +197,9 @@ function applyLayoutPreferences(){
   panelToggle.setAttribute("aria-label",panelLabel);panelToggle.title=panelLabel;panelToggle.setAttribute("aria-expanded",String(panelVisible));
   if(!panelVisible&&$("#rightPanel").contains(document.activeElement))panelToggle.focus();
   const toggle=$("#sidebarToggleBtn");
-  if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));}
+  if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));toggle.setAttribute("aria-expanded",String(!collapsed));}
+  const sidebar=root?.querySelector(".sidebar");
+  if(sidebar){sidebar.inert=collapsed;sidebar.setAttribute("aria-hidden",String(collapsed));if(collapsed&&sidebar.contains(document.activeElement))toggle?.focus();}
   const navResize=$("#sidebarResize"); if(navResize)navResize.setAttribute("aria-valuenow",String(Math.round(sidebarWidth)));
   const panelResize=$("#panelResize"); if(panelResize)panelResize.setAttribute("aria-valuenow",String(Math.round(rightWidth)));
 }
@@ -594,7 +596,7 @@ $("#sidebarToggleBtn").addEventListener("click",async()=>{
   try{await call("updateSettings",{settings:{sidebarCollapsed:value}})}catch{}
   if(!value&&collapsed){
     const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
-    const minimumWidth=Math.ceil(expandedWidth+360);
+    const minimumWidth=Math.ceil(expandedWidth+400);
     if(window.innerWidth<minimumWidth)try{const result=await call("expandWindowForQueue",{minimumWidth});state.layoutWindowExpanded=state.layoutWindowExpanded||!!result?.expanded;}catch{}
   }else if(value&&state.layoutWindowExpanded&&!root.classList.contains("panel-open")){
     state.layoutWindowExpanded=false;try{await call("restoreWindowAfterQueue");}catch{}
@@ -680,15 +682,8 @@ async function openQueuePanel(){
   const wasAutoHidden=$("#appRoot").classList.contains("panel-compact");
   setPanelOpen(true);
   if(wasAutoHidden){
-    const sidebarWidth=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar"))||78;
-    const panelWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
-    const minimumWidth=Math.ceil(sidebarWidth+panelWidth+360);
-    try{
-      const result=await call("expandWindowForQueue",{minimumWidth});
-      state.layoutWindowExpanded=state.layoutWindowExpanded||!!result?.expanded;
-      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-      if($("#appRoot").classList.contains("panel-compact")){state.queuePanelOverlay=true;applyLayoutPreferences();}
-    }catch{state.queuePanelOverlay=true;applyLayoutPreferences();}
+    state.queuePanelOverlay=true;
+    applyLayoutPreferences();
   }
   $("#panelClose").focus();
 }
@@ -704,7 +699,7 @@ async function toggleQueuePanel(){
 }
 function startPanelResize(handle,kind){
   let active=false;
-  const move=e=>{if(!active)return;const collapsed=$("#appRoot").classList.contains("sidebar-collapsed"),navWidth=collapsed?78:clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);if(kind==="sidebar"){const max=Math.max(180,window.innerWidth-360-(state.panelOpen?220:0));layoutDrag.sidebarWidth=clamp(e.clientX,180,Math.min(360,max));layoutDrag.sidebarCollapsed=false;}else{const max=Math.max(240,window.innerWidth-navWidth-360);layoutDrag.rightWidth=clamp(window.innerWidth-e.clientX,240,Math.min(460,max));}applyLayoutPreferences();};
+  const move=e=>{if(!active)return;const collapsed=$("#appRoot").classList.contains("sidebar-collapsed"),navWidth=collapsed?0:clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);if(kind==="sidebar"){const max=Math.max(180,window.innerWidth-360-(state.panelOpen?220:0));layoutDrag.sidebarWidth=clamp(e.clientX,180,Math.min(360,max));layoutDrag.sidebarCollapsed=false;}else{const max=Math.max(240,window.innerWidth-navWidth-360);layoutDrag.rightWidth=clamp(window.innerWidth-e.clientX,240,Math.min(460,max));}applyLayoutPreferences();};
   const finish=async()=>{if(!active)return;active=false;document.documentElement.removeAttribute("data-resizing");const settings={};if(kind==="sidebar"){settings.navigationWidth=String(Math.round(layoutDrag.sidebarWidth??state.settings.navigationWidth??232));settings.sidebarCollapsed=!!layoutDrag.sidebarCollapsed;state.settings={...state.settings,...settings};layoutDrag.sidebarWidth=null;layoutDrag.sidebarCollapsed=null;}else{settings.rightPanelWidth=Number(Math.round(layoutDrag.rightWidth??state.settings.rightPanelWidth??294));state.settings={...state.settings,...settings};layoutDrag.rightWidth=null;}applyLayoutPreferences();try{await call("updateSettings",{settings})}catch{/* The current window keeps the adjusted layout if saving fails. */}};
   handle.addEventListener("pointerdown",e=>{if(e.button!==0)return;e.preventDefault();active=true;document.documentElement.dataset.resizing="true";handle.setPointerCapture(e.pointerId);move(e);});
   handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",finish);handle.addEventListener("pointercancel",finish);handle.addEventListener("lostpointercapture",finish);

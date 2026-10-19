@@ -189,6 +189,21 @@ const settingsLayout=await page.evaluate(()=>{
 });
 assert(settingsLayout.menuScrollWidth<=settingsLayout.menuWidth+1,"Settings categories should wrap instead of forcing horizontal scrolling");
 assert(settingsLayout.panelScrollWidth<=settingsLayout.panelWidth+1,"Settings controls should fit the available content width");
+const originalViewport=page.viewportSize();
+if(originalViewport){
+  try{
+    await page.setViewportSize({width:560,height:originalViewport.height});
+    await until(async()=>await page.evaluate(()=>window.innerWidth===560&&document.querySelector("#appRoot").classList.contains("sidebar-collapsed")),"Narrow layout did not auto-hide navigation",5000);
+    const narrowSettings=await page.evaluate(()=>{
+      const sidebar=document.querySelector(".sidebar"),menu=document.querySelector(".settings-menu");
+      return {sidebarVisibility:getComputedStyle(sidebar).visibility,sidebarWidth:getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim(),menuDisplay:getComputedStyle(menu).display,menuWidth:menu.clientWidth,menuScrollWidth:menu.scrollWidth};
+    });
+    assert.equal(narrowSettings.sidebarVisibility,"hidden","Auto-collapsed navigation should be fully hidden");
+    assert.equal(narrowSettings.sidebarWidth,"0px","Auto-collapsed navigation should not reserve an icon rail");
+    assert(narrowSettings.menuScrollWidth<=narrowSettings.menuWidth+1,"Narrow Settings categories should remain ordered without horizontal scrolling");
+    assert.equal(narrowSettings.menuDisplay,"grid","Narrow Settings categories should use the wrapped layout");
+  }finally{await page.setViewportSize(originalViewport);}
+}
 // Compare the last two batches after route caches have warmed up. The bound
 // tolerates browser housekeeping while rejecting sustained per-navigation growth.
 const navigationMemoryGrowth=memorySamples.at(-1).PrivateBytes-memorySamples.at(-2).PrivateBytes;
