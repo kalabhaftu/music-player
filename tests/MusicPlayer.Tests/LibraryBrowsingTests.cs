@@ -32,7 +32,7 @@ public sealed class LibraryBrowsingTests : IDisposable
     [InlineData("Artist", "artist", "Artist")]
     [InlineData("Genre", "genre", "Genre")]
     [InlineData("Folder", "folder", null)]
-    public void Duplicate_hiding_preserves_collection_contents_and_their_playback_queues(string view, string column, string? value)
+    public void Duplicate_hiding_applies_to_collection_tracks_and_playback_sources(string view, string column, string? value)
     {
         _store.UpsertTracks([Track("first", "Album"), Track("copy", "Album")]);
         _store.PrepareExactFingerprints();
@@ -41,15 +41,15 @@ public sealed class LibraryBrowsingTests : IDisposable
         value ??= _root;
         using var request = JsonDocument.Parse(JsonSerializer.Serialize(new { view, groupColumn = column, groupValue = value }));
         var page = JsonSerializer.SerializeToElement(_queries.TrackPage(request.RootElement));
-        Assert.Equal(2, page.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, page.GetProperty("totalCount").GetInt32());
         var paths = page.GetProperty("tracks").EnumerateArray()
             .Select(row => _queries.ResolveTrackPath(row.GetProperty("id").GetString())
                 ?? throw new InvalidDataException("A displayed track lost its path.")).ToArray();
-        Assert.Equal(2, paths.Length);
+        Assert.Single(paths);
         Assert.Equal(paths, _queries.CurrentTrackPaths());
-        Assert.Equal(2, _queries.GroupTrackPaths(column, value).Count);
+        Assert.Single(_queries.GroupTrackPaths(column, value));
         Assert.Equal(1, _store.CountGroups("album"));
-        Assert.Equal(2, Assert.Single(_store.GetGroupsPage("album")).TrackCount);
+        Assert.Equal(1, Assert.Single(_store.GetGroupsPage("album")).TrackCount);
     }
 
     [Theory]

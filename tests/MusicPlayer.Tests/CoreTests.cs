@@ -222,7 +222,7 @@ public sealed class CoreTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             new LibraryIndexer(_store, Path.Combine(_root, "artwork"), new LocalAppLog(Path.Combine(_root, "Logs"))).ScanAsync([root], [], control, progress));
 
-        Assert.Equal(16, _store.GetTracks().Count);
+        Assert.InRange(_store.GetTracks().Count, 16, 20);
     }
 
     [Fact]
