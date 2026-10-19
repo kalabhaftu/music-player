@@ -1,5 +1,5 @@
 .app {
-  position:relative; width:100%; height:100vh; min-width:0;
+  position:relative; width:100%; height:100dvh; min-width:0; min-height:0;
   display:grid;
   grid-template-columns:var(--sidebar) minmax(0,1fr) var(--right);
   grid-template-rows:minmax(0,1fr) var(--player-h);
@@ -237,3 +237,69 @@
 .track-enter { animation:track-arrive .34s cubic-bezier(.2,.7,.25,1) both; }
 [data-motion="expressive"] .immersive-lyrics .lyric-line.active { transform:scale(1.035); }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
+
+/* Player controls fit their cells; auxiliary controls yield before transport does. */
+.app .player,.app.panel-open .player,.app.panel-closed .player {
+  grid-column:1/-1;
+}
+.app .player {
+  grid-template-columns:minmax(0,1fr) minmax(260px,1.25fr) auto;
+  column-gap:16px; padding:10px 14px; z-index:6;
+}
+.player .controls { flex-wrap:nowrap; gap:8px; }
+.player .now,.player-center,.player-right,.search-box,.search-box input { min-width:0; }
+.player-right { flex-wrap:nowrap; }
+.player .timeline { width:100%; min-width:0; }
+.timeline span { flex:0 0 auto; }
+.nav-item { flex:0 0 40px; }
+@media (max-width:1100px) {
+  .player #abBtn { display:none; }
+  .player .controls { gap:5px; }
+  .volume-control { gap:0; }
+  .volume-popover {
+    position:absolute; right:0; bottom:calc(100% + 8px); padding:14px 12px;
+    border:1px solid var(--line); border-radius:14px; background:var(--panel-3); box-shadow:var(--shadow);
+    opacity:0; visibility:hidden; pointer-events:none; transform:translateY(6px);
+    transition:opacity .12s ease,transform .12s ease,visibility .12s;
+  }
+  .volume-popover::after { content:""; position:absolute; top:100%; left:0; right:0; height:12px; }
+  .volume-popover #volumeRange { width:112px; }
+  .volume-control:hover .volume-popover,.volume-control:focus-within .volume-popover {
+    opacity:1; visibility:visible; pointer-events:auto; transform:none;
+  }
+}
+@media (max-width:900px) {
+  .app .player { grid-template-columns:minmax(0,1fr) minmax(190px,1.2fr) auto; gap:10px; }
+  .player .now-cover { width:44px; height:44px; flex-basis:44px; }
+  .player .now { gap:8px; }
+  .player-right { gap:3px; }
+  .player-right [data-view="Lyrics"],.player-right [data-view="Audio"] { display:none; }
+  .topbar .top-spacer { display:none; }
+  .search-box { padding-inline:10px; }
+  .search-box kbd { display:none; }
+}
+@media (max-width:650px) {
+  .app .player { grid-template-columns:minmax(0,.85fr) minmax(140px,1.2fr) auto; gap:8px; padding-inline:8px; }
+  .player #heartBtn,.player #shuffleBtn { display:none; }
+  .player .controls { gap:5px; }
+  .player .ctrl { width:28px; height:28px; flex-basis:28px; }
+  .player .play-main { width:34px; height:34px; flex-basis:34px; }
+  .player .now-cover { width:36px; height:36px; flex-basis:36px; }
+  .player .timeline { gap:4px; font-size:8px; }
+  .timeline input { min-width:0; }
+  .topbar { gap:3px; }
+  .topbar .icon-btn { flex:0 0 28px; width:28px; }
+  .setting-row { flex-wrap:wrap; }
+}
+@media (max-width:480px) {
+  .player #repeatBtn,.player #immersiveToggle { display:none; }
+  .app .player { grid-template-columns:minmax(0,1fr) minmax(124px,1.1fr) auto; gap:6px; }
+  .player .now-cover { display:none; }
+  .topbar #forwardBtn { display:none; }
+}
+@media (max-height:480px) {
+  :root { --player-h:80px; --titlebar-h:48px; }
+  .app .player { padding-block:6px; }
+  .sidebar .brand { height:38px; flex-basis:38px; margin-bottom:2px; }
+  .sidebar .side-footer { display:none; }
+}

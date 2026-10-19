@@ -171,7 +171,7 @@ $("#routeView").addEventListener("input",event=>{const control=event.target;if(c
 $("#routeView").addEventListener("change",async event=>{const control=event.target;if(!control.matches("[data-setting]:not(.toggle)"))return;event.preventDefault();event.stopImmediatePropagation();await persistSettingControl(control,control.value);if(control.dataset.setting==="windowTransparency"){const output=control.parentElement?.querySelector("output");if(output)output.value=control.value+"%";}},true);
 $("#routeView").addEventListener("click",async event=>{const control=event.target.closest("[data-setting].toggle");if(!control)return;event.preventDefault();event.stopImmediatePropagation();const key=control.dataset.setting,wasEnabled=control.classList.contains("on"),enabled=!wasEnabled;control.classList.toggle("on",enabled);control.setAttribute("aria-checked",String(enabled));if(await persistSettingControl(control,enabled)){if(key==="autoLoadLyrics"&&!wasEnabled&&enabled&&state.track)void loadLyricsForTrack(state.track.id,true);if(key==="transparentWindow"){const range=$("[data-setting='windowTransparency']");if(range)range.disabled=!enabled;}}},true);
 function applyLayoutPreferences(){
-  const collapsed=layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??(window.innerWidth<=900);
+  const collapsed=window.innerWidth<=840||(layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??false);
   const maxSidebar=Math.max(180,Math.min(360,window.innerWidth-360-(window.innerWidth>900&&state.panelOpen?220:0)));
   const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,maxSidebar);
   const sidebarWidth=collapsed?78:expandedWidth;
@@ -264,7 +264,7 @@ function openUiResetDialog(){
   const body=`<p>Choose which interface preferences to restore. Every group is selected by default.</p>${choices.map(([key,title,description])=>`<label class="reset-choice"><input type="checkbox" data-reset-category="${key}" checked><span><b>${title}</b><small>${description}</small></span></label>`).join("")}`;
   openModal("Reset UI settings",body,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="reset-ui-settings">Reset selected settings</button>`);
 }
-function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.style.left=`${Math.min(x,innerWidth-230)}px`; menu.style.top=`${Math.min(y,innerHeight-370)}px`; menu.classList.add("show"); }
+function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.classList.add("show");const bounds=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(x,innerWidth-bounds.width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-bounds.height-8))}px`; }
 
 async function addToPlaylist(trackId) { const data=await call("getPlaylists"); if(!data.playlists?.length) return newPlaylist(trackId); openModal("Add to playlist",`<label class="modal-field"><span>Choose a playlist</span><select class="field" id="playlistChoice">${data.playlists.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="add-to-playlist" data-track-id="${esc(trackId)}">Add</button>`); }
 function newPlaylist(trackId="") { openModal("New playlist",`<label class="modal-field"><span>Playlist name</span><input class="field" id="playlistName" maxlength="120" placeholder="Playlist name"></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="create-playlist" data-track-id="${esc(trackId)}">Create playlist</button>`); }
@@ -657,7 +657,7 @@ function startPanelResize(handle,kind){
   handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",finish);handle.addEventListener("pointercancel",finish);handle.addEventListener("lostpointercapture",finish);
   handle.addEventListener("keydown",async e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key))return;e.preventDefault();const delta=(e.shiftKey?20:10)*(e.key==="ArrowRight"?1:-1),settings={};if(kind==="sidebar"){settings.navigationWidth=String(Math.round(clamp((state.settings.navigationWidth??232)+delta,180,360)));settings.sidebarCollapsed=false;}else settings.rightPanelWidth=Number(Math.round(clamp((state.settings.rightPanelWidth??294)-delta,240,460)));state.settings={...state.settings,...settings};applyLayoutPreferences();try{await call("updateSettings",{settings})}catch{}});
 }
-startPanelResize($("#sidebarResize"),"sidebar");startPanelResize($("#panelResize"),"panel");window.addEventListener("resize",()=>{layoutDrag.sidebarCollapsed=null;applyLayoutPreferences();});
+startPanelResize($("#sidebarResize"),"sidebar");startPanelResize($("#panelResize"),"panel");window.addEventListener("resize",()=>{layoutDrag.sidebarCollapsed=null;applyLayoutPreferences();$("#contextMenu").classList.remove("show");});
 function startColumnResize(handle,event){
   if(event.button!==0)return;
   const key=handle.dataset.columnResize,heading=handle.closest("th"),minimum={title:160,album:90,added:76,year:50,plays:50,duration:50}[key]||60;
@@ -717,19 +717,28 @@ function updateScanPresentation(scan) {
 $("#panelClose").addEventListener("click",()=>setPanelOpen(false));$("#panelToggleBtn").addEventListener("click",()=>setPanelOpen(!state.panelOpen));$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
 async function refreshAudioControls(data=undefined){
   data??=await call("getAudioSettings");
-  const preset=$("#eqPreset");if(preset){preset.innerHTML=["Off","Custom",...(data.presets||[])].filter((value,index,all)=>all.indexOf(value)===index).map(name=>`<option ${name==="Custom"?'disabled ':''}value="${esc(name)}">${esc(name)}</option>`).join("");preset.value=data.currentPreset||"Off";syncSelect(preset);}
-  for(const input of $$("[data-eq]")){input.value=String(data.bands?.[Number(input.dataset.eq)]?.value||0);input.nextElementSibling.textContent=`${Number(input.value).toFixed(1)} dB`;}
+  const editing=!!pendingEqBands||!!eqWrite;const preset=$("#eqPreset");if(preset&&!editing){preset.innerHTML=["Off","Custom",...(data.presets||[])].filter((value,index,all)=>all.indexOf(value)===index).map(name=>`<option ${name==="Custom"?'disabled ':''}value="${esc(name)}">${esc(name)}</option>`).join("");preset.value=data.currentPreset||"Off";syncSelect(preset);}
+  if(!editing)for(const input of $$("[data-eq]")){input.value=String(data.bands?.[Number(input.dataset.eq)]?.value||0);input.nextElementSibling.textContent=`${Number(input.value).toFixed(1)} dB`;}
   const output=$("#outputDevice");if(output){output.innerHTML=(data.devices||[]).map(device=>`<option value="${esc(device.id)}">${esc(device.name)}</option>`).join("");output.value=data.selectedId||"";syncSelect(output);}
 }
 $("#routeView").addEventListener("change",async e=>{if(e.target.id==="sortSelect"){state.sort=e.target.value;state.offset=0;await renderView();}if(e.target.id==="duplicateSort"){state.duplicateSort=e.target.value;state.duplicateOffset=0;await renderView();}if(e.target.id==="outputDevice"){await call("setAudioDevice",{id:e.target.value});await refreshAudioControls();}if(e.target.id==="crossfade")await call("setCrossfade",{seconds:Number(e.target.value)});if(e.target.id==="eqPreset"){await flushEqualizer();await call("setEqualizerPreset",{name:e.target.value});await refreshAudioControls();}});
 $("#routeView").addEventListener("click",event=>{const toggle=event.target.closest('[data-setting="transparentWindow"]');if(toggle)requestAnimationFrame(()=>{const range=$('[data-setting="windowTransparency"]');if(range)range.disabled=!toggle.classList.contains("on");});},true);
-const pendingEq=new Map();let eqWrite=null,eqTimer;
+let pendingEqBands=null,eqWrite=null,eqTimer=null;
 function flushEqualizer(){
-  clearTimeout(eqTimer);if(eqWrite)return eqWrite;
-  if(!pendingEq.size)return Promise.resolve();
-  eqWrite=(async()=>{try{while(pendingEq.size){const [index,value]=pendingEq.entries().next().value;pendingEq.delete(index);await call("setEqualizerBand",{index,value});}}finally{eqWrite=null;}})();return eqWrite;
+  clearTimeout(eqTimer);eqTimer=null;if(eqWrite)return eqWrite;
+  if(!pendingEqBands)return Promise.resolve();
+  eqWrite=(async()=>{try{while(pendingEqBands){const bands=pendingEqBands;pendingEqBands=null;await call("setEqualizerBands",{bands});}}finally{eqWrite=null;}})();return eqWrite;
 }
-$("#routeView").addEventListener("input",e=>{if(e.target.matches("[data-eq]")){e.target.nextElementSibling.textContent=`${Number(e.target.value).toFixed(1)} dB`;const preset=$("#eqPreset");if(preset){preset.value="Custom";syncSelect(preset);}pendingEq.set(Number(e.target.dataset.eq),Number(e.target.value));clearTimeout(eqTimer);eqTimer=setTimeout(()=>flushEqualizer().catch(()=>{}),40);}if(e.target.id==="audioVolume")void setVolume(e.target.value);});
+$("#routeView").addEventListener("input",e=>{
+  if(e.target.matches("[data-eq]")){
+    e.target.nextElementSibling.textContent=`${Number(e.target.value).toFixed(1)} dB`;
+    const preset=$("#eqPreset");if(preset&&preset.value!=="Custom"){preset.value="Custom";syncSelect(preset);}
+    pendingEqBands=$$("[data-eq]").sort((a,b)=>Number(a.dataset.eq)-Number(b.dataset.eq)).map(input=>Number(input.value));
+    if(eqTimer===null)eqTimer=setTimeout(()=>flushEqualizer().catch(error=>toast(error.message||"Equalizer could not be updated.")),50);
+  }
+  if(e.target.id==="audioVolume")void setVolume(e.target.value);
+});
+$("#routeView").addEventListener("change",e=>{if(e.target.matches("[data-eq]"))void flushEqualizer().catch(error=>toast(error.message));});
 $("#routeView").addEventListener("input",e=>{if(e.target.dataset.setting!=="windowTransparency")return;state.settings.windowTransparency=e.target.value;const output=e.target.parentElement?.querySelector("output");if(output)output.value=e.target.value+"%";setTheme(state.settings);});
 let navigationPointer = null;
 function clearNavigationDrag() {
@@ -817,7 +826,7 @@ onEvent((name,data)=>{
   else if(name==="libraryChanged"){
     state.libraryRevision=data.revision??((state.libraryRevision||0)+1);
     libraryViews.invalidateCache();
-    if(data.reason!=="favorite"&&data.reason!=="listening"&&data.reason!=="duplicates"){state.libraryDirty=true;scheduleLibraryRefresh();}
+    if(data.reason!=="favorite"&&data.reason!=="listening"){state.libraryDirty=true;scheduleLibraryRefresh();}
   }
   else if(name==="defaultAppsChanged"){
     state.settings.needsDefaultSelection=data.needsDefaultSelection;

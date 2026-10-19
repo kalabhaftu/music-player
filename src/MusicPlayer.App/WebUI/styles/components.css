@@ -241,6 +241,9 @@ button.lyric-line { cursor:pointer; }
 :focus-visible { outline:2px solid rgba(var(--accent-rgb),.8); outline-offset:2px; }
 
 /* UI controls and column choices */
+.context-menu { max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.volume-control { position:relative; display:flex; align-items:center; flex:0 0 auto; gap:7px; }
+.volume-popover { display:flex; align-items:center; }
 .heart.on svg path { fill:currentColor; stroke:currentColor; }
 #repeatBtn { position:relative; }
 #repeatBtn .repeat-one { position:absolute; z-index:1; right:1px; bottom:1px; width:12px; height:12px; display:grid; place-items:center; border:1px solid var(--player-surface); border-radius:50%; background:var(--accent); color:var(--accent-ink); font-size:8px; line-height:1; font-weight:900; }
