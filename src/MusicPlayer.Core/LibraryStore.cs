@@ -1292,7 +1292,7 @@ public sealed partial class LibraryStore
             using var transaction = connection.BeginTransaction();
             using var migrate = connection.CreateCommand();
             migrate.Transaction = transaction;
-            migrate.CommandText = "CREATE TABLE IF NOT EXISTS playback_session(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE playback_queue(position INTEGER PRIMARY KEY,track_path TEXT NOT NULL);";
+            migrate.CommandText = "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS playback_session(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE playback_queue(position INTEGER PRIMARY KEY,track_path TEXT NOT NULL);";
             migrate.ExecuteNonQuery();
             NormalizeLegacySession(connection, transaction);
             migrate.CommandText = "PRAGMA user_version=9";

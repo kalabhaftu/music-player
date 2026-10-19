@@ -49,7 +49,7 @@ public sealed class LibraryBrowsingTests : IDisposable
         Assert.Equal(paths, _queries.CurrentTrackPaths());
         Assert.Single(_queries.GroupTrackPaths(column, value));
         Assert.Equal(1, _store.CountGroups("album"));
-        Assert.Equal(1, Assert.Single(_store.GetGroupsPage("album")).TrackCount);
+        Assert.Equal(1, Assert.Single(_store.GetGroupsPage("album", hideExactDuplicates: true)).TrackCount);
     }
 
     [Theory]
