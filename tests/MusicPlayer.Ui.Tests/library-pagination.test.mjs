@@ -4,7 +4,7 @@ import { createLibraryViews } from "../../src/MusicPlayer.App/WebUI/scripts/libr
 
 // Capture the real renderer's markup and button replacement without a browser dependency.
 function fixture(view,call,extra={}) {
-  const root={innerHTML:"",insertAdjacentHTML(_where,html){this.innerHTML+=html;}};
+  const root={innerHTML:"",insertAdjacentHTML(_where,html){this.innerHTML+=html;},cloneNode(){return {innerHTML:this.innerHTML,querySelectorAll:()=>[]};}};
   const grid={innerHTML:"",insertAdjacentHTML(_where,html){this.innerHTML+=html;}};
   const state={view,offset:0,pageSize:200,items:[],search:"",sort:"Title",descending:false,settings:{},...extra};
   const alerts=[];

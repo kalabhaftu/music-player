@@ -113,7 +113,7 @@ public sealed partial class MainWindow
             {
                 var track = RequireTrack(payload, "id");
                 CancelCrossfadeAndRestoreQueue();
-                _playbackQueue.InsertNextRange([track.Path], RetainedCurrentPath);
+                _playbackQueue.Append([track.Path], RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }
