@@ -22,8 +22,8 @@
             <uap:DisplayName>Music Player audio</uap:DisplayName>
             <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
             <uap2:SupportedVerbs>
-              <uap3:Verb Id="AddToQueue" MultiSelectModel="Player" Parameters="--add-to-queue &quot;%1&quot;">Add to Music Player queue</uap3:Verb>
-              <uap3:Verb Id="CreatePlaylist" MultiSelectModel="Player" Parameters="--create-playlist &quot;%1&quot;">Create Music Player playlist</uap3:Verb>
+              <uap3:Verb Id="AddToQueue" MultiSelectModel="Player">Add to Music Player queue</uap3:Verb>
+              <uap3:Verb Id="CreatePlaylist" MultiSelectModel="Player">Create Music Player playlist</uap3:Verb>
             </uap2:SupportedVerbs>
             <uap:SupportedFileTypes>
               <uap:FileType>.mp3</uap:FileType>

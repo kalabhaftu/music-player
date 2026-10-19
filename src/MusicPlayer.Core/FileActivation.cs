@@ -23,12 +23,13 @@ public static class FileActivation
             try
             {
                 var fullPath = Path.GetFullPath(path);
-                if (File.Exists(fullPath) && (LibraryScanner.IsSupportedAudioFile(fullPath) || LibraryScanner.IsVideoFile(fullPath)))
+                // Avoid probing slow/offline files before the startup window exists.
+                if (LibraryScanner.IsSupportedAudioFile(fullPath) || LibraryScanner.IsVideoFile(fullPath))
                     normalized.Add(fullPath);
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException) { }
         }
-        return new(action, normalized);
+        return new(action, normalized.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
     private static FileActivationAction ActionFor(string? verb) => verb?.ToLowerInvariant() switch

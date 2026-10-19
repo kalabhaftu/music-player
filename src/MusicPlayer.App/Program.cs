@@ -27,6 +27,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--shell-drop-target", StringComparer.OrdinalIgnoreCase)) { ShellDropTargetServer.Run(); return; }
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
         var current = AppInstance.GetCurrent();
@@ -34,11 +35,9 @@ internal static class Program
         var instance = AppInstance.FindOrRegisterForKey(InstanceKey);
         if (!instance.IsCurrent)
         {
-            if (activation is not null)
-            {
-                try { RedirectActivationAsync(instance, activation).GetAwaiter().GetResult(); }
-                catch (Exception ex) { LocalAppLog.Shared.Error("activation", "Could not forward an activation to the running Music Player window.", ex); }
-            }
+            // Use the same nonblocking file/event transport across all install types.
+            // Waiting for WinRT activation redirection on this STA has no message pump.
+            SignalExistingWindow(ParseActivation(activation, args));
             return;
         }
 
@@ -64,6 +63,8 @@ internal static class Program
         InitialActivation = ParseActivation(activation, args);
         instance.Activated += Instance_Activated;
         ListenForSecondaryActivation();
+        // Drain requests received while this process was still creating its event.
+        _secondaryActivation.Set();
 
         Application.Start(_ =>
         {
@@ -73,9 +74,6 @@ internal static class Program
         });
     }
 
-    private static async Task RedirectActivationAsync(AppInstance instance, AppActivationArguments activation)
-        => await instance.RedirectActivationToAsync(activation);
-
     private static void SignalExistingWindow(FileActivationRequest request)
     {
         string? requestFile = null;
@@ -83,15 +81,17 @@ internal static class Program
         {
             var activationDirectory = Path.Combine(AppDataPaths.Root, "Activations");
             Directory.CreateDirectory(activationDirectory);
-            requestFile = Path.Combine(activationDirectory, $"{Guid.NewGuid():N}.json");
-            File.WriteAllText(requestFile, JsonSerializer.Serialize(request), new UTF8Encoding(false));
+            requestFile = Path.Combine(activationDirectory, $"{DateTime.UtcNow.Ticks:D19}-{Guid.NewGuid():N}.json");
+            var pendingFile = requestFile + ".tmp";
+            File.WriteAllText(pendingFile, JsonSerializer.Serialize(request), new UTF8Encoding(false));
+            File.Move(pendingFile, requestFile);
             using var signal = EventWaitHandle.OpenExisting(SecondaryActivationName);
             signal.Set();
         }
         catch (WaitHandleCannotBeOpenedException)
         {
-            // The existing process may be exiting; its mutex will be released by Windows.
-            if (requestFile is not null) try { File.Delete(requestFile); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            // The first process may not have created its event yet. Its initial
+            // drain will consume this durable request once startup reaches that point.
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -185,6 +185,9 @@ internal static class Program
             : activation?.Data is ILaunchActivatedEventArgs launch ? ParseArguments(launch.Arguments) : [];
         if (activation?.Kind == ExtendedActivationKind.File && activation.Data is IFileActivatedEventArgs files)
             return FileActivation.Parse(arguments, files.Verb, files.Files.Select(file => file.Path));
+        var requestIndex = Array.IndexOf(arguments, "--file-request");
+        if (requestIndex >= 0 && requestIndex + 1 < arguments.Length)
+            return ShellDropTargetServer.ReadRequest(arguments[requestIndex + 1]) ?? new(FileActivationAction.Play, []);
         return FileActivation.Parse(arguments);
     }
 
