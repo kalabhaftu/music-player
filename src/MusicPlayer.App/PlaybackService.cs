@@ -493,7 +493,7 @@ public sealed class PlaybackService : IDisposable
                 {
                     CancelCrossfadeCore();
                     old = _active;
-                    var remaining = _active.Length > 0 ? Math.Max(0, _active.Length - _active.Time) : milliseconds;
+                    var remaining = RemainingPlaybackMilliseconds(_active, milliseconds);
                     fadeMilliseconds = Math.Min(milliseconds, (int)Math.Min(int.MaxValue, remaining));
                     if (fadeMilliseconds > 0)
                     {
@@ -557,7 +557,7 @@ public sealed class PlaybackService : IDisposable
                 lock (_gate)
                 {
                     if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource)) return;
-                    var remaining = old.Length > 0 ? Math.Max(0, old.Length - old.Time) : milliseconds;
+                    var remaining = RemainingPlaybackMilliseconds(old, milliseconds);
                     if (remaining > milliseconds) continue;
                     incoming.SetPause(false);
                     break;
@@ -572,7 +572,7 @@ public sealed class PlaybackService : IDisposable
                     if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource)) return;
                     if (incoming.IsPlaying && incoming.Time > 0)
                     {
-                        var remaining = old.Length > 0 ? Math.Max(0, old.Length - old.Time) : milliseconds;
+                        var remaining = RemainingPlaybackMilliseconds(old, milliseconds);
                         // If opening consumed the entire tail, ramp the new stream in
                         // briefly; never stretch an overlap beyond the outgoing audio.
                         fadeMilliseconds = remaining > 0 ? Math.Min(milliseconds, (int)Math.Min(int.MaxValue, remaining)) : Math.Min(200, milliseconds);
@@ -796,6 +796,16 @@ public sealed class PlaybackService : IDisposable
         var angle = progress * Math.PI / 2;
         return ((int)Math.Round(volume * Math.Cbrt(Math.Cos(angle))),
             (int)Math.Round(volume * Math.Cbrt(Math.Sin(angle))));
+    }
+
+    private static long RemainingPlaybackMilliseconds(MediaPlayer player, int fallbackMilliseconds)
+    {
+        // LibVLC can reset Time to zero after the outgoing stream ends. Treat
+        // Ended as an empty tail so a prepared incoming player is never held
+        // paused while Length - Time suddenly looks like a full track again.
+        if (player.State is VLCState.Ended or VLCState.Error) return 0;
+        var length = player.Length;
+        return length > 0 ? Math.Max(0, length - Math.Max(0, player.Time)) : fallbackMilliseconds;
     }
 
     private void ApplyCrossfadeVolumeCore()
