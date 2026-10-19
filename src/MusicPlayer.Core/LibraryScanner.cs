@@ -100,6 +100,7 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
         var ignored = ignoredDirectories.Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))).ToHashSet(PathComparer);
         var filesFound = 0;
         var directoriesVisited = 0;
+        var nextProgress = Environment.TickCount64;
         foreach (var suppliedRoot in roots)
         {
             control.Token.ThrowIfCancellationRequested();
@@ -209,7 +210,11 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
                         {
                             await onAudioFile(entry, control.Token).ConfigureAwait(false);
                             filesFound++;
-                            if (filesFound % 16 == 0) progress?.Report(new(filesFound, directoriesVisited, entry));
+                            if (Environment.TickCount64 >= nextProgress)
+                            {
+                                nextProgress = Environment.TickCount64 + 250;
+                                progress?.Report(new(filesFound, directoriesVisited, entry));
+                            }
                         }
                     }
                 }

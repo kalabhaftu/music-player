@@ -43,6 +43,7 @@ public sealed partial class MainWindow
     private readonly HashSet<string> _pendingWatchDirectories = new(StringComparer.OrdinalIgnoreCase);
     private bool _pendingWatchFullScan;
     private DateTimeOffset _nextWatcherRecoveryUtc;
+    private DateTimeOffset _nextWatcherScanUtc;
     private DateTimeOffset _watcherScansCancelledUntilUtc;
 
     private void RequestLibraryWatcherRescan() => RequestLibraryWatcherRescan([], true);
@@ -64,12 +65,12 @@ public sealed partial class MainWindow
             // A full configured-root scan supersedes these paths. Keep overflow
             // and cancellation delays from retaining an unbounded directory set.
             if (_pendingWatchFullScan) _pendingWatchDirectories.Clear();
-            if (_libraryScan.IsRunning)
+            if (_libraryScan.IsRunning || _preparingLibraryScan || _playback.IsPlaying)
             {
                 _libraryWatcherRescanPending = true;
                 return;
             }
-            if (DateTimeOffset.UtcNow < _watcherScansCancelledUntilUtc ||
+            if (DateTimeOffset.UtcNow < _watcherScansCancelledUntilUtc || DateTimeOffset.UtcNow < _nextWatcherScanUtc ||
                 (_pendingWatchFullScan && DateTimeOffset.UtcNow < _nextWatcherRecoveryUtc))
             {
                 _libraryWatcherRescanPending = true;
@@ -78,6 +79,7 @@ public sealed partial class MainWindow
             var roots = _pendingWatchFullScan ? _libraryLocations.GetLibraryRoots()
                 : _pendingWatchDirectories.Where(Directory.Exists).ToArray();
             var reconcileWholeLibrary = _pendingWatchFullScan;
+            if (roots.Length > 0) _nextWatcherScanUtc = DateTimeOffset.UtcNow.AddMinutes(5);
             if (reconcileWholeLibrary && roots.Length > 0) _nextWatcherRecoveryUtc = DateTimeOffset.UtcNow.AddMinutes(5);
             _pendingWatchDirectories.Clear();
             _pendingWatchFullScan = false;
@@ -87,8 +89,8 @@ public sealed partial class MainWindow
 
     private void RunPendingLibraryWatcherRescan()
     {
-        if (!_libraryWatcherRescanPending || _windowClosed) return;
-        if (DateTimeOffset.UtcNow < _watcherScansCancelledUntilUtc ||
+        if (!_libraryWatcherRescanPending || _windowClosed || _playback.IsPlaying) return;
+        if (DateTimeOffset.UtcNow < _watcherScansCancelledUntilUtc || DateTimeOffset.UtcNow < _nextWatcherScanUtc ||
             (_pendingWatchFullScan && DateTimeOffset.UtcNow < _nextWatcherRecoveryUtc)) return;
         _libraryWatcherRescanPending = false;
         RequestLibraryWatcherRescan([], false);

@@ -12,7 +12,7 @@ public sealed record IndexedFileState(long Length, DateTime ModifiedUtc);
 
 public sealed partial class LibraryStore
 {
-    private const int SchemaVersion = 9;
+    private const int SchemaVersion = 10;
     private readonly string _databasePath;
     private readonly string _connectionString;
     private readonly LocalAppLog _log;
@@ -409,6 +409,22 @@ public sealed partial class LibraryStore
         command.CommandText = "SELECT path FROM track_handles WHERE id=$id";
         Add(command, "$id", id);
         return command.ExecuteScalar() as string;
+    }
+
+    public IReadOnlyDictionary<string, Track> GetTracksByPaths(IEnumerable<string> paths)
+    {
+        var result = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+        using var connection = Open();
+        foreach (var batch in paths.Distinct(StringComparer.OrdinalIgnoreCase).Chunk(200))
+        {
+            using var command = connection.CreateCommand();
+            var parameters = batch.Select((_, index) => "$path" + index).ToArray();
+            command.CommandText = "SELECT * FROM tracks WHERE path IN (" + string.Join(",", parameters) + ")";
+            for (var index = 0; index < batch.Length; index++) Add(command, parameters[index], batch[index]);
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) { var track = ReadTrack(reader); result[track.Path] = track; }
+        }
+        return result;
     }
 
     public Track? GetTrack(string path)
@@ -1260,6 +1276,18 @@ public sealed partial class LibraryStore
             migrate.CommandText = "PRAGMA user_version=9";
             migrate.ExecuteNonQuery();
             transaction.Commit();
+            version = 9;
+        }
+        if (version == 9)
+        {
+            // Windows scan lookups use NOCASE; the binary primary key cannot serve them.
+            using var migrate = connection.CreateCommand();
+            migrate.CommandText = """
+                CREATE INDEX IF NOT EXISTS ix_tracks_path_nocase ON tracks(path COLLATE NOCASE);
+                CREATE INDEX IF NOT EXISTS ix_scan_seen_run_path_nocase ON scan_seen(run_id,path COLLATE NOCASE);
+                PRAGMA user_version=10;
+                """;
+            migrate.ExecuteNonQuery();
         }
     }
 
