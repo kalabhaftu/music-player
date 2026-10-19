@@ -688,7 +688,6 @@ public sealed partial class MainWindow : Window
         _duplicatePreparationCancellation?.Cancel();
         LocalAppLog.Shared.Info("app", "Window closed.");
         _volumeSaveDebounce?.Stop();
-        StopMountedDriveRefresh();
         PersistPendingVolumeSetting();
         CloseVideoPlaybackWindow(pauseVideo: true);
         _store.TracksPurged -= OnTracksPurged;

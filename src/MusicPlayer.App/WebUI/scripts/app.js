@@ -62,6 +62,7 @@ function fmtDuration(seconds) { const n = Math.max(0, Math.floor(Number(seconds)
 function bytesLabel(bytes) { const value = Number(bytes)||0; return value > 1024**3 ? `${(value/1024**3).toFixed(1)} GB` : value > 1024**2 ? `${(value/1024**2).toFixed(0)} MB` : `${(value/1024).toFixed(0)} KB`; }
 
 const state = { view:"Home", search:"", filter:"all", searchQuery:"", searchPages:{songs:0,albums:0,artists:0,playlists:0}, searchResults:{}, duplicateSort:"Title", duplicateDescending:false, duplicateOffset:0, sort:"Title", descending:false, videoSupportEnabled:false, offset:0, pageSize:200, total:0, items:[], group:null, playlist:null, track:null, trackDetails:null, playing:false, position:0, duration:0, volume:75, shuffle:false, repeat:"Off", repeatA:null, repeatB:null, queue:[], queueTotal:0, queueOffset:0, queueIndex:-1, panel:"queue", panelOpen:true, history:["Home"], historyIndex:0, settings:{}, modal:null, muted:false, scan:null, loading:false, lyricLines:[], lyricText:"", lyricsRaw:"", lyricsSource:"none", lyricsLoadingTrackId:"", lyricsAutoError:"", lyricsRevision:0, lyricsLoadRevision:0, immersiveLyricsOpen:false, lyricsSearchResults:[], lyricsSearchTrackId:"", updateCheckActive:false, aboutInfo:null };
+state.layoutWindowExpanded=false;
 const lyricsSearch = createLyricsSearch(trackId => call("searchLyrics", {id:trackId}, false));
 const automaticLyrics = createLyricsLoader(trackId=>call("getLyrics",{id:trackId}),trackId=>searchLyricsResults(trackId,false));
 async function searchLyricsResults(trackId, manual=false) {
@@ -171,7 +172,8 @@ $("#routeView").addEventListener("input",event=>{const control=event.target;if(c
 $("#routeView").addEventListener("change",async event=>{const control=event.target;if(!control.matches("[data-setting]:not(.toggle)"))return;event.preventDefault();event.stopImmediatePropagation();await persistSettingControl(control,control.value);if(control.dataset.setting==="windowTransparency"){const output=control.parentElement?.querySelector("output");if(output)output.value=control.value+"%";}},true);
 $("#routeView").addEventListener("click",async event=>{const control=event.target.closest("[data-setting].toggle");if(!control)return;event.preventDefault();event.stopImmediatePropagation();const key=control.dataset.setting,wasEnabled=control.classList.contains("on"),enabled=!wasEnabled;control.classList.toggle("on",enabled);control.setAttribute("aria-checked",String(enabled));if(await persistSettingControl(control,enabled)){if(key==="autoLoadLyrics"&&!wasEnabled&&enabled&&state.track)void loadLyricsForTrack(state.track.id,true);if(key==="transparentWindow"){const range=$("[data-setting='windowTransparency']");if(range)range.disabled=!enabled;}}},true);
 function applyLayoutPreferences(){
-  const collapsed=window.innerWidth<=840||(layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??false);
+  const savedCollapse=layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??null;
+  const collapsed=savedCollapse===true||(savedCollapse==null&&window.innerWidth<=840);
   const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
   const sidebarWidth=collapsed?78:expandedWidth;
   const preferredRightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
@@ -586,7 +588,18 @@ $("#scanToggle").addEventListener("focus",()=>showScanDetails(true));
 $("#scanHide").addEventListener("click",()=>{$("#scanWidget").classList.add("details-dismissed");showScanDetails(false);$("#scanToggle").blur();});
 document.addEventListener("pointerdown",event=>{if(!event.target.closest("#scanWidget"))showScanDetails(false);});
 $("#topMenuToggle").addEventListener("click",()=>{const menu=$("#topMenu"),show=menu.hidden;menu.hidden=!show;$("#topMenuToggle").setAttribute("aria-expanded",String(show));});
-$("#sidebarToggleBtn").addEventListener("click",async()=>{const collapsed=$("#appRoot").classList.contains("sidebar-collapsed");const value=!collapsed;state.settings.sidebarCollapsed=value;layoutDrag.sidebarCollapsed=value;applyLayoutPreferences();try{await call("updateSettings",{settings:{sidebarCollapsed:value}})}catch{}});
+$("#sidebarToggleBtn").addEventListener("click",async()=>{
+  const root=$("#appRoot"),collapsed=root.classList.contains("sidebar-collapsed"),value=!collapsed;
+  state.settings.sidebarCollapsed=value;layoutDrag.sidebarCollapsed=value;applyLayoutPreferences();
+  try{await call("updateSettings",{settings:{sidebarCollapsed:value}})}catch{}
+  if(!value&&collapsed){
+    const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
+    const minimumWidth=Math.ceil(expandedWidth+360);
+    if(window.innerWidth<minimumWidth)try{const result=await call("expandWindowForQueue",{minimumWidth});state.layoutWindowExpanded=state.layoutWindowExpanded||!!result?.expanded;}catch{}
+  }else if(value&&state.layoutWindowExpanded&&!root.classList.contains("panel-open")){
+    state.layoutWindowExpanded=false;try{await call("restoreWindowAfterQueue");}catch{}
+  }
+});
 $("#topMenu").addEventListener("click",()=>{$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");});
 document.addEventListener("click",e=>{if(!e.target.closest(".top-menu-wrap")){$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");}});
 async function setImmersiveMode(enabled){
@@ -672,7 +685,7 @@ async function openQueuePanel(){
     const minimumWidth=Math.ceil(sidebarWidth+panelWidth+360);
     try{
       const result=await call("expandWindowForQueue",{minimumWidth});
-      state.queuePanelWindowExpanded=!!result?.expanded;
+      state.layoutWindowExpanded=state.layoutWindowExpanded||!!result?.expanded;
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       if($("#appRoot").classList.contains("panel-compact")){state.queuePanelOverlay=true;applyLayoutPreferences();}
     }catch{state.queuePanelOverlay=true;applyLayoutPreferences();}
@@ -680,10 +693,10 @@ async function openQueuePanel(){
   $("#panelClose").focus();
 }
 async function closeQueuePanel(){
-  const restoreWindow=!!state.queuePanelWindowExpanded;
-  state.queuePanelWindowExpanded=false;state.queuePanelOverlay=false;
+  state.queuePanelOverlay=false;
   setPanelOpen(false);
-  if(restoreWindow)try{await call("restoreWindowAfterQueue");}catch{}
+  if(state.layoutWindowExpanded&&!$("#appRoot").classList.contains("sidebar-collapsed"))return;
+  if(state.layoutWindowExpanded){state.layoutWindowExpanded=false;try{await call("restoreWindowAfterQueue");}catch{}}
 }
 async function toggleQueuePanel(){
   const root=$("#appRoot"),visible=root.classList.contains("panel-open")&&!root.classList.contains("panel-closed");

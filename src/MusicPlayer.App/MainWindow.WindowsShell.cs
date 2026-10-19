@@ -447,7 +447,7 @@ public sealed partial class MainWindow : Window
             {
                 if (_tray is not null) { _tray.UpdateIcon(ActiveProductIconPath()); return; }
                 _tray = new TrayIconService(WindowNative.GetWindowHandle(this), ActiveProductIconPath(),
-                    () => DispatcherQueue.TryEnqueue(() => { var hwnd = WindowNative.GetWindowHandle(this); TrayIconService.RestoreWindow(hwnd); Activate(); }),
+                    () => DispatcherQueue.TryEnqueue(ShowAndActivate),
                     () => DispatcherQueue.TryEnqueue(() => TogglePlayback(StartPlaybackFromCurrentLibraryView)),
                     () => DispatcherQueue.TryEnqueue(PlayPreviousTrack),
                     () => DispatcherQueue.TryEnqueue(PlayNextTrack),
@@ -463,6 +463,15 @@ public sealed partial class MainWindow : Window
             LocalAppLog.Shared.Warning("tray", "The Windows notification area is unavailable; the player window remains accessible.", ex);
             _ = ShowNoticeAsync("The Windows tray is unavailable. Music Player will minimize to the taskbar.", InfoBarSeverity.Warning);
         }
+    }
+
+    internal void ShowAndActivate()
+    {
+        var hwnd = WindowNative.GetWindowHandle(this);
+        Activate();
+        // WinUI activation alone does not reliably show a window hidden through
+        // the tray's native WM_CLOSE/minimize handling.
+        TrayIconService.RestoreWindow(hwnd);
     }
 
     private string ActiveProductIconPath()

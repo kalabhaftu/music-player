@@ -25,11 +25,17 @@ internal sealed class StartupSplash : IDisposable
         _window = CreateWindowEx(0x00080088, windowClass.ClassName, "Music Player", 0x80000000,
             0, 0, 1, 1, 0, 0, instance, 0);
         if (_window == 0) throw new System.ComponentModel.Win32Exception();
-        try { Render(); }
+        try { Render("Opening"); }
         catch { DestroyWindow(_window); throw; }
     }
 
-    private void Render()
+    public void SetStatus(string status)
+    {
+        try { Render(status); }
+        catch (Exception ex) { MusicPlayer.Core.LocalAppLog.Shared.Warning("startup", "Could not update startup status.", ex); }
+    }
+
+    private void Render(string status)
     {
         var scale = GetDpiForWindow(_window) / 96f;
         var width = (int)(240 * scale); var height = (int)(224 * scale);
@@ -63,9 +69,9 @@ internal sealed class StartupSplash : IDisposable
             Check(GdipSetStringFormatAlign(format, 1));
             Check(GdipSetTextRenderingHint(graphics, 4));
             var text = new FloatRectangle { X = 1, Y = 177 * scale + 1, Width = width, Height = 34 * scale };
-            Check(GdipDrawString(graphics, "Opening", -1, font, ref text, format, shadow));
+            Check(GdipDrawString(graphics, status, -1, font, ref text, format, shadow));
             text.X = 0; text.Y -= 1;
-            Check(GdipDrawString(graphics, "Opening", -1, font, ref text, format, brush));
+            Check(GdipDrawString(graphics, status, -1, font, ref text, format, brush));
             Check(GdipFlush(graphics, 1));
             var monitor = MonitorFromWindow(GetForegroundWindow(), 2);
             var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };

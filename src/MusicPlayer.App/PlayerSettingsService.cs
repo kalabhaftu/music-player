@@ -44,7 +44,7 @@ internal sealed class PlayerSettingsService(LibraryStore store)
             showAlbum = Value("show-list-album", "true") != "false", showAdded = Value("show-list-added", "true") != "false",
             showYear = On("show-list-year"), showDuration = Value("show-list-duration", "true") != "false",
             showFavorite = Value("show-list-favorite", "true") != "false", checkUpdates = Value("check-updates", "true") != "false",
-            minimizeToTray = On("minimize-to-tray"), navigationWidth = Value("navigation-pane-width", "232"), browseWidth = Value("browse-pane-width", "280"),
+            minimizeToTray = On("minimize-to-tray", true), navigationWidth = Value("navigation-pane-width", "232"), browseWidth = Value("browse-pane-width", "280"),
             navigationOrder = ReadStringArray("navigation-order")
                 .Where(item => item is not ("Most Played" or "Recently Played"))
                 .ToArray(),

@@ -9,7 +9,7 @@
         <Grid x:Name="WebUiLoadingState" Background="#0F1210">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
                 <Image Source="ms-appx:///Assets/MusicPlayer-dark.png" Width="96" Height="96" />
-                <TextBlock Text="Opening" HorizontalAlignment="Center" FontFamily="Segoe UI" FontSize="17" FontWeight="Bold" Foreground="#F4F6F3" />
+                <TextBlock Text="Preparing your library…" HorizontalAlignment="Center" FontFamily="Segoe UI" FontSize="17" FontWeight="Bold" Foreground="#F4F6F3" />
             </StackPanel>
         </Grid>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" MaxWidth="680" Margin="0,8" Spacing="4">

@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
         _playbackCommands = new(_playbackQueue, _playback, _store.GetTrack, GetCurrentQueuePaths);
         _playlistLibrary = new(_store);
         _playerSettings = new(_store);
+        if (_store.GetSetting("minimize-to-tray") is null) _store.SetSetting("minimize-to-tray", "true");
         _libraryLocations = new(_store);
         var videoExtensions = _libraryLocations.GetEnabledVideoExtensions();
         _playback.SetVideoExtensions(videoExtensions);

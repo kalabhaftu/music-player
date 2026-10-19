@@ -30,9 +30,11 @@ public partial class App : Application
         {
             // Integrity checks, migrations and recovery finish on a worker before any
             // service can write. The UI dispatcher stays available during disk work.
+            startup?.SetStatus("Preparing your library…");
             var storeTask = Task.Run(LibraryStore.InAppData);
             var playbackTask = Task.Run(() => new PlaybackService());
             await Task.WhenAll(storeTask, playbackTask);
+            startup?.SetStatus("Opening Music Player…");
             var early = _pendingFileActivations.ToArray();_pendingFileActivations.Clear();
             var openingTrack = Program.InitialActivation.Action == FileActivationAction.Play && Program.InitialActivation.Paths.Count > 0;
             openingTrack |= early.Any(request => request.Action == FileActivationAction.Play && request.Paths.Count > 0);
@@ -56,7 +58,8 @@ public partial class App : Application
             return;
         }
 
-        _window.Activate();
+        if (_window is MainWindow mainWindow) mainWindow.ShowAndActivate();
+        else _window.Activate();
         if (request.Paths.Count == 0) return;
         _pendingFileActivations.Enqueue(request);
         if (!_drainingActivations) _ = DrainActivationsAsync();

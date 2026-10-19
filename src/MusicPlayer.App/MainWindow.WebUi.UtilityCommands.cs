@@ -90,12 +90,13 @@ public sealed partial class MainWindow
         var requestedWidth = (int)Math.Ceiling(Math.Clamp(minimumWidthDip, 560, 1800) * scale);
         var current = appWindow.Size;
         var targetWidth = Math.Min(display.WorkArea.Width, Math.Max(current.Width, requestedWidth));
-        if (targetWidth <= current.Width) return new { expanded = false };
+        var targetHeight = Math.Min(current.Height, display.WorkArea.Height);
+        if (targetWidth <= current.Width && targetHeight >= current.Height) return new { expanded = false };
 
         _queuePanelOriginalBounds ??= new RectInt32(appWindow.Position.X, appWindow.Position.Y, current.Width, current.Height);
         var x = Math.Clamp(appWindow.Position.X, display.WorkArea.X, display.WorkArea.X + display.WorkArea.Width - targetWidth);
-        var y = Math.Clamp(appWindow.Position.Y, display.WorkArea.Y, display.WorkArea.Y + display.WorkArea.Height - current.Height);
-        appWindow.MoveAndResize(new RectInt32(x, y, targetWidth, current.Height), display);
+        var y = Math.Clamp(appWindow.Position.Y, display.WorkArea.Y, display.WorkArea.Y + display.WorkArea.Height - targetHeight);
+        appWindow.MoveAndResize(new RectInt32(x, y, targetWidth, targetHeight), display);
         return new { expanded = true };
     }
 

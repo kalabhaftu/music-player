@@ -18,6 +18,16 @@ public sealed class CoreTests : IDisposable
     }
 
     [Fact]
+    public void Default_library_scan_is_limited_to_the_users_music_folder()
+    {
+        var musicFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+        var roots = LibraryScanner.DefaultRoots().ToArray();
+
+        if (string.IsNullOrWhiteSpace(musicFolder)) Assert.Empty(roots);
+        else Assert.Equal([Path.GetFullPath(musicFolder)], roots);
+    }
+
+    [Fact]
     public void External_file_activation_queues_opened_tracks_before_the_previous_track_and_upcoming_queue()
     {
         var queue = QueueNavigation.BuildExternalOpenQueue(

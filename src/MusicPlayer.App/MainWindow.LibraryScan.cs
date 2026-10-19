@@ -31,10 +31,8 @@ namespace MusicPlayer.App;
 public sealed partial class MainWindow : Window
 {
     private const string LibraryRootScopeSetting = "library-root-scope-version";
-    private const string LibraryRootScopeVersion = "all-mounted-local-drives-v1";
-    private readonly object _mountedDriveGate = new();
-    private readonly HashSet<string> _knownMountedDriveRoots = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-    private Timer? _mountedDriveRefreshTimer;
+    private const string LibraryRootScopeVersion = "selected-music-folders-v2";
+    private const string PreviousAllDrivesScopeVersion = "all-mounted-local-drives-v1";
 
     private int _duplicatePreparationActive;
     private bool _preparingLibraryScan;
@@ -72,22 +70,22 @@ public sealed partial class MainWindow : Window
             var prepared = await Task.Run(() =>
             {
                 var roots = _libraryLocations.GetLibraryRoots().ToList();
-                var mountedRoots = LibraryScanner.DefaultRoots().ToArray();
                 var rootsWereConfigured = _store.GetSetting("library-roots-configured") == "true";
-                var rootsNeedExpansion = _store.GetSetting(LibraryRootScopeSetting) != LibraryRootScopeVersion;
+                var previousScope = _store.GetSetting(LibraryRootScopeSetting);
                 if (!rootsWereConfigured)
                 {
-                    roots = mountedRoots.ToList();
+                    roots = LibraryScanner.DefaultRoots().ToList();
                 }
-                else if (rootsNeedExpansion)
+                else if (previousScope == PreviousAllDrivesScopeVersion)
                 {
-                    // Older installs watched only the Music folder. Expand them once to every
-                    // mounted local drive, while keeping any explicitly configured external roots.
-                    roots.AddRange(mountedRoots);
+                    // Earlier builds silently promoted every mounted drive to a scan root.
+                    // Remove those auto-added volume roots while keeping folders the user chose.
+                    roots = roots.Where(root => !IsDriveRoot(root)).ToList();
+                    if (roots.Count == 0) roots = LibraryScanner.DefaultRoots().ToList();
                 }
 
                 roots = NormalizeRootSet(roots).ToList();
-                if (!rootsWereConfigured || rootsNeedExpansion)
+                if (!rootsWereConfigured || previousScope != LibraryRootScopeVersion)
                 {
                     _store.SetSetting("library-roots", JsonSerializer.Serialize(roots));
                     _store.SetSetting("library-roots-configured", "true");
@@ -97,79 +95,29 @@ public sealed partial class MainWindow : Window
                 try { libraryTracks = _store.GetLibraryStats().TotalTracks; }
                 catch (SqliteException ex) when (LibraryStore.IsDatabaseCorruption(ex))
                 { LocalAppLog.Shared.Error("database", "Could not read the index count before the startup scan; the scan will rebuild the damaged index if needed.", ex); }
-                LocalAppLog.Shared.Info("scanner", $"Startup scan prepared: scope=all-mounted-local-drives, configuredRoots={roots.Count}, rootsPreviouslyConfigured={rootsWereConfigured}, indexedTracks={libraryTracks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}, roots=[{string.Join(", ", roots.Select(DescribeRoot))}].");
+                LocalAppLog.Shared.Info("scanner", $"Startup scan prepared: scope=selected-music-folders, configuredRoots={roots.Count}, rootsPreviouslyConfigured={rootsWereConfigured}, indexedTracks={libraryTracks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}, roots=[{string.Join(", ", roots.Select(DescribeRoot))}].");
                 _libraryFileWatcher.SetRoots(roots, _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
-                return (Roots: roots, Mounted: mountedRoots);
+                return roots.ToArray();
             });
             if (_windowClosed) return;
-            StartMountedDriveRefresh(prepared.Roots, prepared.Mounted);
-            if (prepared.Roots.Count > 0) StartScan(prepared.Roots);
+            if (prepared.Length > 0) StartScan(prepared);
             else _ = ReconcileIndexedLibraryAtStartupAsync();
         }
         catch (Exception ex) { LocalAppLog.Shared.Warning("scanner", "Startup library checks could not be prepared; manual scanning remains available.", ex); }
     }
 
-    private void StartMountedDriveRefresh(IEnumerable<string> initialRoots, IEnumerable<string> mountedRoots)
+    private static bool IsDriveRoot(string path)
     {
-        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-        lock (_mountedDriveGate)
-        {
-            _knownMountedDriveRoots.Clear();
-            foreach (var root in mountedRoots) _knownMountedDriveRoots.Add(Path.GetFullPath(root));
-            foreach (var root in initialRoots)
-                if (Path.GetPathRoot(root) is { } driveRoot && comparer.Equals(root, driveRoot)) _knownMountedDriveRoots.Add(Path.GetFullPath(root));
-        }
-
-        _mountedDriveRefreshTimer?.Dispose();
-        _mountedDriveRefreshTimer = new Timer(_ => DispatcherQueue.TryEnqueue(RefreshMountedDriveRoots), null,
-            TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
-    }
-
-    private bool _mountedDriveRefreshActive;
-    private async void RefreshMountedDriveRoots()
-    {
-        if (_windowClosed || _mountedDriveRefreshActive || _store.GetSetting(LibraryRootScopeSetting) != LibraryRootScopeVersion) return;
-        _mountedDriveRefreshActive = true;
         try
         {
-            var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-            var available = await Task.Run(() => LibraryScanner.DefaultRoots().Select(Path.GetFullPath).ToArray());
-            if (_windowClosed) return;
-            string[] newlyMounted;
-            bool mountsChanged;
-            lock (_mountedDriveGate)
-            {
-                mountsChanged = !_knownMountedDriveRoots.SetEquals(available);
-                newlyMounted = available.Where(root => !_knownMountedDriveRoots.Contains(root)).ToArray();
-                _knownMountedDriveRoots.Clear();
-                foreach (var root in available) _knownMountedDriveRoots.Add(root);
-            }
-            if (mountsChanged)
-            {
-                var unavailable = await Task.Run(() => _libraryLocations.GetLibraryRoots().Where(root => !Directory.Exists(root)).ToArray());
-                if (_windowClosed) return;
-                _libraryQueries.SetUnavailableRoots(unavailable);
-                PublishLibraryChanged();
-            }
-            if (newlyMounted.Length == 0) return;
-
-            var savedRoots = _libraryLocations.GetLibraryRoots();
-            var roots = NormalizeRootSet(savedRoots.Concat(newlyMounted));
-            if (!savedRoots.OrderBy(path => path, comparer).SequenceEqual(roots.OrderBy(path => path, comparer), comparer))
-                _store.SetSetting("library-roots", JsonSerializer.Serialize(roots));
-            await Task.Run(() => _libraryFileWatcher.SetRoots(roots, _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions()));
-            if (_windowClosed) return;
-            LocalAppLog.Shared.Info("scanner", $"New local storage mounted: roots=[{string.Join(", ", newlyMounted.Select(DescribeRoot))}]; starting an automatic scan.");
-            RequestLibraryWatcherRescan(newlyMounted, false);
+            var fullPath = Path.GetFullPath(path);
+            var driveRoot = Path.GetPathRoot(fullPath);
+            return !string.IsNullOrEmpty(driveRoot) && string.Equals(
+                Path.TrimEndingDirectorySeparator(fullPath),
+                Path.TrimEndingDirectorySeparator(driveRoot),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
-        catch (Exception ex) { LocalAppLog.Shared.Warning("scanner", "Could not refresh mounted library drives.", ex); }
-        finally { _mountedDriveRefreshActive = false; }
-    }
-
-    private void StopMountedDriveRefresh()
-    {
-        _mountedDriveRefreshTimer?.Dispose();
-        _mountedDriveRefreshTimer = null;
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return false; }
     }
 
     private async Task ReconcileIndexedLibraryAtStartupAsync()

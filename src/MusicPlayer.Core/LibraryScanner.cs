@@ -63,15 +63,11 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
 
     public static IEnumerable<string> DefaultRoots()
     {
-        foreach (var drive in DriveInfo.GetDrives())
-        {
-            var include = false;
-            try { include = drive.DriveType is DriveType.Fixed or DriveType.Removable && drive.IsReady; }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            if (include) yield return drive.RootDirectory.FullName;
-        }
+        // A first-run scan should start with the user's music collection, not
+        // every file on every mounted drive. Users can add any other folders
+        // explicitly in the library settings.
+        var music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+        if (!string.IsNullOrWhiteSpace(music)) yield return Path.GetFullPath(music);
     }
 
     public async Task ScanAsync(
