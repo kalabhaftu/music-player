@@ -16,7 +16,8 @@ Changes to Music Player are documented here. The app name, executable, package i
 - Make manual Next advance immediately while automatic crossfades remain scheduled at the track ending.
 - Apply complete equalizer curves smoothly on a worker, debounce transactional persistence, and preserve preset preamp levels when editing or saving Custom curves.
 - Fit transport controls to snapped and narrow windows, reveal compact volume on hover or focus, collapse navigation as needed, and constrain context menus to the viewport.
-- Collapse Now Playing into a queue rail with an upcoming count on narrow windows, restore the wider sidebar preference, prevent resize handles from creating unnecessary table scrollbars, and use a bolder Opening label.
+- Hide the full Now Playing panel when it cannot fit; open it from the toolbar by widening the window and restore the prior width on close. Preserve normal show/hide behavior when it fits, prevent resize handles from creating unnecessary table scrollbars, and use a bolder Opening label.
+- Stamp the Setup executable with the same 1.0.2.0 file and product version as the app.
 - Honor exact-duplicate hiding in album, artist, genre, and folder browsing and playback sources, with matching group counts. Explicit queue and playlist occurrences are retained.
 
 ## [1.0.1]

@@ -172,30 +172,28 @@ $("#routeView").addEventListener("change",async event=>{const control=event.targ
 $("#routeView").addEventListener("click",async event=>{const control=event.target.closest("[data-setting].toggle");if(!control)return;event.preventDefault();event.stopImmediatePropagation();const key=control.dataset.setting,wasEnabled=control.classList.contains("on"),enabled=!wasEnabled;control.classList.toggle("on",enabled);control.setAttribute("aria-checked",String(enabled));if(await persistSettingControl(control,enabled)){if(key==="autoLoadLyrics"&&!wasEnabled&&enabled&&state.track)void loadLyricsForTrack(state.track.id,true);if(key==="transparentWindow"){const range=$("[data-setting='windowTransparency']");if(range)range.disabled=!enabled;}}},true);
 function applyLayoutPreferences(){
   const collapsed=window.innerWidth<=840||(layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??false);
-  const maxSidebar=Math.max(180,Math.min(360,window.innerWidth-360-(window.innerWidth>900&&state.panelOpen?220:0)));
-  const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,maxSidebar);
+  const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
   const sidebarWidth=collapsed?78:expandedWidth;
+  const preferredRightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
   const maxRight=Math.max(240,window.innerWidth-sidebarWidth-360);
-  const rightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,Math.min(460,maxRight));
+  const rightWidth=Math.min(preferredRightWidth,maxRight);
   document.documentElement.style.setProperty("--sidebar",`${sidebarWidth}px`);
   document.documentElement.style.setProperty("--right",`${rightWidth}px`);
   const root=$("#appRoot");
   const columnWidths=state.settings.songColumnWidths||{};
   for(const key of ["title","album","added","year","plays","duration"]){const width=Number(columnWidths[key]);if(Number.isFinite(width)&&width>0)root?.style.setProperty(`--song-col-${key}`,`${width}px`);else root?.style.removeProperty(`--song-col-${key}`);}
   root?.classList.toggle("sidebar-collapsed",collapsed);
-  const compactPanel=window.innerWidth<=1000||window.innerWidth-sidebarWidth-rightWidth<420;
-  if(!compactPanel||!root.classList.contains("panel-compact"))state.panelCompactExpanded=false;
-  const panelVisible=compactPanel?!!state.panelCompactExpanded:!!state.panelOpen;
-  root.classList.toggle("panel-open",!!state.panelOpen);
-  root.classList.toggle("panel-closed",!state.panelOpen);
+  const compactPanel=window.innerWidth-sidebarWidth-preferredRightWidth<360;
+  if(!compactPanel)state.queuePanelOverlay=false;
+  const panelVisible=!!state.panelOpen&&(!compactPanel||!!state.queuePanelOverlay);
+  root.classList.toggle("panel-open",panelVisible);
+  root.classList.toggle("panel-closed",!panelVisible);
   root.classList.toggle("panel-compact",compactPanel);
-  root.classList.toggle("panel-peek",compactPanel&&panelVisible);
+  root.classList.toggle("panel-peek",compactPanel&&panelVisible&&!!state.queuePanelOverlay);
   const panelScroll=$("#panelScroll");panelScroll.inert=!panelVisible;panelScroll.setAttribute("aria-hidden",String(!panelVisible));
-  $("#panelExpand").setAttribute("aria-expanded",String(panelVisible));
-  const panelToggle=$("#panelToggleBtn"),panelLabel=panelVisible?"Collapse queue sidebar":"Expand queue sidebar";
+  const panelToggle=$("#panelToggleBtn"),panelLabel=panelVisible?"Hide queue sidebar":"Show queue sidebar";
   panelToggle.setAttribute("aria-label",panelLabel);panelToggle.title=panelLabel;panelToggle.setAttribute("aria-expanded",String(panelVisible));
-  if(!panelVisible&&$("#rightPanel").contains(document.activeElement)&&document.activeElement!==$("#panelExpand"))
-    (compactPanel?$("#panelExpand"):panelToggle).focus();
+  if(!panelVisible&&$("#rightPanel").contains(document.activeElement))panelToggle.focus();
   const toggle=$("#sidebarToggleBtn");
   if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));}
   const navResize=$("#sidebarResize"); if(navResize)navResize.setAttribute("aria-valuenow",String(Math.round(sidebarWidth)));
@@ -537,7 +535,7 @@ document.addEventListener("keydown",async e=>{
   if((e.altKey||e.metaKey)&&e.key==="ArrowRight"){e.preventDefault();await call("next");return;}
   if(e.key==="Enter"&&e.target.matches("tr[data-track]")){await action("play-track",{dataset:{id:e.target.dataset.track}});}
   if(e.key==="Enter"&&e.target.matches("[data-open-type]"))e.target.click();
-  if(e.key==="Escape"){if($("#modalLayer").hidden&&!$("#contextMenu").classList.contains("show")&&state.panelCompactExpanded)setCompactPanelExpanded(false);closeModal();$("#contextMenu").classList.remove("show");}
+  if(e.key==="Escape"){closeModal();$("#contextMenu").classList.remove("show");}
 });
 document.addEventListener("keydown",async e=>{
   if(e.code!=="Space"||e.repeat||e.ctrlKey||e.altKey||e.metaKey)return;
@@ -661,14 +659,35 @@ immersiveProgress.addEventListener("input",()=>{progressRange.value=immersivePro
 immersiveProgress.addEventListener("pointerup",()=>{if(state.seeking){progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});}});
 immersiveProgress.addEventListener("change",()=>{if(!state.seeking)state.seeking=true;progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});});
 $("#volumeRange").addEventListener("input",e=>setVolume(e.target.value)); $("#muteBtn").addEventListener("click",toggleMute);
-function setCompactPanelExpanded(open){
-  state.panelCompactExpanded=!!open;applyLayoutPreferences();
-  if(open)$("#panelClose").focus();
-}
 function setPanelOpen(open,persist=true){
-  if(persist&&$("#appRoot").classList.contains("panel-compact")){setCompactPanelExpanded(open);return;}
   const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;applyLayoutPreferences();
   if(persist&&changed){state.settings.rightPanelOpen=next;panelOpenSave=panelOpenSave.catch(()=>{}).then(()=>call("updateSettings",{settings:{rightPanelOpen:next}})).catch(()=>{});}
+}
+async function openQueuePanel(){
+  const wasAutoHidden=$("#appRoot").classList.contains("panel-compact");
+  setPanelOpen(true);
+  if(wasAutoHidden){
+    const sidebarWidth=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar"))||78;
+    const panelWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
+    const minimumWidth=Math.ceil(sidebarWidth+panelWidth+360);
+    try{
+      const result=await call("expandWindowForQueue",{minimumWidth});
+      state.queuePanelWindowExpanded=!!result?.expanded;
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      if($("#appRoot").classList.contains("panel-compact")){state.queuePanelOverlay=true;applyLayoutPreferences();}
+    }catch{state.queuePanelOverlay=true;applyLayoutPreferences();}
+  }
+  $("#panelClose").focus();
+}
+async function closeQueuePanel(){
+  const restoreWindow=!!state.queuePanelWindowExpanded;
+  state.queuePanelWindowExpanded=false;state.queuePanelOverlay=false;
+  setPanelOpen(false);
+  if(restoreWindow)try{await call("restoreWindowAfterQueue");}catch{}
+}
+async function toggleQueuePanel(){
+  const root=$("#appRoot"),visible=root.classList.contains("panel-open")&&!root.classList.contains("panel-closed");
+  if(visible)await closeQueuePanel();else await openQueuePanel();
 }
 function startPanelResize(handle,kind){
   let active=false;
@@ -735,7 +754,7 @@ function updateScanPresentation(scan) {
     action.textContent=hasRoots?"Scan folders":"Add music folder";
   }
 }
-$("#panelClose").addEventListener("click",()=>setPanelOpen(false));$("#panelExpand").addEventListener("click",()=>setCompactPanelExpanded(true));$("#panelToggleBtn").addEventListener("click",()=>{if($("#appRoot").classList.contains("panel-compact"))setCompactPanelExpanded(!state.panelCompactExpanded);else setPanelOpen(!state.panelOpen);});$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
+$("#panelClose").addEventListener("click",()=>void closeQueuePanel());$("#panelToggleBtn").addEventListener("click",()=>void toggleQueuePanel());$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
 async function refreshAudioControls(data=undefined){
   data??=await call("getAudioSettings");
   const editing=!!pendingEqBands||!!eqWrite;const preset=$("#eqPreset");if(preset&&!editing){preset.innerHTML=["Off","Custom",...(data.presets||[])].filter((value,index,all)=>all.indexOf(value)===index).map(name=>`<option ${name==="Custom"?'disabled ':''}value="${esc(name)}">${esc(name)}</option>`).join("");preset.value=data.currentPreset||"Off";syncSelect(preset);}
@@ -890,5 +909,5 @@ async function start() {
 start();
 
 document.addEventListener("pointerdown",event=>{
-  if(state.panelCompactExpanded&&!$("#rightPanel").contains(event.target)&&!$("#panelToggleBtn").contains(event.target)&&$("#modalLayer").hidden&&!event.target.closest(".context-menu,.select-popup"))setCompactPanelExpanded(false);
+  if(state.queuePanelOverlay&&!$("#rightPanel").contains(event.target)&&!$("#panelToggleBtn").contains(event.target)&&$("#modalLayer").hidden&&!event.target.closest(".context-menu,.select-popup"))void closeQueuePanel();
 });
