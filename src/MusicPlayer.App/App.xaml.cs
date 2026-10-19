@@ -25,17 +25,7 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var startup = new Window { Title = "Music Player" };
-        var status = new StackPanel { Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        status.Children.Add(new ProgressRing { IsActive = true, Width = 32, Height = 32 });
-        status.Children.Add(new TextBlock { Text = "Opening Music Player…", FontSize = 18 });
-        var shell = new Grid { RequestedTheme = ElementTheme.Dark, Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 15, 18, 16)) };
-        shell.Children.Add(status);startup.Content = shell;
-        startup.AppWindow.Resize(new Windows.Graphics.SizeInt32(960, 640));
-        var cancelled = false;
-        var handedOff = false;
-        startup.Closed += (_, _) => { if (!handedOff) cancelled = true; };
-        startup.Activate();
+        using var startup = StartupSplash.TryShow();
         try
         {
             // Integrity checks, migrations and recovery finish on a worker before any
@@ -43,13 +33,11 @@ public partial class App : Application
             var storeTask = Task.Run(LibraryStore.InAppData);
             var playbackTask = Task.Run(() => new PlaybackService());
             await Task.WhenAll(storeTask, playbackTask);
-            if (cancelled) { playbackTask.Result.Dispose(); return; }
             var early = _pendingFileActivations.ToArray();_pendingFileActivations.Clear();
             var openingTrack = Program.InitialActivation.Action == FileActivationAction.Play && Program.InitialActivation.Paths.Count > 0;
             openingTrack |= early.Any(request => request.Action == FileActivationAction.Play && request.Paths.Count > 0);
             _window ??= new MainWindow(storeTask.Result, playbackTask.Result, openingTrack);
             _window.Activate();
-            handedOff = true;startup.Close();
             HandleActivation(Program.InitialActivation);
             foreach (var pending in early) HandleActivation(pending);
         }
