@@ -58,6 +58,9 @@ public sealed class PlaybackService : IDisposable
     private string _directSoundDeviceId = "";
     private string? _equalizerPreset;
     private IReadOnlyList<float>? _equalizerBands;
+    public const float NeutralEqualizerPreamp = 12.0412f;
+    private float _equalizerPreamp = NeutralEqualizerPreamp;
+    public float EqualizerPreamp { get { lock (_gate) return _equalizerPreamp; } }
     private float _volume = 75;
     private float _videoPlaybackRate = 1f;
     private long _restorePosition;
@@ -73,7 +76,7 @@ public sealed class PlaybackService : IDisposable
 
     // VLC 3's MMDevice volume belongs to the shared Windows session. DirectSound
     // controls each music player's buffer independently, which crossfade needs.
-    public PlaybackService() : this("--aout=directsound", "--directx-volume=0", "--no-video-title-show", "--no-volume-save") { }
+    public PlaybackService() : this("--aout=directsound", "--directx-volume=0", "--no-video-title-show", "--no-volume-save", "--no-equalizer-2pass", "--no-equalizer-vlcfreqs") { }
 
     internal PlaybackService(params string[] options)
     {
@@ -449,13 +452,21 @@ public sealed class PlaybackService : IDisposable
         catch (ObjectDisposedException) { }
     }
 
-    public void ApplyEqualizer(string? preset, IReadOnlyList<float>? bands = null)
+    public void ApplyEqualizer(string? preset, IReadOnlyList<float>? bands = null, float? preamp = null)
     {
         lock (_gate)
         {
             if (_disposed) return;
             _equalizerPreset = string.IsNullOrWhiteSpace(preset) ? null : preset;
             _equalizerBands = bands?.ToArray();
+            if (_equalizerPreset is not null)
+            {
+                using var labels = new Equalizer();
+                using var selected = new Equalizer((uint)PresetIndex(_equalizerPreset, labels));
+                _equalizerPreamp = selected.Preamp;
+            }
+            else if (preamp is { } gain && float.IsFinite(gain)) _equalizerPreamp = Math.Clamp(gain, -20, 20);
+            else if (bands is null) _equalizerPreamp = NeutralEqualizerPreamp;
             ApplyEqualizerCore(_active);
             if (_spare is not null) ApplyEqualizerCore(_spare);
         }
@@ -661,13 +672,16 @@ public sealed class PlaybackService : IDisposable
 
     private void ApplyEqualizerCore(MediaPlayer player)
     {
-        if (_equalizerPreset is null && _equalizerBands is null) { player.UnsetEqualizer(); return; }
+        // Keep a neutral filter enabled from stream creation. Changing Off to a
+        // curve then updates coefficients without rebuilding the audio pipeline.
+        // VLC's one-pass filter attenuates dry input by 0.25, requiring +12.0412dB.
         using var current = new Equalizer();
         using var equalizer = _equalizerPreset is not null
             ? new Equalizer((uint)Math.Clamp(PresetIndex(_equalizerPreset, current), 0, (int)current.PresetCount - 1))
             : new Equalizer();
         if (_equalizerBands is not null)
             for (var i = 0; i < Math.Min(_equalizerBands.Count, (int)equalizer.BandCount); i++) equalizer.SetAmp(_equalizerBands[i], (uint)i);
+        equalizer.SetPreamp(_equalizerPreamp);
         player.SetEqualizer(equalizer);
     }
 

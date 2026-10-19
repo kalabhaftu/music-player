@@ -320,7 +320,11 @@ public sealed partial class MainWindow : Window
         ApplyPlaybackCommandResult(_playbackCommands.Previous());
     }
 
-    private void PlayNextTrack() => AdvanceQueue(false);
+    private void PlayNextTrack()
+    {
+        CancelCrossfadeAndRestoreQueue();
+        AdvanceQueue(false);
+    }
 
     private void AdvanceQueue(bool automatic)
     {
@@ -621,7 +625,8 @@ public sealed partial class MainWindow : Window
         var saved = _store.GetSetting(selected == "Custom" ? "eq-bands" : "eq-preset:" + selected);
         if (saved is not null)
         {
-            _playback.ApplyEqualizer(null, ReadEqualizerBands(saved, PlaybackService.EqualizerBands().Count));
+            var preamp = ReadEqualizerPreamp(_store.GetSetting(selected == "Custom" ? "eq-preamp" : "eq-preset-preamp:" + selected));
+            _playback.ApplyEqualizer(null, ReadEqualizerBands(saved, PlaybackService.EqualizerBands().Count), preamp);
             return;
         }
         if (PlaybackService.EqualizerPresets().Contains(selected, StringComparer.OrdinalIgnoreCase)) _playback.ApplyEqualizer(selected);
@@ -678,6 +683,7 @@ public sealed partial class MainWindow : Window
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
         _windowClosed = true;
+        PersistEqualizerOnClose();
         _shellReady.TrySetResult();
         _duplicatePreparationCancellation?.Cancel();
         LocalAppLog.Shared.Info("app", "Window closed.");
