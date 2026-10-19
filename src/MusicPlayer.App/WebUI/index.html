@@ -40,6 +40,11 @@
         <button class="icon-btn" id="forwardBtn" title="Forward" aria-label="Forward" data-icon="chevron-right"></button>
         <label class="search-box"><span data-icon="search"></span><input id="globalSearch" type="search" placeholder="Search songs, artists, albums, playlists…" autocomplete="off"><kbd>Ctrl K</kbd></label>
         <div class="top-spacer"></div>
+        <button class="icon-btn" id="libraryRefresh" title="Library updated · refresh this view" aria-label="Refresh updated library" data-icon="refresh" hidden></button>
+        <div class="scan-widget" id="scanWidget" hidden>
+          <button class="icon-btn scan-ring" id="scanToggle" title="Library scan" aria-label="Show library scan details" aria-expanded="false" aria-controls="scanStrip"><svg viewBox="0 0 32 32" aria-hidden="true"><circle class="scan-ring-track" cx="16" cy="16" r="11"/><circle class="scan-ring-progress" cx="16" cy="16" r="11"/></svg></button>
+          <div class="scan-strip" id="scanStrip" role="status" hidden><b id="scanHeading">Scanning library</b><span id="scanText"></span><div class="scan-actions"><button id="scanPause">Pause</button><button id="scanCancel">Cancel</button><button id="scanHide" aria-label="Hide scan details">Hide</button></div></div>
+        </div>
         <button class="icon-btn panel-toggle" id="panelToggleBtn" title="Show Now Playing panel" aria-label="Show Now Playing panel" data-icon="queue"></button>
         <div class="top-menu-wrap">
           <button class="icon-btn top-menu-toggle" id="topMenuToggle" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false" data-icon="more"></button>
@@ -49,7 +54,6 @@
           </div>
         </div>
       </header>
-      <div class="scan-strip" id="scanStrip" role="status" aria-live="polite" hidden><span class="scan-dot"></span><span id="scanText"></span><button id="scanPause">Pause</button><button id="scanCancel">Cancel</button></div>
       <div class="content" id="content" tabindex="-1"><div id="routeView"></div></div>
     </main>
 
@@ -96,6 +100,7 @@
       <div class="immersive-controls"><button class="ctrl" id="immersivePrev" aria-label="Previous track" title="Previous track" data-icon="skip-back"></button><button class="ctrl immersive-play" id="immersivePlay" aria-label="Play" title="Play" data-icon="play"></button><button class="ctrl" id="immersiveNext" aria-label="Next track" title="Next track" data-icon="skip-forward"></button></div>
       <div class="immersive-shortcuts"><button class="ctrl" data-view="Audio" title="Equalizer" aria-label="Equalizer" data-icon="equalizer"></button><button class="ctrl immersive-lyrics-toggle" id="immersiveLyricsToggle" title="Show lyrics" aria-label="Show lyrics" aria-expanded="false" aria-controls="immersiveLyricsPanel" data-icon="lyrics"></button><button class="ctrl" data-view="Queue" title="Queue" aria-label="Queue" data-icon="queue"></button></div>
     </div>
+    <section class="immersive-drawer" id="immersiveDrawer" aria-label="Full-screen controls" hidden><header><h2 id="immersiveDrawerTitle">Queue</h2><button class="icon-btn" id="immersiveDrawerClose" title="Close panel" aria-label="Close panel" data-icon="close"></button></header><div id="immersiveDrawerBody"></div></section>
   </section>
   <div class="context-menu" id="contextMenu" role="menu"></div>
   <div class="modal-layer" id="modalLayer" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><header><h2 id="modalTitle"></h2><button class="icon-btn" id="modalClose" aria-label="Close" data-icon="close"></button></header><div class="modal-body" id="modalBody"></div><footer id="modalActions"></footer></section></div>

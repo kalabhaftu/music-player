@@ -1,15 +1,46 @@
 import { createPageCache } from "./page-cache.js";
 import { lyricLinesMarkup } from "./lyrics.js";
+import { patchMarkup } from "./view-dom.js";
 
 export function createLibraryViews({state,$,$$,svg,paintIcons,esc,initials,cover,titleOf,subOf,fmtDuration,bytesLabel,call,toast,setTheme,applyNavigationSettings,openModal,updatePlayer,updatePanel,ensureLyricsLoaded,lyricLinesMarkup:renderLyricLines=lyricLinesMarkup}) {
 let renderRevision=0;
 const pages=createPageCache(6);
 const cacheable=new Set(["Home","Search","Songs","Albums","Artists","Genres","Folders","Favorites","Most Played","Recently Played","Recently Added","With Lyrics","Videos","Playlists","Playlist","Album","Artist","Genre","Folder"]);
-const pageFields=["items","total","offset","nextOffset","artistAlbumItems","artistAlbumsOffset","artistAlbumsHaveMore","homeHasRoots","indexedBytes"];
+const pageFields=["items","total","offset","nextOffset","artistAlbumItems","artistAlbumsOffset","artistAlbumsHaveMore","folderItems","folderOffset","folderCount","homeHasRoots","indexedBytes"];
 let mountedKey=null;
+let mountedView=null;
+const viewSorts=new Map();
+function defaultSort(view){return ({"Most Played":["PlayCount",true],"Recently Played":["LastPlayed",true],"Recently Added":["Added",true]})[view]||["Title",false];}
+function rememberSort(){viewSorts.set(state.view,[state.sort,state.descending]);}
 let releaseHistoryLoad=null;
-function pageKey(){return JSON.stringify([state.view,state.search,state.group,state.playlist,state.sort,state.descending,state.searchFilter,state.libraryRevision||0,state.settings]);}
-function invalidateCache(){pages.clear();renderRevision++;}
+function pageKey(){return JSON.stringify([state.view,state.search,state.group,state.playlist,state.sort,state.descending,state.searchFilter,state.libraryRevision||0,state.settings.songColumns,state.settings.artworkStyle,state.settings.seekFromLyrics]);}
+function cacheMarkup(root){
+  const clone=root.cloneNode(true);
+  for(const wrapper of clone.querySelectorAll(".select-control")){
+    const select=wrapper.querySelector("select");if(!select)continue;
+    const live=[...root.querySelectorAll("select")].find(item=>select.id?item.id===select.id:item.dataset.setting===select.dataset.setting);
+    for(const option of select.options)option.toggleAttribute("selected",option.value===live?.value);
+    select.classList.remove("select-native");select.hidden=false;select.removeAttribute("tabindex");select.removeAttribute("aria-hidden");wrapper.replaceWith(select);
+  }
+  return clone.innerHTML;
+}
+function invalidateCache(){pages.clear();}
+function capturePage(){
+  ++renderRevision;pageLoad=null;
+  const root=$("#routeView"),fragment=document.createDocumentFragment(),key=mountedKey,view=mountedView;
+  const fields=[...pageFields,"view","search","group","playlist","sort","descending","queueItems","queuePageOffset"];
+  const snapshot=Object.fromEntries(fields.map(field=>[field,state[field]]));
+  fragment.append(...root.childNodes);
+  return async()=>{
+    ++renderRevision;pageLoad=null;Object.assign(state,snapshot);mountedKey=key;mountedView=view;root.replaceChildren(fragment);
+    $("#globalSearch").value=state.search||"";
+    $$(".nav-item").forEach(item=>item.classList.toggle("active",item.dataset.view===(state.view==="Playlist"?"Playlists":state.view)));
+    $$(".player [data-view]").forEach(item=>item.classList.toggle("active",item.dataset.view===state.view));
+    updatePlayer();updatePanel();
+    await call("setView",{view:state.view,search:state.search,group:state.group,playlistId:state.playlist?.id||null});
+    if(root.querySelector('.empty-state[aria-busy="true"]'))await renderView();
+  };
+}
 function loadReleaseHistory(){
   if(releaseHistoryLoad||state.releaseHistory)return;
   releaseHistoryLoad=call("getReleaseHistory").then(releases=>{state.releaseHistory=releases;paintReleaseHistory();})
@@ -71,6 +102,8 @@ function viewHeader(title,subtitle,actions="") { return `<div class="page-head">
 function toolbar(actions="") { return `<div class="toolbar">${actions}</div>`; }
 
 async function navigate(view,push=true,query=undefined) {
+  rememberSort();
+  [state.sort,state.descending]=viewSorts.get(view)||defaultSort(view);
   if(state.view==="Search"&&view!=="Search") await call("beginSearch",{requestId:nextSearchRequestId()},false);
   if (push && state.view!==view) { state.history=state.history.slice(0,state.historyIndex+1); state.history.push(view); state.historyIndex=state.history.length-1; }
   state.view=view; state.offset=0; if(!["Album","Artist","Genre","Folder"].includes(view)) state.group=null; if(view!=="Playlist") state.playlist=null; if(query!==undefined) state.search=query;
@@ -88,7 +121,7 @@ async function navigate(view,push=true,query=undefined) {
   await rendering;
 }
 
-async function renderView(append=false,previousButton=null) {
+async function renderView(append=false,previousButton=null,background=false) {
   const started=performance.now();
   const report=cached=>{performance.clearMarks("music-player-navigation");performance.mark("music-player-navigation",{detail:{view:state.view,cached,durationMs:performance.now()-started,cacheSize:pages.size}});};
   const revision=++renderRevision;
@@ -98,8 +131,8 @@ async function renderView(append=false,previousButton=null) {
   if(!append) {
     state.offset=0;state.nextOffset=0;pageLoad=null;
     const cached=cacheable.has(requestedView)?pages.get(key):null;
-    if(cached){Object.assign(state,cached.state);root.innerHTML=cached.html;mountedKey=key;paintIcons(root);updatePanel();updatePlayer();report(true);return true;}
-    if(mountedKey!==key)root.innerHTML=`<div class="empty-state" role="status" aria-busy="true"><b>Loading ${esc(requestedView.toLowerCase())}…</b></div>`;
+    if(cached){Object.assign(state,cached.state);if(mountedKey!==key){root.innerHTML=cached.html;paintIcons(root);}mountedKey=key;mountedView=requestedView;updatePanel();updatePlayer();report(true);return true;}
+    if(!background&&mountedView!==requestedView)root.innerHTML=`<div class="empty-state" role="status" aria-busy="true"><b>Loading ${esc(requestedView.toLowerCase())}…</b></div>`;
   }
   try {
     let html="";
@@ -112,7 +145,7 @@ async function renderView(append=false,previousButton=null) {
       case "Playlists": html=await renderPlaylists(); break;
       case "Playlist": html=await renderPlaylistDetail(append); break;
       case "Album": case "Artist": case "Genre": case "Folder": html=await renderGroupDetail(append); break;
-      case "Queue": html=await renderQueue(append); break;
+      case "Queue": html=await renderQueue(append,background); break;
       case "Now Playing": html=await renderNowPlaying(); break;
       case "Lyrics": html=await renderLyrics(); break;
       case "Audio": html=await renderAudio(); break;
@@ -121,9 +154,10 @@ async function renderView(append=false,previousButton=null) {
       default: html=await renderHome();
     }
     if(revision!==renderRevision||requestedView!==state.view||html==null)return false;
-    if(append) {if(previousButton){previousButton.insertAdjacentHTML("beforebegin",html);previousButton.remove();}else root.insertAdjacentHTML("beforeend",html);} else root.innerHTML=html;
+    if(append) {if(previousButton){previousButton.insertAdjacentHTML("beforebegin",html);previousButton.remove();}else root.insertAdjacentHTML("beforeend",html);} else if(background&&mountedView===requestedView)patchMarkup(root,html);else root.innerHTML=html;
     mountedKey=key;
-    if(!append&&cacheable.has(requestedView))pages.set(key,{html,state:Object.fromEntries(pageFields.map(field=>[field,Array.isArray(state[field])?[...state[field]]:state[field]]))});
+    mountedView=requestedView;
+    if(cacheable.has(requestedView))pages.set(key,{html:cacheMarkup(root),state:Object.fromEntries(pageFields.map(field=>[field,Array.isArray(state[field])?[...state[field]]:state[field]]))});
     paintIcons(root); updatePanel(); updatePlayer();
     if(requestedView==="Settings"){if(state.releaseHistory)paintReleaseHistory();else loadReleaseHistory();}
     report(false);
@@ -296,17 +330,26 @@ async function renderGroupDetail(append=false) {
   return `<div class="detail-hero">${cover({...sample,name:group.name,album:group.column==="album"?group.name:sample.album,artist:group.column==="artist"?group.name:sample.artist},group.column==="artist"?"round":"")}<div><div class="eyebrow">${esc(group.column)}</div><h1>${esc(group.name)}</h1><p>${Number(state.total).toLocaleString()} tracks${sample.year?` · ${sample.year}`:""}</p><div class="toolbar"><button class="action primary" data-action="play-view">Play</button><button class="action" data-action="shuffle-view">Shuffle</button></div></div></div>${albumSection}<section class="section"><div class="section-head"><h2>${tracksTitle}</h2></div>${songTable(state.items)}${tracksMore}</section>`;
 }
 
-async function renderQueue(append=false) {
-  const revision=renderRevision;const data=await call("getQueue",{offset:state.offset,pageSize:200});if(revision!==renderRevision)return null; state.queueItems=data.entries||[]; state.queuePageOffset=state.offset; state.queueTotal=data.totalCount||0; state.queueIndex=data.queueIndex??-1;state.nextOffset=state.offset+state.queueItems.length;
+async function renderQueue(append=false,background=false) {
+  const mountedRows=background?$$('.queue-table tr[data-queue-index]'):[];
+  if(!append)state.offset=mountedRows.length?Math.min(Number(mountedRows[0].dataset.queueIndex),Math.max(0,state.queueIndex)):Math.max(0,state.queueIndex);
+  const revision=renderRevision,queueRevision=state.queueEventRevision||0,start=state.offset,wanted=Math.max(200,mountedRows.length);let entries=[],data;
+  do{
+    data=await call("getQueue",{offset:start+entries.length,pageSize:Math.min(200,wanted-entries.length)});
+    if(revision!==renderRevision)return null;
+    const page=data.entries||[];entries.push(...page);if(!page.length)break;
+  }while(!append&&entries.length<wanted&&start+entries.length<data.totalCount);
+  const previous=append?(state.queueItems||[]):[];
+  state.queueItems=entries;state.queuePageOffset=start;state.queueTotal=data.totalCount||0;if(queueRevision===(state.queueEventRevision||0))state.queueIndex=data.queueIndex??-1;state.nextOffset=start+entries.length;
   if(append&&!state.queueItems.length)return "";
-  let html=append?"":viewHeader("Queue",`${state.queueTotal} queued tracks`,toolbar(`<button class="action" data-action="clear-queue">Clear upcoming</button>`));
+  let html=append?"":viewHeader("Queue",`${Math.max(0,state.queueTotal-state.queueIndex-1)} upcoming tracks`,toolbar(`<button class="action" data-action="clear-queue">Clear upcoming</button>`));
   html+=state.queueItems.length?`<div class="table-wrap"><table class="song-table queue-table"><thead><tr><th class="index">#</th><th>Title</th><th class="queue-actions-col">Actions</th></tr></thead><tbody>${state.queueItems.map((t,i)=>{const index=state.queuePageOffset+i;const current=index===state.queueIndex;const subtitle=t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist;return `<tr data-queue-index="${index}" data-context="track" data-context-id="${esc(t.id)}" tabindex="0" aria-label="Play ${esc(t.title)}${current?", currently playing":""}" ${current?'aria-current="true"':""} class="queue-track-row ${current?"queue-current":""} ${t.fileUnavailable?"unavailable-track":""}"><td class="index">${current?"▶":index+1}</td><td><div class="song-cell">${cover(t,"song-thumb")}<div class="song-info"><b>${esc(t.title)}</b><span>${esc(subtitle)}</span></div></div></td><td class="queue-actions-col"><div class="queue-actions"><button class="ctrl queue-action" data-action="play-queue" data-index="${index}" title="Play queue entry" aria-label="Play queue entry">▶</button><button class="ctrl queue-action queue-drag-handle" data-queue-drag="${index}" title="Drag to reorder" aria-label="Drag to reorder queue entry" ${index<=state.queueIndex?"disabled":""}>⠿</button><button class="ctrl queue-action" data-action="queue-remove" data-index="${index}" title="Remove" aria-label="Remove from queue">×</button></div></td></tr>`;}).join("")}</tbody></table></div>`:`<div class="empty-state"><b>Queue is empty</b>Songs you add will appear here.</div>`;
   if(state.nextOffset<state.queueTotal&&state.queueItems.length) html+=`<button class="action load-more" data-action="load-more">Load more queued tracks</button>`;
+  state.queueItems=[...previous,...entries];
   return html;
 }
 
 async function renderNowPlaying() {
-  const revision=renderRevision;const data=await call("getCurrentTrack");if(revision!==renderRevision)return null; state.track=data.track||null;
   if(!state.track) return viewHeader("Now Playing","Nothing is playing.")+`<div class="empty-state"><b>Choose a song to begin</b>Playback stays active as you move between views.</div>`;
   return `<div class="detail-hero now-detail">${cover(state.track)}<div><div class="eyebrow">Now playing</div><h1>${esc(state.track.title)}</h1><p>${esc(state.track.artist)}${state.track.album?` · ${esc(state.track.album)}`:""}${state.track.fileUnavailable?" · File unavailable":""}</p><div class="toolbar"><button class="action" data-action="favorite" data-id="${esc(state.track.id)}">${state.track.favorite?"♥ Favorited":"♡ Favorite"}</button><button class="action" data-action="show-location" data-id="${esc(state.track.id)}">Show in folder</button><button class="action" data-action="details" data-id="${esc(state.track.id)}">Track details</button></div></div></div>`;
 }
@@ -334,7 +377,7 @@ async function renderAudio() {
     `<section class="setting-section"><h2>Volume</h2><div class="setting-row"><div><b>Output level</b><span>Volume is shared with Windows media controls.</span></div><input id="audioVolume" type="range" min="0" max="100" value="${state.volume}" aria-label="Volume"><button class="action" data-action="toggle-mute">${state.muted?"Unmute":"Mute"}</button></div></section>`+
     `<section class="setting-section"><h2>Audio output</h2><p>Choose a connected Windows playback device.</p><div class="setting-row"><div><b>Output device</b><span>Bluetooth headphones and speakers are supported.</span></div>${deviceControl}<button class="action" data-action="refresh-devices">Refresh</button></div></section>`+
     `<section class="setting-section"><h2>Playback transition</h2><div class="setting-row"><div><b>Crossfade</b><span>Blend into the next track.</span></div><select class="select" id="crossfade">${[0,2,3,5,8,10].map(n=>`<option value="${n}" ${n===data.crossfadeSeconds?"selected":""}>${n?`${n} seconds`:"Off"}</option>`).join("")}</select></div></section>`+
-    `<section class="setting-section"><h2>10-band equalizer</h2><div class="setting-row"><div><b>Preset</b><span>Built-in and saved curves.</span></div><select class="select" id="eqPreset"><option>Off</option>${(data.presets||[]).map(p=>`<option ${p===data.currentPreset?"selected":""}>${esc(p)}</option>`).join("")}</select><button class="action" data-action="save-eq">Save custom preset</button></div><div class="eq-bands">${(data.bands||[]).map((b,i)=>`<label>${esc(b.label)}<input type="range" min="-20" max="20" step="0.5" value="${Number(b.value)||0}" data-eq="${i}"><span>${Number(b.value||0).toFixed(1)} dB</span></label>`).join("")}</div></section>`;
+    `<section class="setting-section"><h2>10-band equalizer</h2><div class="setting-row"><div><b>Preset</b><span>Built-in and saved curves.</span></div><select class="select" id="eqPreset">${["Off","Custom",...(data.presets||[])].filter((p,i,all)=>all.indexOf(p)===i).map(p=>`<option ${p===data.currentPreset?"selected ":""}${p==="Custom"?"disabled ":""}value="${esc(p)}">${esc(p)}</option>`).join("")}</select><button class="action" data-action="save-eq">Save custom preset</button></div><div class="eq-bands">${(data.bands||[]).map((b,i)=>`<label><b>${esc(b.label)}</b><input type="range" min="-20" max="20" step="0.5" value="${Number(b.value)||0}" data-eq="${i}" aria-label="${esc(b.label)} gain" aria-orientation="vertical"><span>${Number(b.value||0).toFixed(1)} dB</span></label>`).join("")}</div></section>`;
 }
 
 async function renderSettings() {
@@ -385,5 +428,5 @@ async function openDuplicateFiles(id,offset=0) {
   openModal("Duplicate locations",`${body}${pages>1?`<p class="muted">Page ${page+1} of ${pages} · ${Number(total).toLocaleString()} files</p>`:""}`,actions);
 }
 
-  return {invalidateCache,cacheSize:()=>pages.size,trackRow,songTable,card,cardGrid,section,viewHeader,toolbar,navigate,renderView,loadMore,loadArtistAlbums,renderHome,renderSearch,viewFilter,renderTracksView,renderGroupsView,renderFolders,renderPlaylists,renderPlaylistDetail,renderGroupDetail,renderQueue,renderNowPlaying,renderLyrics,renderAudio,renderSettings,navigationSettingsMarkup,renderDuplicates,openDuplicateFiles};
+  return {invalidateCache,capturePage,cacheSize:()=>pages.size,trackRow,songTable,card,cardGrid,section,viewHeader,toolbar,navigate,renderView,loadMore,loadArtistAlbums,renderHome,renderSearch,viewFilter,renderTracksView,renderGroupsView,renderFolders,renderPlaylists,renderPlaylistDetail,renderGroupDetail,renderQueue,renderNowPlaying,renderLyrics,renderAudio,renderSettings,navigationSettingsMarkup,renderDuplicates,openDuplicateFiles};
 }

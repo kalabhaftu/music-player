@@ -205,7 +205,7 @@
 .immersive-lyrics .empty-state { min-height:100%; box-sizing:border-box; display:grid; align-content:center; justify-items:center; gap:8px; padding:22px; color:rgba(255,255,255,.7); text-align:center; }
 .immersive-lyrics-close { width:36px; height:36px; flex:0 0 36px; color:rgba(255,255,255,.8); background:rgba(255,255,255,.08); }
 .immersive-lyrics-close:hover { color:#fff; background:rgba(255,255,255,.16); }
-.immersive-lyrics .lyric-line:not(.active) { font-size:clamp(13px,1.25vw,16px); }
+.immersive-lyrics .lyric-line { font-size:clamp(18px,1.8vw,24px); font-weight:650; }
 .immersive-art { width:min(48vh,68vw,640px); max-height:min(48vh,calc(100dvh - 420px)); min-height:0; flex:0 1 auto; aspect-ratio:1; align-self:center; transition:width .38s cubic-bezier(.2,.75,.25,1),max-height .38s cubic-bezier(.2,.75,.25,1); }
 .immersive-player.lyrics-open .immersive-art { width:min(43vh,37vw,500px); max-height:min(43vh,calc(100dvh - 430px)); }
 .immersive-art>.cover { width:100%; height:100%; border-radius:clamp(14px,2.1vw,28px); box-shadow:0 26px 84px rgba(0,0,0,.36); }
