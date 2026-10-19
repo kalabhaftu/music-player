@@ -29,7 +29,9 @@ public static class FileActivation
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException) { }
         }
-        return new(action, normalized.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        // Preserve repeated explicit paths: queue and playlist activations represent
+        // ordered occurrences, and the user may intentionally select a song twice.
+        return new(action, normalized.ToArray());
     }
 
     private static FileActivationAction ActionFor(string? verb) => verb?.ToLowerInvariant() switch
