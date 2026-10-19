@@ -1303,13 +1303,29 @@ public sealed partial class LibraryStore
         if (version == 9)
         {
             // Windows scan lookups use NOCASE; the binary primary key cannot serve them.
+            // Recreate missing scan bookkeeping tables for older or partially initialized
+            // databases before adding the lookup index. Existing rows and tables are kept.
+            using var transaction = connection.BeginTransaction();
             using var migrate = connection.CreateCommand();
+            migrate.Transaction = transaction;
             migrate.CommandText = """
+                CREATE TABLE IF NOT EXISTS scan_runs(id INTEGER PRIMARY KEY AUTOINCREMENT, started_utc TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS scan_roots(run_id INTEGER NOT NULL, root_path TEXT NOT NULL, root_prefix TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY(run_id,root_path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_seen(run_id INTEGER NOT NULL, path TEXT NOT NULL, PRIMARY KEY(run_id,path),
+                  FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path),
+                  FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_default_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL,
+                  PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_incomplete_paths(run_id INTEGER NOT NULL,path TEXT NOT NULL,prefix TEXT NOT NULL,
+                  PRIMARY KEY(run_id,path),FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE INDEX IF NOT EXISTS ix_tracks_path_nocase ON tracks(path COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS ix_scan_seen_run_path_nocase ON scan_seen(run_id,path COLLATE NOCASE);
                 PRAGMA user_version=10;
                 """;
             migrate.ExecuteNonQuery();
+            transaction.Commit();
         }
     }
 
