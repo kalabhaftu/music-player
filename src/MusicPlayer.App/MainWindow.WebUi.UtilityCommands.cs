@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Diagnostics;
 using MusicPlayer.Core;
+using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
