@@ -20,6 +20,11 @@ $associationName = "MusicPlayer.$($ApplicationName -replace '[^A-Za-z0-9]', '')"
 $integrationRoot = "HKCU:\Software\MusicPlayer\ShellIntegration\$($ApplicationName -replace '[^A-Za-z0-9]', '')"
 $appKey = 'HKCU:\Software\Classes\Applications\MusicPlayer.exe'
 $storedExecutable = Join-Path $integrationRoot 'ExecutablePath'
+$shellClasses = @{
+    Play = '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C101}'
+    Queue = '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C102}'
+    Playlist = '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C103}'
+}
 
 function Set-DefaultValue([string] $Path, [string] $Value) {
     if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path -Force | Out-Null }
@@ -74,6 +79,13 @@ if ($Unregister) {
         Remove-Item -LiteralPath $capabilities -Recurse -Force -ErrorAction SilentlyContinue
         Remove-ItemProperty -LiteralPath $registeredAppsKey -Name $ApplicationName -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $appKey -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($classId in $shellClasses.Values) {
+            $classKey = "HKCU:\Software\Classes\CLSID\$classId"
+            $serverKey = Get-Item -LiteralPath (Join-Path $classKey 'LocalServer32') -ErrorAction SilentlyContinue
+            if ($serverKey -and [string]::Equals($serverKey.GetValue('ServerExecutable'), $executable, [StringComparison]::OrdinalIgnoreCase)) {
+                Remove-Item -LiteralPath $classKey -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
 
         foreach ($extension in $unregisterExtensions) {
             $progId = "$associationName.$($extension.TrimStart('.'))"
@@ -109,8 +121,15 @@ Set-StringValue $registeredAppsKey $ApplicationName $capabilitiesRelativePath
 Set-StringValue $capabilities 'ApplicationName' $ApplicationName
 Set-StringValue $capabilities 'ApplicationDescription' 'Offline music library and player'
 Set-StringValue $capabilities 'ApplicationIcon' $iconReference
+foreach ($classId in $shellClasses.Values) {
+    $serverKey = "HKCU:\Software\Classes\CLSID\$classId\LocalServer32"
+    Set-DefaultValue $serverKey ('"' + $executable + '" --shell-drop-target')
+    Set-StringValue $serverKey 'ServerExecutable' $executable
+}
 
 Set-DefaultValue "$appKey\shell\open\command" ('"' + $executable + '" "%1"')
+Set-StringValue "$appKey\shell\open" 'MultiSelectModel' 'Player'
+Set-StringValue "$appKey\shell\open\DropTarget" 'CLSID' $shellClasses.Play
 Set-DefaultValue "$appKey\DefaultIcon" $iconReference
 foreach ($extension in $extensions) {
     $progId = "$associationName.$($extension.TrimStart('.'))"
@@ -123,18 +142,20 @@ foreach ($extension in $extensions) {
     # Let Windows apply our corner badge to thumbnails supplied by existing handlers.
     Set-StringValue "HKCU:\Software\Classes\$progId" 'TypeOverlay' $iconReference
     Set-DefaultValue "HKCU:\Software\Classes\$progId\shell\open\command" ('"' + $executable + '" "%1"')
+    Set-StringValue "HKCU:\Software\Classes\$progId\shell\open" 'MultiSelectModel' 'Player'
+    Set-StringValue "HKCU:\Software\Classes\$progId\shell\open\DropTarget" 'CLSID' $shellClasses.Play
 
     foreach ($action in @(
-        @{ Key = 'MusicPlayerAddToQueue'; Label = 'Add to Music Player queue'; Argument = '--add-to-queue' },
-        @{ Key = 'MusicPlayerCreatePlaylist'; Label = 'Create Music Player playlist'; Argument = '--create-playlist' }
+        @{ Key = 'MusicPlayerAddToQueue'; Label = 'Add to Music Player queue'; Argument = '--add-to-queue'; ClassId = $shellClasses.Queue },
+        @{ Key = 'MusicPlayerCreatePlaylist'; Label = 'Create Music Player playlist'; Argument = '--create-playlist'; ClassId = $shellClasses.Playlist }
     )) {
         $verb = "HKCU:\Software\Classes\SystemFileAssociations\$extension\shell\$($action.Key)"
         Set-DefaultValue $verb $action.Label
         Set-StringValue $verb 'Icon' $iconReference
-        # A Player verb lets Explorer invoke this once for a multi-file selection.
-        # The app parses the resulting activation arguments into one ordered queue
-        # (or one playlist), instead of launching an action separately per file.
+        # DropTarget receives the complete selection as IDataObject, without
+        # truncating it to %1 or depending on the command-line length limit.
         Set-StringValue $verb 'MultiSelectModel' 'Player'
+        Set-StringValue "$verb\DropTarget" 'CLSID' $action.ClassId
         Set-DefaultValue "$verb\command" ('"' + $executable + '" ' + $action.Argument + ' "%1"')
     }
 }

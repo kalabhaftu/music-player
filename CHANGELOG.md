@@ -2,9 +2,23 @@
 
 Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming. C# namespaces are implementation details.
 
-## [Unreleased]
+## [1.0.2] (pending release)
 
+- Show startup feedback immediately, initialize audio and the library in parallel, and reuse unchanged track metadata when opening files.
+- Keep favorites, settings, and background indexing from replacing the active library page; retain the saved library during launch checks and batch folder changes more conservatively.
+- Keep queue and equalizer controls inside fullscreen, use taller vertical equalizer sliders and shared themed dropdowns, soften corners, and stabilize wrapped lyric transitions.
+- Reapply volume after audio output opens, prepare crossfades earlier, and fall back to the system output when a selected device disconnects.
+- Receive complete Explorer selections for queue and playlist actions, insert additions next, align queue displays, restore smart-page sort defaults, and find lyrics using cleaned upload titles.
+- Index case-insensitive scan lookups, batch excluded-folder writes, throttle scan progress, and stop duplicate hashing during playback. Watcher scans wait for playback to stop and run at most once every five minutes.
+- Preserve loaded pages through fullscreen drawers and window restore, protect dropdowns during settings search, ignore stale playback responses, and recover disconnected audio routes without keeping an outdated queue index.
 - Keep Music Player running when its window closes if notification-area mode is enabled; add tray actions for Open, Previous, Play/Pause, Next, and Quit.
+- Replace the extra startup window with transparent app artwork and an Opening label, and avoid walking the entire database before opening the app.
+- Make manual Next advance immediately while automatic crossfades remain scheduled at the track ending.
+- Apply complete equalizer curves smoothly on a worker, debounce transactional persistence, and preserve preset preamp levels when editing or saving Custom curves.
+- Fit transport controls to snapped and narrow windows, reveal compact volume on hover or focus, collapse navigation as needed, and constrain context menus to the viewport.
+- Hide the full Now Playing panel when it cannot fit; open it from the toolbar by widening the window and restore the prior width on close. Preserve normal show/hide behavior when it fits, prevent resize handles from creating unnecessary table scrollbars, and use a bolder Opening label.
+- Stamp the Setup executable with the same 1.0.2.0 file and product version as the app.
+- Honor exact-duplicate hiding in album, artist, genre, and folder browsing and playback sources, with matching group counts. Explicit queue and playlist occurrences are retained.
 
 ## [1.0.1]
 

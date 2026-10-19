@@ -107,8 +107,13 @@ public static class LyricsFiles
         finally { if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary); }
     }
 
-    public static Task<IReadOnlyList<LyricsSearchResult>> SearchLrclibAsync(string title, string artist, CancellationToken cancellationToken = default)
-        => LrclibClient.SearchAsync(title, artist, cancellationToken);
+    public static async Task<IReadOnlyList<LyricsSearchResult>> SearchLrclibAsync(string title, string artist, CancellationToken cancellationToken = default)
+    {
+        var clean = LyricsSearchQuery.Normalize(title, artist);
+        var results = await LrclibClient.SearchAsync(clean.Title.Length > 0 ? clean.Title : title, clean.Artist, cancellationToken).ConfigureAwait(false);
+        if (results.Count > 0 || (clean.Title == title && clean.Artist == artist)) return results;
+        return await LrclibClient.SearchAsync(title, artist, cancellationToken).ConfigureAwait(false);
+    }
 
     private static HttpClient CreateLrclibClient()
     {

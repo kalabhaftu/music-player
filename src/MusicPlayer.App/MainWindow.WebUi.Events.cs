@@ -15,6 +15,7 @@ namespace MusicPlayer.App;
 public sealed partial class MainWindow
 {
     private object? _lastWebPlaybackState;
+    private int WebQueueIndex => _crossfadeInProgress ? _crossfadeSourceQueueIndex ?? _queueIndex : _queueIndex;
     private void PublishPlaybackState()
     {
         if (_webViewInBackground) return;
@@ -25,7 +26,7 @@ public sealed partial class MainWindow
             durationSeconds = Math.Max(0, _playback.Duration) / 1000d, volume = _playback.Volume,
             shuffle = _shuffle, repeat = _repeatMode, repeatA = _repeatA?.TotalSeconds, repeatB = _repeatB?.TotalSeconds,
             isVideo = _playback.IsVideoMode,
-            queueIndex = _queueIndex, trackId = current is null ? null : _libraryQueries.TrackId(current.Path)
+            queueIndex = WebQueueIndex, trackId = current is null ? null : _libraryQueries.TrackId(current.Path)
         };
         if (data.Equals(_lastWebPlaybackState)) return;
         _lastWebPlaybackState = data;
@@ -36,11 +37,12 @@ public sealed partial class MainWindow
     {
         _taskbarPeekControls?.Update(_playback.CurrentTrack is not null || _queue.Count > 0, _playback.IsPlaying);
         var revision = _playbackQueue.ContentRevision;
-        if (!force && revision == _lastWebQueueRevision && _queueIndex == _lastWebQueueIndex) return;
+        var index = WebQueueIndex;
+        if (!force && revision == _lastWebQueueRevision && index == _lastWebQueueIndex) return;
         var itemsChanged = force || revision != _lastWebQueueRevision;
         _lastWebQueueRevision = revision;
-        _lastWebQueueIndex = _queueIndex;
-        _webBridge?.SendEvent("queueChanged", new { entries = QueueDtos(Math.Max(0, _queueIndex), 30), queueOffset = Math.Max(0, _queueIndex), queueIndex = _queueIndex, totalCount = _queue.Count, itemsChanged });
+        _lastWebQueueIndex = index;
+        _webBridge?.SendEvent("queueChanged", new { entries = QueueDtos(Math.Max(0, index), 30), queueOffset = Math.Max(0, index), queueIndex = index, totalCount = _queue.Count, itemsChanged });
     }
 
     private object ScanDto()
@@ -63,7 +65,7 @@ public sealed partial class MainWindow
     private void PublishScanState() => _webBridge?.SendEvent("scanChanged", ScanDto());
 
     private long _libraryRevision;
-    private void PublishLibraryChanged() { _libraryQueries.InvalidateFolders(); _webBridge?.SendEvent("libraryChanged", new { revision = ++_libraryRevision }); }
+    private void PublishLibraryChanged(string? reason = null) { _libraryQueries.InvalidateFolders(); _webBridge?.SendEvent("libraryChanged", new { revision = ++_libraryRevision, reason }); }
 
     private void PublishSettingsChanged() => _webBridge?.SendEvent("settingsChanged", WebSettings());
 }

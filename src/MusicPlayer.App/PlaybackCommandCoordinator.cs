@@ -124,7 +124,7 @@ internal sealed class PlaybackCommandCoordinator(
                 continue;
             }
 
-            if (playback.IsPlaying && !crossfadeBlocked && crossfadeMilliseconds > 0)
+            if (automatic && playback.IsPlaying && !crossfadeBlocked && crossfadeMilliseconds > 0)
                 return PrepareCrossfade(track, next, crossfadeMilliseconds, existingCrossfadeSourceIndex);
 
             return StartTrack(track, resetQueue: false, next);

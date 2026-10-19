@@ -145,7 +145,7 @@ public sealed class Release101Tests : IDisposable
     [Fact]
     public void Version_and_window_title_are_local_and_meaningful()
     {
-        Assert.Equal("1.0.1", ApplicationVersion.Resolve(Assembly.GetExecutingAssembly()));
+        Assert.Equal("1.0.2", ApplicationVersion.Resolve(Assembly.GetExecutingAssembly()));
         Assert.Equal("Music Player", NativeWindowTitle.ForTrack(null));
         Assert.Equal("Song — Artist | Music Player", NativeWindowTitle.ForTrack(Track("Song")));
     }

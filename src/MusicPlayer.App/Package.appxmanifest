@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap uap2 uap3 rescap">
-  <Identity Name="Kalabhaftu.MusicPlayer" Publisher="CN=Kalabhaftu" Version="1.0.1.0" ProcessorArchitecture="neutral" />
+  <Identity Name="Kalabhaftu.MusicPlayer" Publisher="CN=Kalabhaftu" Version="1.0.2.0" ProcessorArchitecture="neutral" />
   <Properties>
     <DisplayName>Music Player</DisplayName>
     <PublisherDisplayName>Kalabhaftu</PublisherDisplayName>
@@ -22,8 +22,8 @@
             <uap:DisplayName>Music Player audio</uap:DisplayName>
             <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
             <uap2:SupportedVerbs>
-              <uap3:Verb Id="AddToQueue" MultiSelectModel="Player" Parameters="--add-to-queue &quot;%1&quot;">Add to Music Player queue</uap3:Verb>
-              <uap3:Verb Id="CreatePlaylist" MultiSelectModel="Player" Parameters="--create-playlist &quot;%1&quot;">Create Music Player playlist</uap3:Verb>
+              <uap3:Verb Id="AddToQueue" MultiSelectModel="Player">Add to Music Player queue</uap3:Verb>
+              <uap3:Verb Id="CreatePlaylist" MultiSelectModel="Player">Create Music Player playlist</uap3:Verb>
             </uap2:SupportedVerbs>
             <uap:SupportedFileTypes>
               <uap:FileType>.mp3</uap:FileType>

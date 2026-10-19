@@ -64,6 +64,7 @@ async function scrollIntoViewAfterRender(selector){
 await until(async()=>!(await page.locator("#routeView").innerText()).includes("Loading your library"),"Initial view did not render");
 assert(!(await page.locator("#routeView").innerText()).includes("could not connect"));
 const usableViewMs=performance.now()-started;
+if(!process.argv.includes("--restart"))assert.equal((await call("getBootstrap")).settings.minimizeToTray,true,"New profiles should keep the player running in the notification area by default");
 if(process.argv.includes("--restart")){
   const restored=await call("getBootstrap");
   assert.equal(restored.queueTotal,5,"Queue did not survive restart");
@@ -73,7 +74,7 @@ if(process.argv.includes("--restart")){
 await until(async()=>{
   const data=await call("getTracks",{view:"Songs",pageSize:200});
   return data.tracks.filter(track=>track.title.startsWith("MusicPlayerSmoke-")).length>=4;
-},"Automatic clean-profile drive discovery did not find the four fixtures",240000);
+},"Automatic clean-profile Music-folder scan did not find the four fixtures",240000);
 await call("cancelScan");
 await until(async()=>!(await call("getBootstrap")).scan.active,"Scan cancellation did not complete");
 await call("updateSettings",{settings:{autoLoadLyrics:false,motionStyle:"Off"}});
@@ -179,6 +180,29 @@ for(let index=0;index<15;index++){
     await until(async()=>!(await page.locator("#routeView").innerText()).includes("Loading your library"),"Navigation did not settle");
   }
   if(index%5===4)memorySamples.push(metrics());
+}
+await navigate("Settings");
+await until(async()=>await page.locator(".settings-panel").count()===1,"Settings layout did not render");
+const settingsLayout=await page.evaluate(()=>{
+  const menu=document.querySelector(".settings-menu"),panel=document.querySelector(".settings-panel");
+  return {menuWidth:menu.clientWidth,menuScrollWidth:menu.scrollWidth,panelWidth:panel.clientWidth,panelScrollWidth:panel.scrollWidth};
+});
+assert(settingsLayout.menuScrollWidth<=settingsLayout.menuWidth+1,"Settings categories should wrap instead of forcing horizontal scrolling");
+assert(settingsLayout.panelScrollWidth<=settingsLayout.panelWidth+1,"Settings controls should fit the available content width");
+const originalViewport=page.viewportSize();
+if(originalViewport){
+  try{
+    await page.setViewportSize({width:560,height:originalViewport.height});
+    await until(async()=>await page.evaluate(()=>window.innerWidth===560&&document.querySelector("#appRoot").classList.contains("sidebar-collapsed")),"Narrow layout did not auto-hide navigation",5000);
+    const narrowSettings=await page.evaluate(()=>{
+      const sidebar=document.querySelector(".sidebar"),menu=document.querySelector(".settings-menu");
+      return {sidebarVisibility:getComputedStyle(sidebar).visibility,sidebarWidth:getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim(),menuDisplay:getComputedStyle(menu).display,menuWidth:menu.clientWidth,menuScrollWidth:menu.scrollWidth};
+    });
+    assert.equal(narrowSettings.sidebarVisibility,"hidden","Auto-collapsed navigation should be fully hidden");
+    assert.equal(narrowSettings.sidebarWidth,"0px","Auto-collapsed navigation should not reserve an icon rail");
+    assert(narrowSettings.menuScrollWidth<=narrowSettings.menuWidth+1,"Narrow Settings categories should remain ordered without horizontal scrolling");
+    assert.equal(narrowSettings.menuDisplay,"grid","Narrow Settings categories should use the wrapped layout");
+  }finally{await page.setViewportSize(originalViewport);}
 }
 // Compare the last two batches after route caches have warmed up. The bound
 // tolerates browser housekeeping while rejecting sustained per-navigation growth.

@@ -9,6 +9,8 @@ internal sealed class TrayIconService : IDisposable
     private const uint WmNull = 0x0000, WmApp = 0x8000, WmContextMenu = 0x007B, WmLButtonUp = 0x0202, WmLButtonDoubleClick = 0x0203, WmRButtonUp = 0x0205;
     private const uint NinSelect = 0x0400, NinKeySelect = 0x0401;
     private const uint SizeMinimized = 1, SwHide = 0, SwRestore = 9, ImageIcon = 1, LoadFromFile = 0x10;
+    private static readonly IntPtr HwndTop = IntPtr.Zero;
+    private const int SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpShowWindow = 0x0040;
     private const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NimSetVersion = 4, NifMessage = 1, NifIcon = 2, NifTip = 4;
     private const uint TpmRightButton = 0x0002, TpmNonotify = 0x0080, TpmReturnCommand = 0x0100;
     private const uint MfSeparator = 0x0800;
@@ -48,7 +50,10 @@ internal sealed class TrayIconService : IDisposable
 
     public static void RestoreWindow(IntPtr window)
     {
+        if (!IsWindow(window)) return;
         ShowWindow(window, SwRestore);
+        SetWindowPos(window, HwndTop, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpShowWindow);
+        BringWindowToTop(window);
         SetForegroundWindow(window);
     }
 
@@ -199,6 +204,9 @@ internal sealed class TrayIconService : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr LoadImage(IntPtr instance, string name, uint type, int width, int height, uint flags);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyIcon(IntPtr icon);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, uint command);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, int flags);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "AppendMenuW", SetLastError = true)] private static extern bool AppendMenu(IntPtr menu, uint flags, uint itemId, string itemText);

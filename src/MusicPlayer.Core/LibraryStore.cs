@@ -12,7 +12,7 @@ public sealed record IndexedFileState(long Length, DateTime ModifiedUtc);
 
 public sealed partial class LibraryStore
 {
-    private const int SchemaVersion = 9;
+    private const int SchemaVersion = 10;
     private readonly string _databasePath;
     private readonly string _connectionString;
     private readonly LocalAppLog _log;
@@ -33,13 +33,17 @@ public sealed partial class LibraryStore
         _log = log ?? LocalAppLog.Shared;
         Directory.CreateDirectory(Path.GetDirectoryName(_databasePath)!);
         _connectionString = new SqliteConnectionStringBuilder { DataSource = _databasePath, Mode = SqliteOpenMode.ReadWriteCreate, DefaultTimeout = 30, ForeignKeys = true }.ToString();
-        if (File.Exists(_databasePath) && GetDatabaseIntegrityError(_databasePath) is { } integrityError)
+        // Opening a song must not wait for quick_check to walk the entire index.
+        // Validate the pages needed at startup; scans retain corruption recovery,
+        // and explicit repair still performs the full integrity check.
+        try
         {
-            _log.Warning("database", $"The Music Player library failed its startup integrity check ({integrityError}); rebuilding the index from the filesystem.");
-            if (!RebuildCorruptDatabaseCore())
-                throw new InvalidDataException("The Music Player library is damaged and could not be rebuilt. The damaged database has been preserved.");
+            Migrate();
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            foreach (var sql in new[] { "SELECT key FROM settings LIMIT 1", "SELECT path FROM tracks LIMIT 1", "SELECT id FROM playback_session LIMIT 1" })
+            { command.CommandText = sql; command.ExecuteScalar(); }
         }
-        try { Migrate(); }
         catch (SqliteException ex) when (IsDatabaseCorruption(ex))
         {
             _log.Error("database", "The library database was corrupt while opening; rebuilding the index from the filesystem.", ex);
@@ -411,6 +415,22 @@ public sealed partial class LibraryStore
         return command.ExecuteScalar() as string;
     }
 
+    public IReadOnlyDictionary<string, Track> GetTracksByPaths(IEnumerable<string> paths)
+    {
+        var result = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+        using var connection = Open();
+        foreach (var batch in paths.Distinct(StringComparer.OrdinalIgnoreCase).Chunk(200))
+        {
+            using var command = connection.CreateCommand();
+            var parameters = batch.Select((_, index) => "$path" + index).ToArray();
+            command.CommandText = "SELECT * FROM tracks WHERE path IN (" + string.Join(",", parameters) + ")";
+            for (var index = 0; index < batch.Length; index++) Add(command, parameters[index], batch[index]);
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) { var track = ReadTrack(reader); result[track.Path] = track; }
+        }
+        return result;
+    }
+
     public Track? GetTrack(string path)
     {
         using var connection = Open();
@@ -600,7 +620,7 @@ public sealed partial class LibraryStore
 
     /// <summary>Returns a bounded page of album, artist, or genre cards with representative artwork.</summary>
     public IReadOnlyList<LibraryGroup> GetGroupsPage(string column, string? search = null, int offset = 0, int pageSize = 100,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool hideExactDuplicates = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
@@ -610,7 +630,7 @@ public sealed partial class LibraryStore
         var match = BuildColumnSearchPredicate(safeColumn, terms, "$groupSearch");
         using var connection = Open(); using var command = connection.CreateCommand();
         using var cancellation = cancellationToken.Register(command.Cancel);
-        command.CommandText = $"SELECT {safeColumn},COUNT(*),MIN(artwork_path),MIN(artist),MIN(year) FROM tracks WHERE {VisibleGroupPredicate(safeColumn)} AND {match} GROUP BY {safeColumn} ORDER BY {safeColumn} COLLATE NOCASE,{safeColumn} LIMIT $limit OFFSET $offset";
+        command.CommandText = $"SELECT {safeColumn},{GroupTrackCountSql(hideExactDuplicates)},MIN(artwork_path),MIN(artist),MIN(year) FROM tracks WHERE {VisibleGroupPredicate(safeColumn)} AND {match} GROUP BY {safeColumn} ORDER BY {safeColumn} COLLATE NOCASE,{safeColumn} LIMIT $limit OFFSET $offset";
         BindColumnSearch(command, terms, "$groupSearch");
         Add(command, "$limit", pageSize); Add(command, "$offset", offset);
         using var reader = command.ExecuteReader();
@@ -639,15 +659,20 @@ public sealed partial class LibraryStore
         return count;
     }
 
+    private static string GroupTrackCountSql(bool hideExactDuplicates) => !hideExactDuplicates ? "COUNT(*)" : """
+        COUNT(DISTINCT COALESCE((SELECT 'sha256:'||f.file_size||':'||f.sha256 FROM track_fingerprints f
+          WHERE f.path=tracks.path AND f.file_size=tracks.file_size AND f.modified_utc=tracks.modified_utc), 'path:'||tracks.path))
+        """;
+
     private static string VisibleGroupPredicate(string column) =>
         $"musicplayer_visible(path) AND trim({column})<>'' AND lower(trim({column})) NOT IN ('undefined','null')";
 
-    public IReadOnlyList<LibraryGroup> GetArtistAlbumsPage(string artist, int offset = 0, int pageSize = 50)
+    public IReadOnlyList<LibraryGroup> GetArtistAlbumsPage(string artist, int offset = 0, int pageSize = 50, bool hideExactDuplicates = false)
     {
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
         if (pageSize is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(pageSize));
         using var connection = Open(); using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT album,COUNT(*),MIN(artwork_path),MIN(album_artist),MIN(year) FROM tracks WHERE {VisibleGroupPredicate("album")} AND artist=$artist GROUP BY album ORDER BY album COLLATE NOCASE,album LIMIT $limit OFFSET $offset";
+        command.CommandText = $"SELECT album,{GroupTrackCountSql(hideExactDuplicates)},MIN(artwork_path),MIN(album_artist),MIN(year) FROM tracks WHERE {VisibleGroupPredicate("album")} AND artist=$artist GROUP BY album ORDER BY album COLLATE NOCASE,album LIMIT $limit OFFSET $offset";
         Add(command, "$artist", artist); Add(command, "$limit", pageSize); Add(command, "$offset", offset);
         using var reader = command.ExecuteReader(); var groups = new List<LibraryGroup>(pageSize);
         while (reader.Read()) groups.Add(new(reader.GetString(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2),
@@ -715,6 +740,19 @@ public sealed partial class LibraryStore
         using var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO settings(key,value) VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value";
         Add(command, "$key", key); Add(command, "$value", value); command.ExecuteNonQuery();
+    }
+
+    public void SetSettings(IReadOnlyDictionary<string, string> values)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO settings(key,value) VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value";
+        var key = command.Parameters.Add("$key", SqliteType.Text);
+        var value = command.Parameters.Add("$value", SqliteType.Text);
+        foreach (var entry in values) { key.Value = entry.Key; value.Value = entry.Value; command.ExecuteNonQuery(); }
+        transaction.Commit();
     }
 
     public string? GetSetting(string key)
@@ -1254,10 +1292,38 @@ public sealed partial class LibraryStore
             using var transaction = connection.BeginTransaction();
             using var migrate = connection.CreateCommand();
             migrate.Transaction = transaction;
-            migrate.CommandText = "CREATE TABLE IF NOT EXISTS playback_session(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE playback_queue(position INTEGER PRIMARY KEY,track_path TEXT NOT NULL);";
+            migrate.CommandText = "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS playback_session(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE playback_queue(position INTEGER PRIMARY KEY,track_path TEXT NOT NULL);";
             migrate.ExecuteNonQuery();
             NormalizeLegacySession(connection, transaction);
             migrate.CommandText = "PRAGMA user_version=9";
+            migrate.ExecuteNonQuery();
+            transaction.Commit();
+            version = 9;
+        }
+        if (version == 9)
+        {
+            // Windows scan lookups use NOCASE; the binary primary key cannot serve them.
+            // Recreate missing scan bookkeeping tables for older or partially initialized
+            // databases before adding the lookup index. Existing rows and tables are kept.
+            using var transaction = connection.BeginTransaction();
+            using var migrate = connection.CreateCommand();
+            migrate.Transaction = transaction;
+            migrate.CommandText = """
+                CREATE TABLE IF NOT EXISTS scan_runs(id INTEGER PRIMARY KEY AUTOINCREMENT, started_utc TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS scan_roots(run_id INTEGER NOT NULL, root_path TEXT NOT NULL, root_prefix TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY(run_id,root_path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_seen(run_id INTEGER NOT NULL, path TEXT NOT NULL, PRIMARY KEY(run_id,path),
+                  FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path),
+                  FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_default_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL,
+                  PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_incomplete_paths(run_id INTEGER NOT NULL,path TEXT NOT NULL,prefix TEXT NOT NULL,
+                  PRIMARY KEY(run_id,path),FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE INDEX IF NOT EXISTS ix_tracks_path_nocase ON tracks(path COLLATE NOCASE);
+                CREATE INDEX IF NOT EXISTS ix_scan_seen_run_path_nocase ON scan_seen(run_id,path COLLATE NOCASE);
+                PRAGMA user_version=10;
+                """;
             migrate.ExecuteNonQuery();
             transaction.Commit();
         }

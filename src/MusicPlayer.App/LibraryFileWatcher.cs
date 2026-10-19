@@ -135,7 +135,7 @@ internal sealed class LibraryFileWatcher : IDisposable
             if (_disposed) return;
             if (path is null) _changes.RequestRecovery();
             else _changes.AddDirectory(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!);
-            _rescanTimer.Change(1200, Timeout.Infinite);
+            _rescanTimer.Change(30_000, Timeout.Infinite);
         }
     }
 

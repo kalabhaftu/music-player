@@ -63,15 +63,11 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
 
     public static IEnumerable<string> DefaultRoots()
     {
-        foreach (var drive in DriveInfo.GetDrives())
-        {
-            var include = false;
-            try { include = drive.DriveType is DriveType.Fixed or DriveType.Removable && drive.IsReady; }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            if (include) yield return drive.RootDirectory.FullName;
-        }
+        // A first-run scan should start with the user's music collection, not
+        // every file on every mounted drive. Users can add any other folders
+        // explicitly in the library settings.
+        var music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+        if (!string.IsNullOrWhiteSpace(music)) yield return Path.GetFullPath(music);
     }
 
     public async Task ScanAsync(
@@ -100,6 +96,7 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
         var ignored = ignoredDirectories.Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))).ToHashSet(PathComparer);
         var filesFound = 0;
         var directoriesVisited = 0;
+        var nextProgress = Environment.TickCount64;
         foreach (var suppliedRoot in roots)
         {
             control.Token.ThrowIfCancellationRequested();
@@ -209,7 +206,11 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
                         {
                             await onAudioFile(entry, control.Token).ConfigureAwait(false);
                             filesFound++;
-                            if (filesFound % 16 == 0) progress?.Report(new(filesFound, directoriesVisited, entry));
+                            if (Environment.TickCount64 >= nextProgress)
+                            {
+                                nextProgress = Environment.TickCount64 + 250;
+                                progress?.Report(new(filesFound, directoriesVisited, entry));
+                            }
                         }
                     }
                 }

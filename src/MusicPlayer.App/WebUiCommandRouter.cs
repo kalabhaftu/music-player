@@ -35,9 +35,9 @@ internal sealed class WebUiCommandRouter
             "addFolder", "removeRoot", "scanLibrary", "rebuildLibraryIndex", "toggleScanPause", "cancelScan", "showInFolder", "showFilePath");
         Register(metadata, "saveLyrics", "searchLyrics", "saveTags", "restoreTags", "pickArtwork");
         Register(settings,
-            "setAudioDevice", "setCrossfade", "refreshAudioDevices", "setEqualizerPreset", "setEqualizerBand", "setExtensionEnabled",
+            "setAudioDevice", "setCrossfade", "refreshAudioDevices", "setEqualizerPreset", "setEqualizerBand", "setEqualizerBands", "setExtensionEnabled",
             "saveEqualizerPreset", "updateSettings", "resetUiSettings", "addExclusion", "removeExclusion", "checkUpdates");
-    Register(utilities, "openLogs", "exportLogs", "openRelease", "openLegalFile", "setPanelMode", "setImmersiveMode", "openDefaultApps", "copyTrackPath", "reportFrontendError");
+        Register(utilities, "openLogs", "exportLogs", "openRelease", "openLegalFile", "setPanelMode", "setImmersiveMode", "expandWindowForQueue", "restoreWindowAfterQueue", "openDefaultApps", "copyTrackPath", "reportFrontendError");
     }
 
     public bool CanRoute(string name) => _routes.ContainsKey(name);

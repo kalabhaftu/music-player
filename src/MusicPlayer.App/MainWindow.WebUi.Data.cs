@@ -19,18 +19,24 @@ public sealed partial class MainWindow
         return new { tracks, totalCount = _store.CountPlaylistEntries(id, search) };
     }
 
-    private object[] QueueDtos(int offset, int pageSize) => _queue.Skip(offset).Take(pageSize).Select(path =>
-        _store.GetTrack(path) is { } track ? (object)_libraryQueries.TrackDto(track) : new { id = _libraryQueries.TrackId(path), title = Path.GetFileNameWithoutExtension(path), artist = "Unavailable", album = "", albumArtist = "", genre = "", year = 0u, trackNumber = 0u, durationSeconds = 0d, addedDisplay = "Unavailable", lastPlayedDisplay = "", favorite = false, rating = 0, playCount = 0, artworkUrl = (string?)null, unavailable = true, fileUnavailable = _libraryQueries.IsTrackUnavailable(path) }).ToArray();
+    private object[] QueueDtos(int offset, int pageSize) => QueueDtos(_queue.Skip(offset).Take(pageSize).ToArray());
+    private object[] QueueDtos(string[] paths)
+    {
+        var tracks = _store.GetTracksByPaths(paths);
+        return paths.Select(path => tracks.TryGetValue(path, out var track) ? (object)_libraryQueries.TrackDto(track) : new { id = _libraryQueries.TrackId(path), title = Path.GetFileNameWithoutExtension(path), artist = "Unavailable", album = "", albumArtist = "", genre = "", year = 0u, trackNumber = 0u, durationSeconds = 0d, addedDisplay = "Unavailable", lastPlayedDisplay = "", favorite = false, rating = 0, playCount = 0, artworkUrl = (string?)null, unavailable = true, fileUnavailable = _libraryQueries.IsTrackUnavailable(path) }).ToArray();
+    }
 
-    private object QueuePage(JsonElement payload)
+    private async Task<object> QueuePageAsync(JsonElement payload)
     {
         var offset = Math.Clamp(Int(payload, "offset"), 0, _queue.Count);
         var pageSize = Math.Clamp(Int(payload, "pageSize", 100), 1, 200);
+        var paths = _queue.Skip(offset).Take(pageSize).ToArray();
+        var totalCount = _queue.Count;
+        var queueIndex = WebQueueIndex;
+        var entries = await Task.Run(() => QueueDtos(paths));
         return new
         {
-            entries = QueueDtos(offset, pageSize),
-            totalCount = _queue.Count,
-            queueIndex = _queueIndex
+            entries, totalCount, queueIndex
         };
     }
 

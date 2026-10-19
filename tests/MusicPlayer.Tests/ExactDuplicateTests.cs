@@ -186,7 +186,7 @@ public sealed class ExactDuplicateTests : IDisposable
         using var verify = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database }.ToString());
         verify.Open();
         using var version = verify.CreateCommand(); version.CommandText = "PRAGMA user_version";
-        Assert.Equal(9L, Convert.ToInt64(version.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(10L, Convert.ToInt64(version.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
         using var table = verify.CreateCommand(); table.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='track_fingerprints'";
         Assert.Equal(1L, Convert.ToInt64(table.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
         using var trigger = verify.CreateCommand(); trigger.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='track_fingerprints_invalidate_after_track_update'";
