@@ -64,7 +64,7 @@ async function scrollIntoViewAfterRender(selector){
 await until(async()=>!(await page.locator("#routeView").innerText()).includes("Loading your library"),"Initial view did not render");
 assert(!(await page.locator("#routeView").innerText()).includes("could not connect"));
 const usableViewMs=performance.now()-started;
-if(!process.argv.includes("--restart"))assert.equal((await call("getBootstrap")).settings.minimizeToTray,true,"New profiles should keep the player running in the notification area by default");
+if(!process.argv.includes("--restart")&&process.env.MUSICPLAYER_TEST_EXPECT_NEW_PROFILE!=="false")assert.equal((await call("getBootstrap")).settings.minimizeToTray,true,"New profiles should keep the player running in the notification area by default");
 if(process.argv.includes("--restart")){
   const restored=await call("getBootstrap");
   assert.equal(restored.queueTotal,5,"Queue did not survive restart");
