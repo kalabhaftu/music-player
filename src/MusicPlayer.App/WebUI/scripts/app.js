@@ -183,6 +183,19 @@ function applyLayoutPreferences(){
   const columnWidths=state.settings.songColumnWidths||{};
   for(const key of ["title","album","added","year","plays","duration"]){const width=Number(columnWidths[key]);if(Number.isFinite(width)&&width>0)root?.style.setProperty(`--song-col-${key}`,`${width}px`);else root?.style.removeProperty(`--song-col-${key}`);}
   root?.classList.toggle("sidebar-collapsed",collapsed);
+  const compactPanel=window.innerWidth<=1000||window.innerWidth-sidebarWidth-rightWidth<420;
+  if(!compactPanel||!root.classList.contains("panel-compact"))state.panelCompactExpanded=false;
+  const panelVisible=compactPanel?!!state.panelCompactExpanded:!!state.panelOpen;
+  root.classList.toggle("panel-open",!!state.panelOpen);
+  root.classList.toggle("panel-closed",!state.panelOpen);
+  root.classList.toggle("panel-compact",compactPanel);
+  root.classList.toggle("panel-peek",compactPanel&&panelVisible);
+  const panelScroll=$("#panelScroll");panelScroll.inert=!panelVisible;panelScroll.setAttribute("aria-hidden",String(!panelVisible));
+  $("#panelExpand").setAttribute("aria-expanded",String(panelVisible));
+  const panelToggle=$("#panelToggleBtn"),panelLabel=panelVisible?"Collapse queue sidebar":"Expand queue sidebar";
+  panelToggle.setAttribute("aria-label",panelLabel);panelToggle.title=panelLabel;panelToggle.setAttribute("aria-expanded",String(panelVisible));
+  if(!panelVisible&&$("#rightPanel").contains(document.activeElement)&&document.activeElement!==$("#panelExpand"))
+    (compactPanel?$("#panelExpand"):panelToggle).focus();
   const toggle=$("#sidebarToggleBtn");
   if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));}
   const navResize=$("#sidebarResize"); if(navResize)navResize.setAttribute("aria-valuenow",String(Math.round(sidebarWidth)));
@@ -524,7 +537,7 @@ document.addEventListener("keydown",async e=>{
   if((e.altKey||e.metaKey)&&e.key==="ArrowRight"){e.preventDefault();await call("next");return;}
   if(e.key==="Enter"&&e.target.matches("tr[data-track]")){await action("play-track",{dataset:{id:e.target.dataset.track}});}
   if(e.key==="Enter"&&e.target.matches("[data-open-type]"))e.target.click();
-  if(e.key==="Escape"){closeModal();$("#contextMenu").classList.remove("show");}
+  if(e.key==="Escape"){if($("#modalLayer").hidden&&!$("#contextMenu").classList.contains("show")&&state.panelCompactExpanded)setCompactPanelExpanded(false);closeModal();$("#contextMenu").classList.remove("show");}
 });
 document.addEventListener("keydown",async e=>{
   if(e.code!=="Space"||e.repeat||e.ctrlKey||e.altKey||e.metaKey)return;
@@ -648,7 +661,15 @@ immersiveProgress.addEventListener("input",()=>{progressRange.value=immersivePro
 immersiveProgress.addEventListener("pointerup",()=>{if(state.seeking){progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});}});
 immersiveProgress.addEventListener("change",()=>{if(!state.seeking)state.seeking=true;progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});});
 $("#volumeRange").addEventListener("input",e=>setVolume(e.target.value)); $("#muteBtn").addEventListener("click",toggleMute);
-function setPanelOpen(open,persist=true){const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;const root=$("#appRoot");root.classList.toggle("panel-closed",!state.panelOpen);root.classList.toggle("panel-open",state.panelOpen);$("#panelToggleBtn").setAttribute("aria-label",state.panelOpen?"Hide Now Playing panel":"Show Now Playing panel");$("#panelToggleBtn").title=state.panelOpen?"Hide Now Playing panel":"Show Now Playing panel";if(persist&&changed){state.settings.rightPanelOpen=next;panelOpenSave=panelOpenSave.catch(()=>{}).then(()=>call("updateSettings",{settings:{rightPanelOpen:next}})).catch(()=>{});}}
+function setCompactPanelExpanded(open){
+  state.panelCompactExpanded=!!open;applyLayoutPreferences();
+  if(open)$("#panelClose").focus();
+}
+function setPanelOpen(open,persist=true){
+  if(persist&&$("#appRoot").classList.contains("panel-compact")){setCompactPanelExpanded(open);return;}
+  const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;applyLayoutPreferences();
+  if(persist&&changed){state.settings.rightPanelOpen=next;panelOpenSave=panelOpenSave.catch(()=>{}).then(()=>call("updateSettings",{settings:{rightPanelOpen:next}})).catch(()=>{});}
+}
 function startPanelResize(handle,kind){
   let active=false;
   const move=e=>{if(!active)return;const collapsed=$("#appRoot").classList.contains("sidebar-collapsed"),navWidth=collapsed?78:clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);if(kind==="sidebar"){const max=Math.max(180,window.innerWidth-360-(state.panelOpen?220:0));layoutDrag.sidebarWidth=clamp(e.clientX,180,Math.min(360,max));layoutDrag.sidebarCollapsed=false;}else{const max=Math.max(240,window.innerWidth-navWidth-360);layoutDrag.rightWidth=clamp(window.innerWidth-e.clientX,240,Math.min(460,max));}applyLayoutPreferences();};
@@ -714,7 +735,7 @@ function updateScanPresentation(scan) {
     action.textContent=hasRoots?"Scan folders":"Add music folder";
   }
 }
-$("#panelClose").addEventListener("click",()=>setPanelOpen(false));$("#panelToggleBtn").addEventListener("click",()=>setPanelOpen(!state.panelOpen));$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
+$("#panelClose").addEventListener("click",()=>setPanelOpen(false));$("#panelExpand").addEventListener("click",()=>setCompactPanelExpanded(true));$("#panelToggleBtn").addEventListener("click",()=>{if($("#appRoot").classList.contains("panel-compact"))setCompactPanelExpanded(!state.panelCompactExpanded);else setPanelOpen(!state.panelOpen);});$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
 async function refreshAudioControls(data=undefined){
   data??=await call("getAudioSettings");
   const editing=!!pendingEqBands||!!eqWrite;const preset=$("#eqPreset");if(preset&&!editing){preset.innerHTML=["Off","Custom",...(data.presets||[])].filter((value,index,all)=>all.indexOf(value)===index).map(name=>`<option ${name==="Custom"?'disabled ':''}value="${esc(name)}">${esc(name)}</option>`).join("");preset.value=data.currentPreset||"Off";syncSelect(preset);}
@@ -815,7 +836,7 @@ onEvent((name,data)=>{
     updatePlayer();
     if(!wasPlaying&&state.playing&&state.track&&state.lyricsTrack?.id!==state.track.id&&state.lyricsLoadingTrackId!==state.track.id)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);
   }
-  else if(name==="trackChanged"){const volume=state.volume;state.trackEventRevision=(state.trackEventRevision||0)+1;state.track=data.track||null;state.trackId=state.track?.id||"";state.lyricsLoadRevision++;state.lyricsLoadingTrackId="";state.lyricLines=[];state.lyricText="";state.lyricsTrack=null;state.lyricsRaw="";state.lyricsSource="none";state.lyricsAutoError="";state.lyricsRevision++;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});if(state.volumeEditing)state.volume=volume;state.positionUpdatedAt=performance.now();if(state.settings.autoOpenPanel&&window.innerWidth>900)setPanelOpen(true);updatePlayer();updatePanel();loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);if(state.view==="Lyrics"||state.view==="Now Playing")renderView();}
+  else if(name==="trackChanged"){const volume=state.volume;state.trackEventRevision=(state.trackEventRevision||0)+1;state.track=data.track||null;state.trackId=state.track?.id||"";state.lyricsLoadRevision++;state.lyricsLoadingTrackId="";state.lyricLines=[];state.lyricText="";state.lyricsTrack=null;state.lyricsRaw="";state.lyricsSource="none";state.lyricsAutoError="";state.lyricsRevision++;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});if(state.volumeEditing)state.volume=volume;state.positionUpdatedAt=performance.now();if(state.settings.autoOpenPanel&&!$("#appRoot").classList.contains("panel-compact"))setPanelOpen(true);updatePlayer();updatePanel();loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);if(state.view==="Lyrics"||state.view==="Now Playing")renderView();}
   else if (name === "queueChanged") { state.queueEventRevision=(state.queueEventRevision||0)+1;state.queue = data.entries || []; state.queueOffset = data.queueOffset || 0; state.queueTotal = data.totalCount || 0; state.queueIndex = data.queueIndex ?? -1; updatePanel(); if (state.view === "Queue") { if (data.itemsChanged)void renderView(false,null,true); else updateQueueCurrentIndicator(); } }
   else if(name==="favoriteChanged"){const favorite=!!data.favorite;if(state.view==="Favorites"&&!favorite){const removedIndex=(state.items||[]).findIndex(track=>track.id===data.id);for(const row of $$("tr[data-track]"))if(row.dataset.track===data.id)row.remove();state.items=(state.items||[]).filter(track=>track.id!==data.id);state.total=Math.max(0,(state.total||0)-1);if(removedIndex>=0){state.nextOffset=Math.max(0,(state.nextOffset||0)-1);if(removedIndex<(state.offset||0))state.offset=Math.max(0,state.offset-1);}const subtitle=$("#routeView .page-head p");if(subtitle)subtitle.textContent=`${state.total.toLocaleString()} tracks`;}if(state.track?.id===data.id){state.track.favorite=favorite;updatePlayer();updatePanel();}for(const collection of [state.items,state.queue,state.queueItems])for(const track of collection||[])if(track.id===data.id)track.favorite=favorite;for(const button of $$('[data-action="favorite"]'))if(button.dataset.id===data.id){button.classList.toggle("on",favorite);button.setAttribute("aria-pressed",String(favorite));button.setAttribute("aria-label",favorite?"Remove from favorites":"Add to favorites");button.title=favorite?"Remove from favorites":"Add to favorites";if(!button.classList.contains("heart"))button.textContent=favorite?"♥ Favorited":"♡ Favorite";}}
   else if(name==="trackAvailabilityChanged"){if(state.track?.id===data.id)state.track.fileUnavailable=!!data.fileUnavailable;for(const track of state.queue||[])if(track.id===data.id)track.fileUnavailable=!!data.fileUnavailable;for(const track of state.queueItems||[])if(track.id===data.id)track.fileUnavailable=!!data.fileUnavailable;updatePlayer();updatePanel();if(state.view==="Queue")renderView();}
@@ -867,3 +888,7 @@ async function start() {
   catch(error) { $("#routeView").innerHTML=`<div class="empty-state"><b>Music Player could not connect to Windows</b>${esc(error.message)}</div>`; }
 }
 start();
+
+document.addEventListener("pointerdown",event=>{
+  if(state.panelCompactExpanded&&!$("#rightPanel").contains(event.target)&&!$("#panelToggleBtn").contains(event.target)&&$("#modalLayer").hidden&&!event.target.closest(".context-menu,.select-popup"))setCompactPanelExpanded(false);
+});

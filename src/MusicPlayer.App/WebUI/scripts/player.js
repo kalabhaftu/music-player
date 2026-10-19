@@ -111,6 +111,9 @@ function updateActiveLyric(){
 }
 
 function updatePanel() {
+  const queued=Math.max(0,(state.queueTotal||0)-Math.max(0,(state.queueIndex??-1)+1)),badge=$("#panelRailCount"),expand=$("#panelExpand");
+  if(badge){const text=queued>99?"99+":String(queued);if(badge.textContent!==text)badge.textContent=text;badge.hidden=queued===0;}
+  if(expand){const label=`Expand queue sidebar · ${queued} upcoming ${queued===1?"track":"tracks"}`;expand.title=label;expand.setAttribute("aria-label",label);}
   const key=JSON.stringify([state.panel,state.track,state.trackDetails,state.queueIndex,state.queueOffset,state.queue]);
   if(key===panelRenderKey)return;
   panelRenderKey=key;

@@ -331,7 +331,7 @@ button.lyric-line { cursor:pointer; }
 .song-table:not(.queue-table) th[data-column="year"],.song-table:not(.queue-table) td[data-column="year"] { width:var(--song-col-year,70px); }
 .song-table:not(.queue-table) th[data-column="plays"],.song-table:not(.queue-table) td[data-column="plays"] { width:var(--song-col-plays,76px); }
 .song-table:not(.queue-table) th[data-column="duration"],.song-table:not(.queue-table) td[data-column="duration"] { width:var(--song-col-duration,64px); }
-.column-resize { position:absolute; z-index:2; top:0; right:-6px; width:13px; height:100%; touch-action:none; cursor:col-resize !important; }
+.column-resize { position:absolute; z-index:2; top:0; right:0; width:12px; height:100%; touch-action:none; cursor:col-resize !important; }
 .column-resize:hover,.column-resize:focus-visible { background:rgba(var(--accent-rgb),.2); }
 [data-resizing="columns"] *,[data-resizing="true"] * { cursor:col-resize !important; }
 
