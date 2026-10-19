@@ -6,7 +6,7 @@ import { createLibraryViews } from "../../src/MusicPlayer.App/WebUI/scripts/libr
 function fixture(view,call,extra={}) {
   const root={innerHTML:"",insertAdjacentHTML(_where,html){this.innerHTML+=html;},cloneNode(){return {innerHTML:this.innerHTML,querySelectorAll:()=>[]};}};
   const grid={innerHTML:"",insertAdjacentHTML(_where,html){this.innerHTML+=html;}};
-  const state={view,offset:0,pageSize:200,items:[],search:"",sort:"Title",descending:false,settings:{},...extra};
+  const state={view,offset:0,pageSize:200,items:[],search:"",sort:"Title",descending:false,queueIndex:-1,settings:{},...extra};
   const alerts=[];
   const noop=()=>{};
   const views=createLibraryViews({state,$:selector=>selector==="#artistAlbumsGrid"?grid:root,$$:()=>[],svg:()=>"",paintIcons:noop,esc:value=>String(value??""),initials:()=>"",cover:()=>"",titleOf:item=>item.name||item.title,subOf:()=>"",fmtDuration:()=>"0:03",bytesLabel:String,call,toast:message=>alerts.push(message),setTheme:noop,applyNavigationSettings:noop,openModal:noop,updatePlayer:noop,updatePanel:noop,ensureLyricsLoaded:noop});

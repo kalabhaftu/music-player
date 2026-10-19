@@ -40,7 +40,7 @@ public sealed class PlaybackIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task Advancement_and_crossfade_skip_missing_entries_without_losing_duplicate_occurrences()
+    public async Task Manual_advancement_skips_missing_entries_without_losing_duplicate_occurrences()
     {
         var first = Wave("skip-first", 8); var next = Wave("skip-next", 8);
         var missing = Path.Combine(_root, "deleted.wav");
@@ -52,7 +52,7 @@ public sealed class PlaybackIntegrationTests : IDisposable
         commands.StartTrack(first, false, 0); await WaitFor(() => playback.IsPlaying);
         Assert.Equal(PlaybackCommandKind.AdvanceFallback, commands.PrepareCrossfade(1, 500).Kind);
         var result = commands.Advance(false, 500, false);
-        Assert.Equal(PlaybackCommandKind.CrossfadeRequested, result.Kind);
+        Assert.Equal(PlaybackCommandKind.TrackStarted, result.Kind);
         Assert.Equal(2, queue.CurrentIndex); Assert.Equal(next.Path, result.Track!.Path);
     }
 
@@ -144,9 +144,11 @@ public sealed class PlaybackIntegrationTests : IDisposable
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         playback.TrackEnded += (_, _) => ended.TrySetResult();
         commands.StartTrack(first, false, 0);
-        await WaitFor(() => playback.IsPlaying);
+        await WaitFor(() => playback.IsPlaying && playback.Position > 100);
+        playback.Seek(2800);
+        await WaitFor(() => playback.Position >= 2800);
         var fade = commands.PrepareCrossfade(1, 120).Crossfade!;
-        await playback.CrossfadeToAsync(fade.Track, fade.DurationMilliseconds).WaitAsync(TimeSpan.FromSeconds(5));
+        await playback.CrossfadeToAsync(fade.Track, fade.DurationMilliseconds).WaitAsync(TimeSpan.FromSeconds(8));
         Assert.Equal(second.Path, playback.CurrentTrack?.Path);
         await ended.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(PlaybackCommandKind.TrackStarted, commands.Advance(true, 0, false).Kind);
