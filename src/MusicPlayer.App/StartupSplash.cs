@@ -56,7 +56,7 @@ internal sealed class StartupSplash : IDisposable
             }
             finally { if (icon != 0) GdipDisposeImage(icon); }
             Check(GdipCreateFontFamilyFromName("Segoe UI", 0, out family));
-            Check(GdipCreateFont(family, 16 * scale, 0, 2, out font));
+            Check(GdipCreateFont(family, 17 * scale, 1, 2, out font));
             Check(GdipCreateSolidFill(0xFFF5F7F4, out brush));
             Check(GdipCreateSolidFill(0xD0000000, out shadow));
             Check(GdipCreateStringFormat(0, 0, out format));
