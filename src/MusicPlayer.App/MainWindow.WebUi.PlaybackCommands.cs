@@ -86,10 +86,9 @@ public sealed partial class MainWindow
                 if (SameTrack(_playback.CurrentTrack?.Path, updated.Path))
                 {
                     _playback.UpdateTrackMetadata(updated);
-                    UpdateCurrentTrack(updated);
                 }
                 _webBridge?.SendEvent("favoriteChanged", new { id = _libraryQueries.TrackId(updated.Path), favorite = updated.Favorite });
-                PublishLibraryChanged(); return null;
+                PublishLibraryChanged("favorite"); return null;
             }
             case "setRating":
             {
@@ -98,13 +97,13 @@ public sealed partial class MainWindow
                 if (SameTrack(_playback.CurrentTrack?.Path, track.Path) && _store.GetTrack(track.Path) is { } updated)
                 {
                     _playback.UpdateTrackMetadata(updated);
-                    UpdateCurrentTrack(updated);
                 }
                 PublishLibraryChanged(); return null;
             }
             case "playNext":
             {
                 var track = RequireTrack(payload, "id");
+                CancelCrossfadeAndRestoreQueue();
                 EnsureQueueInitialized();
                 _playbackQueue.InsertNext(track.Path, RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
@@ -113,7 +112,8 @@ public sealed partial class MainWindow
             case "addToQueue":
             {
                 var track = RequireTrack(payload, "id");
-                _playbackQueue.Append([track.Path], RetainedCurrentPath);
+                CancelCrossfadeAndRestoreQueue();
+                _playbackQueue.InsertNextRange([track.Path], RetainedCurrentPath);
                 SaveSession(); PublishQueueStateIfChanged();
                 return null;
             }

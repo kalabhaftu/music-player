@@ -36,9 +36,11 @@ public sealed partial class MainWindow
     {
         var devices = new List<object> { new { id = "", name = "System default" } };
         var availableIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var devicesListed = false;
         try
         {
             var listed = await DeviceInformation.FindAllAsync(MediaDevice.GetAudioRenderSelector());
+            devicesListed = true;
             var enabled = listed.Where(device => device.IsEnabled && !string.IsNullOrWhiteSpace(device.Id))
                 .GroupBy(device => device.Id, StringComparer.OrdinalIgnoreCase).Select(group => group.First())
                 .OrderBy(device => device.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
@@ -46,9 +48,17 @@ public sealed partial class MainWindow
             devices.AddRange(enabled.Select(device => (object)new { id = device.Id, name = device.Name }));
         }
         catch (Exception ex) { LocalAppLog.Shared.Warning("audio-devices", "Could not list Windows audio devices.", ex); }
-        var selectedId = _store.GetSetting("audio-output-device") ?? "";
+        var selectedId = _playback.AudioOutputDeviceId;
         var selectedName = _store.GetSetting("audio-output-name") ?? "System default";
-        if (!string.IsNullOrWhiteSpace(selectedId) && !availableIds.Contains(selectedId)) devices.Add(new { id = selectedId, name = $"{selectedName} (not connected)" });
+        if (devicesListed && !string.IsNullOrWhiteSpace(selectedId) && !availableIds.Contains(selectedId))
+        {
+            CancelCrossfadeAndRestoreQueue();
+            _playback.SelectAudioOutputDevice(null);
+            _store.SetSetting("audio-output-device", "");
+            _store.SetSetting("audio-output-name", "System default");
+            selectedId = "";
+        }
+        if (selectedId.Length == 0) selectedName = "System default";
         var bands = PlaybackService.EqualizerBands();
         var currentPreset = _store.GetSetting("eq-current") ?? "Off";
         var values = CurrentEqualizerBands(bands.Count);
@@ -68,12 +78,16 @@ public sealed partial class MainWindow
             name = devices.FirstOrDefault(device => device.Id == id)?.Name ?? (_store.GetSetting("audio-output-name") ?? "Saved output");
         }
         CancelCrossfadeAndRestoreQueue();
-        _playback.SelectAudioOutputDevice(id); _store.SetSetting("audio-output-device", id); _store.SetSetting("audio-output-name", name);
+        _playback.SelectAudioOutputDevice(id);
+        id = _playback.AudioOutputDeviceId;
+        if (id.Length == 0) name = "System default";
+        _store.SetSetting("audio-output-device", id); _store.SetSetting("audio-output-name", name);
         await ShowNoticeAsync($"Audio output: {name}.");
     }
 
     private void SetCrossfade(int seconds)
     {
+        CancelCrossfadeAndRestoreQueue();
         _crossfadeSeconds = seconds is 2 or 3 or 5 or 8 or 10 ? seconds : 0;
         _store.SetSetting("crossfade-seconds", _crossfadeSeconds.ToString(CultureInfo.InvariantCulture));
     }
@@ -108,7 +122,7 @@ public sealed partial class MainWindow
 
     private void SaveEqualizerPreset(string name)
     {
-        name = name.Trim(); if (name.Length is < 1 or > 60 || name.Equals("Off", StringComparison.OrdinalIgnoreCase) || PlaybackService.EqualizerPresets().Contains(name, StringComparer.OrdinalIgnoreCase))
+        name = name.Trim(); if (name.Length is < 1 or > 60 || name.Equals("Off", StringComparison.OrdinalIgnoreCase) || name.Equals("Custom", StringComparison.OrdinalIgnoreCase) || PlaybackService.EqualizerPresets().Contains(name, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException("Choose a preset name that is different from the built-in presets.");
         var bands = CurrentEqualizerBands(PlaybackService.EqualizerBands().Count);
         var key = "eq-preset:" + name; _store.SetSetting(key, JsonSerializer.Serialize(bands)); _store.SetSetting("eq-bands", JsonSerializer.Serialize(bands)); _store.SetSetting("eq-current", name);
@@ -130,7 +144,7 @@ public sealed partial class MainWindow
                 _webBridge?.SendEvent("artworkAccentChanged", new { color = (string?)null, palette = (object?)null });
             }
         }
-        PublishSettingsChanged(); PublishLibraryChanged();
+        PublishSettingsChanged();
     }
 
 }

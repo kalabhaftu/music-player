@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
 {
     private bool MoveQueueEntry(int index, int direction, int? targetIndex = null)
     {
+        CancelCrossfadeAndRestoreQueue();
         var changed = targetIndex is { } destination
             ? _playbackQueue.MoveEntryTo(index, destination)
             : _playbackQueue.MoveEntry(index, direction);
@@ -42,6 +43,7 @@ public sealed partial class MainWindow : Window
 
     private bool RemoveQueueEntry(int index)
     {
+        CancelCrossfadeAndRestoreQueue();
         if (!_playbackQueue.RemoveEntry(index)) return false;
         SaveSession();
         PublishQueueStateIfChanged();
@@ -50,6 +52,7 @@ public sealed partial class MainWindow : Window
 
     private void ClearUpcomingQueue()
     {
+        CancelCrossfadeAndRestoreQueue();
         _playbackQueue.ClearUpcoming(RetainedCurrentPath);
         SaveSession();
         PublishQueueStateIfChanged();
@@ -80,6 +83,7 @@ public sealed partial class MainWindow : Window
                 return;
             case PlaybackCommandKind.TrackStarted:
             {
+                DeferDuplicatePreparation();
                 var track = result.Track;
                 if (track is null) return;
                 if (!_playback.IsVideoMode) CloseVideoPlaybackWindow(pauseVideo: false);
@@ -102,6 +106,7 @@ public sealed partial class MainWindow : Window
                 PublishPlaybackState();
                 return;
             case PlaybackCommandKind.Resumed:
+                DeferDuplicatePreparation();
                 _playbackListening.MarkResumed(_playback.Position);
                 if (result.Track is { } resumedTrack)
                 {
@@ -151,7 +156,7 @@ public sealed partial class MainWindow : Window
             var tracks = await ReadExternalTracksAsync(paths);
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be opened."); return; }
 
-            _store.UpsertTracks(tracks);
+            await Task.Run(() => _store.UpsertTracks(tracks));
             CancelCrossfadeAndRestoreQueue();
             var nextQueue = QueueNavigation.BuildExternalOpenQueue(
                 tracks.Select(track => track.Path), _playback.CurrentTrack?.Path, _queue, _queueIndex);
@@ -177,8 +182,9 @@ public sealed partial class MainWindow : Window
             var tracks = await ReadExternalTracksAsync(paths);
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be added."); return; }
 
-            _store.UpsertTracks(tracks);
-            _playbackQueue.Append(tracks.Select(track => track.Path), RetainedCurrentPath);
+            await Task.Run(() => _store.UpsertTracks(tracks));
+            CancelCrossfadeAndRestoreQueue();
+            _playbackQueue.InsertNextRange(tracks.Select(track => track.Path), RetainedCurrentPath);
             PublishLibraryChanged();
             SaveSession();
             PublishQueueStateIfChanged();
@@ -194,27 +200,33 @@ public sealed partial class MainWindow : Window
 
     public async Task CreatePlaylistFromExternalFilesAsync(IReadOnlyList<string> paths)
     {
-        var name = new TextBox { PlaceholderText = "Playlist name", MinWidth = 300, MaxLength = 120 };
-        AutomationProperties.SetName(name, "New playlist name");
-        var dialog = new ContentDialog
-        {
-            Title = "Create playlist from files",
-            Content = name,
-            PrimaryButtonText = "Create playlist",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = ShellRoot.XamlRoot
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        if (string.IsNullOrWhiteSpace(name.Text)) { await ShowNoticeAsync("Enter a playlist name first."); return; }
-
         await _externalFileActionGate.WaitAsync();
         try
         {
+            await _shellReady.Task;
+            if (_windowClosed) return;
+            var name = new TextBox { PlaceholderText = "Playlist name", MinWidth = 300, MaxLength = 120 };
+            AutomationProperties.SetName(name, "New playlist name");
+            var dialog = new ContentDialog
+            {
+                Title = "Create playlist from files",
+                Content = name,
+                PrimaryButtonText = "Create playlist",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = ShellRoot.XamlRoot
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (string.IsNullOrWhiteSpace(name.Text)) { await ShowNoticeAsync("Enter a playlist name first."); return; }
+
             var tracks = await ReadExternalTracksAsync(paths);
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be added to the playlist."); return; }
-            _store.UpsertTracks(tracks);
-            _store.CreatePlaylist(name.Text.Trim(), tracks.Select(track => track.Path));
+            var playlistName = name.Text.Trim();
+            await Task.Run(() =>
+            {
+                _store.UpsertTracks(tracks);
+                _store.CreatePlaylist(playlistName, tracks.Select(track => track.Path));
+            });
             PublishLibraryChanged();
             await ShowNoticeAsync($"Created playlist “{name.Text.Trim()}” with {tracks.Count} {(tracks.Count == 1 ? "track" : "tracks")}.");
         }
@@ -228,16 +240,23 @@ public sealed partial class MainWindow : Window
 
     private async Task<IReadOnlyList<Track>> ReadExternalTracksAsync(IReadOnlyList<string> paths)
     {
-        var validPaths = paths.Where(path => (LibraryScanner.IsSupportedAudioFile(path) ||
-            _libraryLocations.IsVideoExtensionEnabled(path)) && File.Exists(path)).ToArray();
-        if (validPaths.Length == 0) return [];
         var artworkDirectory = Path.Combine(MusicPlayer.Core.AppDataPaths.Root, "Artwork");
         return await Task.Run(() =>
         {
+            var validPaths = paths.Where(path => (LibraryScanner.IsSupportedAudioFile(path) ||
+                _libraryLocations.IsVideoExtensionEnabled(path)) && File.Exists(path)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var tracks = new List<Track>(validPaths.Length);
+            var cachedTracks = _store.GetTracksByPaths(validPaths);
             foreach (var path in validPaths)
             {
-                try { tracks.Add(TrackReader.Read(path, artworkDirectory)); }
+                try
+                {
+                    var info = new FileInfo(path);
+                    cachedTracks.TryGetValue(path, out var cached);
+                    tracks.Add(cached is not null && cached.FileSize == info.Length && cached.ModifiedUtc == info.LastWriteTimeUtc
+                        && (string.IsNullOrWhiteSpace(cached.ArtworkPath) || File.Exists(cached.ArtworkPath))
+                        ? cached : TrackReader.Read(path, artworkDirectory));
+                }
                 catch (Exception ex)
                 {
                     LocalAppLog.Shared.Warning("file-activation", "Track tags could not be read; opening the file with its name instead.", ex);
@@ -331,6 +350,17 @@ public sealed partial class MainWindow : Window
     private void CancelCrossfadeAndRestoreQueue()
     {
         if (!_crossfadeInProgress) return;
+        // A native fade can finish before its UI notification is dispatched.
+        // Preserve the committed target instead of restoring the previous index.
+        if (_playback.HasCommittedCrossfade)
+        {
+            _crossfadeInProgress = false;
+            _crossfadeSourceQueueIndex = null;
+            _crossfadeFailureSource = null;
+            _playbackListening.ResetForTrack();
+            if (_playback.CurrentTrack is { } completed) UpdateCurrentTrack(completed);
+            return;
+        }
         _playback.CancelCrossfade();
         _crossfadeInProgress = false;
         _queueIndex = _crossfadeSourceQueueIndex is { } sourceIndex && sourceIndex >= 0 && sourceIndex < _queue.Count
@@ -341,6 +371,7 @@ public sealed partial class MainWindow : Window
 
     private bool ToggleShuffle()
     {
+        CancelCrossfadeAndRestoreQueue();
         _playbackQueue.ToggleShuffle(GetCurrentQueuePaths(), RetainedCurrentPath);
         EnsureQueueInitialized();
         return _shuffle;
@@ -351,7 +382,12 @@ public sealed partial class MainWindow : Window
         if (_queue.Count == 0) _playbackQueue.EnsureQueue(GetCurrentQueuePaths(), RetainedCurrentPath);
     }
 
-    private void CycleRepeatMode() => _playbackQueue.CycleRepeatMode();
+    private void CycleRepeatMode()
+    {
+        CancelCrossfadeAndRestoreQueue();
+        _playbackQueue.CycleRepeatMode();
+        PublishQueueStateIfChanged();
+    }
 
     private string? ToggleAbRepeat()
     {
@@ -419,10 +455,10 @@ public sealed partial class MainWindow : Window
             _systemControls.UpdateTimelineProperties(timeline);
         }
         if (_playback.CurrentTrack is { } track && _playbackListening.Observe(true, _playback.IsPlaying, position, duration))
-            _store.RecordPlayed(track.Path, DateTime.UtcNow);
+            _ = RecordPlayedAsync(track.Path);
         var automaticNext = _playbackQueue.NextIndex(automatic: true);
         if (_playback.IsPlaying && _repeatMode != "Track" && _repeatA is null && !_crossfadeInProgress && !SameTrack(_crossfadeFailureSource, _playback.CurrentTrack?.Path) && automaticNext >= 0 &&
-            _crossfadeSeconds > 0 && duration > 0 && duration - position <= _crossfadeSeconds * 1000)
+            _crossfadeSeconds > 0 && duration > 0 && duration - position <= _crossfadeSeconds * 1000 + 1500)
             StartCrossfade(automaticNext, _crossfadeSeconds * 1000);
         if (DateTime.UtcNow - _lastSessionSave > TimeSpan.FromSeconds(5)) SaveSession();
         PublishPlaybackState();
@@ -430,10 +466,20 @@ public sealed partial class MainWindow : Window
         {
             _lastWalMaintenance = DateTime.UtcNow;
             _ = _store.CheckpointWalAsync();
+            if (_duplicatePreparationPending) _ = PrepareDuplicatesInBackgroundAsync();
         }
     }
 
     private DateTime _lastWalMaintenance = DateTime.UtcNow;
+    private async Task RecordPlayedAsync(string path)
+    {
+        try
+        {
+            await Task.Run(() => _store.RecordPlayed(path, DateTime.UtcNow));
+            if (!_windowClosed) PublishLibraryChanged("listening");
+        }
+        catch (Exception ex) { LocalAppLog.Shared.Warning("playback-history", "Could not save the play count.", ex); }
+    }
     private bool _webViewInBackground;
     private void UpdateWebViewBackgroundState()
     {
@@ -468,6 +514,7 @@ public sealed partial class MainWindow : Window
     }
     private void Playback_CrossfadeCompleted(Track track) => DispatcherQueue.TryEnqueue(() =>
     {
+        if (!_crossfadeInProgress || !_playback.HasCommittedCrossfade || !SameTrack(_playback.CurrentTrack?.Path, track.Path)) return;
         _crossfadeInProgress = false; _crossfadeFailureSource = null; _crossfadeSourceQueueIndex = null; _playbackListening.ResetForTrack();
         UpdateCurrentTrack(track); UpdateSystemMediaControls(track, true); PublishQueueState(force: true); PublishPlaybackState();
     });
@@ -488,7 +535,7 @@ public sealed partial class MainWindow : Window
 
     private void Playback_Failed(Track track) => DispatcherQueue.TryEnqueue(() =>
     {
-        if (!SameTrack(_playback.CurrentTrack?.Path, track.Path)) return;
+        if (!_playback.IsCurrentPlaybackFailure(track)) return;
         _crossfadeInProgress = false;
         if (_systemControls is not null) _systemControls.PlaybackStatus = MediaPlaybackStatus.Stopped;
         if (!File.Exists(track.Path))
@@ -596,12 +643,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RestoreSession()
+    private void RestoreSession(bool loadMedia = true)
     {
         var session = _store.LoadSession(); if (session is null) return;
         var current = session.TrackPath is { } savedTrackPath ? _store.GetTrack(savedTrackPath) : null;
         _playbackQueue.Restore(session, current?.Path);
-        if (current is not null)
+        if (current is not null && loadMedia)
         {
             _playback.LoadPaused(current, session.PositionMilliseconds); _playbackListening.RestorePaused(session.PositionMilliseconds);
             UpdateCurrentTrack(current); UpdateSystemMediaControls(current, false);
@@ -631,6 +678,8 @@ public sealed partial class MainWindow : Window
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
         _windowClosed = true;
+        _shellReady.TrySetResult();
+        _duplicatePreparationCancellation?.Cancel();
         LocalAppLog.Shared.Info("app", "Window closed.");
         _volumeSaveDebounce?.Stop();
         StopMountedDriveRefresh();
