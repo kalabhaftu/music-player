@@ -54,19 +54,29 @@ export function lyricLinesMarkup(lines, escapeHtml, seekEnabled = true) {
 function normalizedWords(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, " and ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(/\s+/).filter(Boolean);
 }
+function lyricIdentity(title,artist){
+  title=String(title||"").trim();artist=String(artist||"").trim();
+  if(!artist||/^unknown(?: artist)?$/i.test(artist)){artist="";const separator=title.indexOf(" - ");if(separator>0){artist=title.slice(0,separator).trim();title=title.slice(separator+3).trim();}}
+  else if(title.toLowerCase().startsWith(`${artist.toLowerCase()} - `))title=title.slice(artist.length+3);
+  const decoration=/\b(?:remix|reverb(?:ed)?|slowed|sped[\s-]*up|speed[\s-]*up|nightcore|bass[\s-]*boosted|8d|official|lyrics?|audio|music\s+video|visuali[sz]er|hd|hq|\d{2,4}\s*kbps?|\d{2,4}k)\b/i;
+  title=title.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g,part=>decoration.test(part)?" ":part)
+    .replace(/(?:\s*[-–—|+]\s*|\s+)(?:slowed|reverb(?:ed)?|sped[\s-]*up|speed[\s-]*up|nightcore|remix|official\s+(?:audio|music\s+video|video)|lyrics?\s+video)\b.*$/i,"").replace(/\s+/g," ").replace(/^[\s–—|+-]+|[\s–—|+-]+$/g,"");
+  return {title,artist};
+}
+function timingMatches(track,result){const duration=Number(track?.durationSeconds),candidateDuration=Number(result?.duration);return !(duration>0&&candidateDuration>0&&Math.abs(duration-candidateDuration)>Math.max(8,duration*.05));}
 
 export function lyricMatchScore(track, result) {
-  const title=new Set(normalizedWords(track?.title)),candidate=new Set(normalizedWords(result?.trackName));
+  const identity=lyricIdentity(track?.title,track?.artist),otherIdentity=lyricIdentity(result?.trackName,result?.artistName);
+  const title=new Set(normalizedWords(identity.title)),candidate=new Set(normalizedWords(otherIdentity.title));
   if(!title.size||!candidate.size)return -1;
   const common=[...title].filter(word=>candidate.has(word)).length;
   const coverage=common/title.size,precision=common/candidate.size;
   // Do not automatically borrow lyrics from a longer/different song title.
   if(coverage<.9||precision<.8)return -1;
-  const artist=new Set(normalizedWords(track?.artist)),other=new Set(normalizedWords(result?.artistName));
+  const artist=new Set(normalizedWords(identity.artist)),other=new Set(normalizedWords(otherIdentity.artist));
   const artistCommon=[...artist].filter(word=>other.has(word)).length;
   if(artist.size&&(!other.size||artistCommon/artist.size<.45||(artistCommon/artist.size<.9&&artistCommon/other.size<.8)))return -1;
-  const duration=Number(track?.durationSeconds),candidateDuration=Number(result?.duration);
-  if(duration>0&&candidateDuration>0&&Math.abs(duration-candidateDuration)>Math.max(8,duration*.05))return -1;
+  if(!timingMatches(track,result)&&!/(?:remix|slowed|reverb|sped[\s-]*up|speed[\s-]*up|nightcore)/i.test(track?.title||""))return -1;
   return (coverage*.78+precision*.22)*.78+(artist.size?artistCommon/artist.size:1)*.22;
 }
 
@@ -74,8 +84,9 @@ export function selectLyricsMatch(track, results) {
   const candidates=(results||[]).map(result=>{
     const synced=String(result?.syncedLyrics||"").trim(),plain=String(result?.plainLyrics||"").trim();
     const parsed= parseLyricsText(synced);
-    const timed=parsed.lines.length>0;
-    const raw=timed?synced:plain;
+    const timed=parsed.lines.length>0&&timingMatches(track,result);
+    // A slowed/remixed recording may share words but not the original timestamps.
+    const raw=timed?synced:plain||(parsed.lines.length?parsed.lines.map(line=>line.text).join("\n"):"");
     return {result,score:lyricMatchScore(track,result),raw,timed};
   }).filter(item=>item.score>=0&&item.raw);
   candidates.sort((a,b)=>Number(b.timed)-Number(a.timed)||b.score-a.score);

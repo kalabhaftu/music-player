@@ -13,10 +13,11 @@ public sealed partial class MainWindow
         switch (name)
         {
             case "uiReady":
+                WebUiLoadingState.Visibility = Visibility.Collapsed;
                 if (!_startupBackgroundWorkStarted && !_windowClosed)
                 {
                     _startupBackgroundWorkStarted = true;
-                    StartStartupScan();
+                    _ = StartStartupScanAsync();
                     _ = CheckForUpdatesAsync(false);
                     _ = PrepareDuplicatesInBackgroundAsync();
                 }
@@ -36,7 +37,7 @@ public sealed partial class MainWindow
                     durationSeconds = _playback.Duration / 1000d, volume = _playback.Volume, isVideo = _playback.IsVideoMode,
                     shuffle = _shuffle, repeat = _repeatMode,
                     repeatA = _repeatA?.TotalSeconds, repeatB = _repeatB?.TotalSeconds,
-                    queue = QueueDtos(Math.Max(0, _queueIndex), 30), queueOffset = Math.Max(0, _queueIndex), queueTotal = _queue.Count, queueIndex = _queueIndex,
+                    queue = QueueDtos(Math.Max(0, WebQueueIndex), 30), queueOffset = Math.Max(0, WebQueueIndex), queueTotal = _queue.Count, queueIndex = WebQueueIndex,
                     panel = _store.GetSetting("right-sidebar-mode") == "Info" ? "info" : "queue",
                     version = ApplicationVersion.Resolve(typeof(MainWindow).Assembly), libraryRevision = _libraryRevision,
                     settings = settingState, resolvedTheme = ShellRoot.ActualTheme == ElementTheme.Light ? "Light" : "Dark", scan = ScanDto(),
@@ -67,14 +68,14 @@ public sealed partial class MainWindow
             case "getArtistAlbums": return await Task.Run(() => _libraryQueries.ArtistAlbums(String(payload, "artist"), Int(payload, "offset"), Int(payload, "pageSize", 30)));
             case "getPlaylists": return await Task.Run(() => _libraryQueries.Playlists());
             case "getPlaylistTracks": return await Task.Run(() => PlaylistTrackPage(payload));
-            case "getQueue": return QueuePage(payload);
+            case "getQueue": return await QueuePageAsync(payload);
             case "getCurrentTrack": return new
             {
                 track = _playback.CurrentTrack is { } current ? _libraryQueries.TrackDto(current, true) : null,
                 playing = _playback.IsPlaying, positionSeconds = Math.Max(0, _playback.Position) / 1000d,
                 durationSeconds = Math.Max(0, _playback.Duration) / 1000d, volume = _playback.Volume, isVideo = _playback.IsVideoMode,
                 shuffle = _shuffle, repeat = _repeatMode, repeatA = _repeatA?.TotalSeconds, repeatB = _repeatB?.TotalSeconds,
-                queueIndex = _queueIndex
+                queueIndex = WebQueueIndex
             };
             case "getLyrics":
             {

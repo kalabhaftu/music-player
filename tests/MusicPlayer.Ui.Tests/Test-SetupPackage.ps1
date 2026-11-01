@@ -50,8 +50,12 @@ if(!(Test-Path -LiteralPath $ownedMusic) -or (Get-FileHash -LiteralPath $ownedMu
 if((Get-ItemProperty -LiteralPath $registration).DisplayVersion -ne ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version){throw 'Setup did not register the final upgraded version.'}
 & (Join-Path $PSScriptRoot 'Test-ShellRegistration.ps1') -Executable $exe
 $env:MUSICPLAYER_TEST_OUTPUT='artifacts/ui-evidence/upgraded-setup'
+$env:MUSICPLAYER_TEST_EXPECT_NEW_PROFILE='false'
 try { Test-Interaction $exe }
-finally {Remove-Item Env:/MUSICPLAYER_TEST_OUTPUT -ErrorAction SilentlyContinue}
+finally {
+    Remove-Item Env:/MUSICPLAYER_TEST_OUTPUT -ErrorAction SilentlyContinue
+    Remove-Item Env:/MUSICPLAYER_TEST_EXPECT_NEW_PROFILE -ErrorAction SilentlyContinue
+}
 Run-Installer $uninstaller @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
 if(!(Test-Path -LiteralPath $sentinel)){throw 'Default uninstall failed to retain user data.'}
 if(Test-Path -LiteralPath $exe){throw 'Uninstall left the application executable.'}

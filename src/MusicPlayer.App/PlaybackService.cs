@@ -12,6 +12,7 @@ public sealed class PlaybackService : IDisposable
     private readonly object _gate = new();
     private readonly LibVLC _libVlc;
     private readonly bool _independentMusicOutput;
+    private readonly Timer _outputMonitor;
     private HashSet<string> _videoExtensions = new(StringComparer.OrdinalIgnoreCase);
     private readonly MediaPlayer _first;
     private MediaPlayer _active;
@@ -19,8 +20,10 @@ public sealed class PlaybackService : IDisposable
     private sealed class PlayerSubscription
     {
         public long Generation;
+        public long VolumeWorkerGeneration = -1;
         public EventHandler<EventArgs> End = null!;
         public EventHandler<EventArgs> Error = null!;
+        public EventHandler<EventArgs> Playing = null!;
     }
 
     private readonly Dictionary<MediaPlayer, PlayerSubscription> _subscriptions = [];
@@ -55,18 +58,25 @@ public sealed class PlaybackService : IDisposable
     private string _directSoundDeviceId = "";
     private string? _equalizerPreset;
     private IReadOnlyList<float>? _equalizerBands;
+    public const float NeutralEqualizerPreamp = 12.0412f;
+    private float _equalizerPreamp = NeutralEqualizerPreamp;
+    public float EqualizerPreamp { get { lock (_gate) return _equalizerPreamp; } }
     private float _volume = 75;
     private float _videoPlaybackRate = 1f;
     private long _restorePosition;
     private long _mediaGeneration;
+    private long _crossfadeCommittedGeneration = -1;
     private long _handledEndReachedGeneration = -1;
     private bool _trackEnded;
     private bool _videoTrack;
+    private bool _playRequested;
     private bool _disposed;
+    private int _checkingOutput;
+    private string? _pendingFallbackDeviceId;
 
     // VLC 3's MMDevice volume belongs to the shared Windows session. DirectSound
     // controls each music player's buffer independently, which crossfade needs.
-    public PlaybackService() : this("--aout=directsound", "--no-video-title-show", "--no-volume-save") { }
+    public PlaybackService() : this("--aout=directsound", "--directx-volume=0", "--no-video-title-show", "--no-volume-save", "--no-equalizer-2pass", "--no-equalizer-vlcfreqs") { }
 
     internal PlaybackService(params string[] options)
     {
@@ -83,17 +93,38 @@ public sealed class PlaybackService : IDisposable
         _first = new(_libVlc);
         _active = _first;
         Subscribe(_first);
+        _outputMonitor = new Timer(_ => CheckAudioOutput(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
     public event EventHandler? TrackEnded;
     public event Action<Track>? CrossfadeCompleted;
     public event Action<Track>? CrossfadeFailed;
     public event Action<Track>? PlaybackFailed;
+    public event EventHandler? AudioOutputFallback;
+    public bool ApplyPendingAudioOutputFallback(Action beforeFallback)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _pendingFallbackDeviceId is null || _audioOutputDeviceId != _pendingFallbackDeviceId) return false;
+            _pendingFallbackDeviceId = null;
+            beforeFallback();
+            SelectAudioOutputDevice(null);
+            return true;
+        }
+    }
+    public string AudioOutputDeviceId { get { lock (_gate) return _audioOutputDeviceId ?? ""; } }
     public Func<Track, nint>? VideoSurfaceRequested { get; set; }
 
     public Track? CurrentTrack { get { lock (_gate) return _currentTrack; } }
     public bool IsPlaying { get { lock (_gate) return !_disposed && _active.IsPlaying; } }
+    public bool IsCurrentPlaybackFailure(Track track)
+    {
+        lock (_gate) return !_disposed && !_active.IsPlaying &&
+            string.Equals(_reportedFailurePath, track.Path, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_currentTrack?.Path, track.Path, StringComparison.OrdinalIgnoreCase);
+    }
     public bool HasEnded { get { lock (_gate) return !_disposed && _trackEnded; } }
+    public bool HasCommittedCrossfade { get { lock (_gate) return !_disposed && _crossfadeCommittedGeneration == _mediaGeneration; } }
     public bool IsVideoMode { get { lock (_gate) return !_disposed && _videoTrack; } }
     public long Position { get { lock (_gate) return _disposed ? 0 : _restorePosition > _active.Time ? _restorePosition : _active.Time; } }
     public long Duration
@@ -202,12 +233,15 @@ public sealed class PlaybackService : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
-            var resume = _active.IsPlaying;
+            var resume = _playRequested;
             var position = Math.Max(_restorePosition, _active.Time);
             if (_independentMusicOutput && !_videoTrack) CancelCrossfadeCore();
             _audioOutputDeviceId = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId;
+            _pendingFallbackDeviceId = null;
             _directSoundDeviceId = _independentMusicOutput && _audioOutputDeviceId is not null
                 ? AudioOutputRouting.DirectSoundDeviceId(_audioOutputDeviceId) : "";
+            if (_independentMusicOutput && _audioOutputDeviceId is not null && _directSoundDeviceId.Length == 0)
+                _audioOutputDeviceId = null;
             if (_independentMusicOutput && !_videoTrack && _activeMedia is not null)
             {
                 // DirectSound selects the endpoint at stream creation. Reopen
@@ -231,6 +265,7 @@ public sealed class PlaybackService : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
+            _playRequested = false;
             CancelCrossfadeCore();
             _mediaGeneration++;
             _trackEnded = false;
@@ -289,7 +324,9 @@ public sealed class PlaybackService : IDisposable
             _currentTrack = track;
             _reportedFailurePath = null;
             _active.Volume = (int)_volume;
+            _playRequested = true;
             if (!_active.Play()) ReportPlaybackFailureCore(track);
+            _ = ReconcileStartVolumeAsync(_active, Interlocked.Read(ref _subscriptions[_active].Generation));
         }
     }
 
@@ -312,6 +349,7 @@ public sealed class PlaybackService : IDisposable
         {
             if (_disposed) return;
             if (_activeMedia is null) return;
+            RefreshAudioRouteCore();
             if (_videoTrack)
             {
                 if (requestedSurface == 0) { ReportPlaybackFailureCore(_currentTrack); return; }
@@ -319,10 +357,12 @@ public sealed class PlaybackService : IDisposable
             }
             ApplyAudioOutputDevice(_active);
             _reportedFailurePath = null;
+            _playRequested = true;
             if (!_active.Play()) { ReportPlaybackFailureCore(_currentTrack); return; }
             player = _active;
             generation = _mediaGeneration;
             restorePosition = _restorePosition;
+            _ = ReconcileStartVolumeAsync(player, generation);
         }
         if (restorePosition > 0) _ = SeekAfterStartAsync(player, generation, restorePosition);
     }
@@ -332,6 +372,7 @@ public sealed class PlaybackService : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
+            _playRequested = false;
             CancelCrossfadeCore();
             // Pause() toggles based on native playing state. A seek can briefly
             // enter buffering, so a pause request must set the desired state.
@@ -344,6 +385,7 @@ public sealed class PlaybackService : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
+            _playRequested = false;
             CancelCrossfadeCore();
             _mediaGeneration++;
             _restorePosition = 0;
@@ -410,13 +452,21 @@ public sealed class PlaybackService : IDisposable
         catch (ObjectDisposedException) { }
     }
 
-    public void ApplyEqualizer(string? preset, IReadOnlyList<float>? bands = null)
+    public void ApplyEqualizer(string? preset, IReadOnlyList<float>? bands = null, float? preamp = null)
     {
         lock (_gate)
         {
             if (_disposed) return;
             _equalizerPreset = string.IsNullOrWhiteSpace(preset) ? null : preset;
             _equalizerBands = bands?.ToArray();
+            if (_equalizerPreset is not null)
+            {
+                using var labels = new Equalizer();
+                using var selected = new Equalizer((uint)PresetIndex(_equalizerPreset, labels));
+                _equalizerPreamp = selected.Preamp;
+            }
+            else if (preamp is { } gain && float.IsFinite(gain)) _equalizerPreamp = Math.Clamp(gain, -20, 20);
+            else if (bands is null) _equalizerPreamp = NeutralEqualizerPreamp;
             ApplyEqualizerCore(_active);
             if (_spare is not null) ApplyEqualizerCore(_spare);
         }
@@ -443,7 +493,7 @@ public sealed class PlaybackService : IDisposable
                 {
                     CancelCrossfadeCore();
                     old = _active;
-                    var remaining = _active.Length > 0 ? Math.Max(0, _active.Length - _active.Time) : milliseconds;
+                    var remaining = RemainingPlaybackMilliseconds(_active, milliseconds);
                     fadeMilliseconds = Math.Min(milliseconds, (int)Math.Min(int.MaxValue, remaining));
                     if (fadeMilliseconds > 0)
                     {
@@ -487,12 +537,49 @@ public sealed class PlaybackService : IDisposable
                     if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource) || tokenSource.IsCancellationRequested) return;
                     if (incoming.IsPlaying && incoming.Time > 0)
                     {
-                        var remaining = old.Length > 0 ? Math.Max(0, old.Length - old.Time) : milliseconds;
-                        fadeMilliseconds = Math.Min(milliseconds, (int)Math.Min(int.MaxValue, remaining));
                         break;
                     }
                     if (incoming.State is VLCState.Error or VLCState.Ended || opening.Elapsed > TimeSpan.FromSeconds(5))
                         throw new InvalidOperationException("The incoming crossfade track did not become ready.");
+                }
+            }
+            // The shell starts opening with a short lead. Hold the decoded track
+            // at its beginning until the requested fade window actually starts.
+            lock (_gate)
+            {
+                if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource)) return;
+                incoming.SetPause(true);
+                if (incoming.IsSeekable) incoming.Time = 0;
+            }
+            while (true)
+            {
+                await Task.Delay(20, tokenSource.Token).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource)) return;
+                    var remaining = RemainingPlaybackMilliseconds(old, milliseconds);
+                    if (remaining > milliseconds) continue;
+                    incoming.SetPause(false);
+                    break;
+                }
+            }
+            opening.Restart();
+            while (true)
+            {
+                await Task.Delay(20, tokenSource.Token).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_disposed || !ReferenceEquals(_crossfadeCancellation, tokenSource)) return;
+                    if (incoming.IsPlaying && incoming.Time > 0)
+                    {
+                        var remaining = RemainingPlaybackMilliseconds(old, milliseconds);
+                        // If opening consumed the entire tail, ramp the new stream in
+                        // briefly; never stretch an overlap beyond the outgoing audio.
+                        fadeMilliseconds = remaining > 0 ? Math.Min(milliseconds, (int)Math.Min(int.MaxValue, remaining)) : Math.Min(200, milliseconds);
+                        break;
+                    }
+                    if (incoming.State is VLCState.Error or VLCState.Ended || opening.Elapsed > TimeSpan.FromSeconds(3))
+                        throw new InvalidOperationException("The prepared crossfade track did not resume.");
                 }
             }
             var start = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -513,6 +600,7 @@ public sealed class PlaybackService : IDisposable
                         _spare = old;
                         (_activeMedia, _spareMedia) = (_spareMedia, _activeMedia);
                         _currentTrack = nextTrack;
+                        _crossfadeCommittedGeneration = _mediaGeneration;
                         _trackEnded = false;
                         _restorePosition = 0;
                         _active.Volume = (int)_volume;
@@ -584,18 +672,22 @@ public sealed class PlaybackService : IDisposable
 
     private void ApplyEqualizerCore(MediaPlayer player)
     {
-        if (_equalizerPreset is null && _equalizerBands is null) { player.UnsetEqualizer(); return; }
+        // Keep a neutral filter enabled from stream creation. Changing Off to a
+        // curve then updates coefficients without rebuilding the audio pipeline.
+        // VLC's one-pass filter attenuates dry input by 0.25, requiring +12.0412dB.
         using var current = new Equalizer();
         using var equalizer = _equalizerPreset is not null
             ? new Equalizer((uint)Math.Clamp(PresetIndex(_equalizerPreset, current), 0, (int)current.PresetCount - 1))
             : new Equalizer();
         if (_equalizerBands is not null)
             for (var i = 0; i < Math.Min(_equalizerBands.Count, (int)equalizer.BandCount); i++) equalizer.SetAmp(_equalizerBands[i], (uint)i);
+        equalizer.SetPreamp(_equalizerPreamp);
         player.SetEqualizer(equalizer);
     }
 
     private void SetMedia(MediaPlayer player, ref Media? media, string path)
     {
+        RefreshAudioRouteCore();
         ConfigureAudioOutputCore(player);
         media?.Dispose();
         if (_fileInputs.Remove(player, out var previousInput)) previousInput.Dispose();
@@ -706,6 +798,16 @@ public sealed class PlaybackService : IDisposable
             (int)Math.Round(volume * Math.Cbrt(Math.Sin(angle))));
     }
 
+    private static long RemainingPlaybackMilliseconds(MediaPlayer player, int fallbackMilliseconds)
+    {
+        // LibVLC can reset Time to zero after the outgoing stream ends. Treat
+        // Ended as an empty tail so a prepared incoming player is never held
+        // paused while Length - Time suddenly looks like a full track again.
+        if (player.State is VLCState.Ended or VLCState.Error) return 0;
+        var length = player.Length;
+        return length > 0 ? Math.Max(0, length - Math.Max(0, player.Time)) : fallbackMilliseconds;
+    }
+
     private void ApplyCrossfadeVolumeCore()
     {
         var volumes = CrossfadeVolumes((int)_volume, _crossfadeCancellation is null ? 0 : _crossfadeProgress);
@@ -721,9 +823,15 @@ public sealed class PlaybackService : IDisposable
         var handlers = new PlayerSubscription();
         handlers.End = (_, _) => QueuePlayerEvent(player, Interlocked.Read(ref handlers.Generation), endReached: true);
         handlers.Error = (_, _) => QueuePlayerEvent(player, Interlocked.Read(ref handlers.Generation), endReached: false);
+        handlers.Playing = (_, _) =>
+        {
+            var generation = Interlocked.Read(ref handlers.Generation);
+            ThreadPool.QueueUserWorkItem(_ => { _ = ReconcileStartVolumeAsync(player, generation); });
+        };
         _subscriptions.Add(player, handlers);
         player.EndReached += handlers.End;
         player.EncounteredError += handlers.Error;
+        player.Playing += handlers.Playing;
     }
 
     private void Unsubscribe(MediaPlayer player)
@@ -731,6 +839,76 @@ public sealed class PlaybackService : IDisposable
         if (!_subscriptions.Remove(player, out var handlers)) return;
         player.EndReached -= handlers.End;
         player.EncounteredError -= handlers.Error;
+        player.Playing -= handlers.Playing;
+    }
+
+    private async Task ReconcileStartVolumeAsync(MediaPlayer player, long generation)
+    {
+        // Setting Volume before Play can fail because VLC has no audio output yet.
+        // Native callbacks only schedule this worker; never call VLC from a callback.
+        PlayerSubscription owner;
+        lock (_gate)
+        {
+            if (_disposed || !_subscriptions.TryGetValue(player, out owner!) || owner.Generation != generation || owner.VolumeWorkerGeneration == generation) return;
+            owner.VolumeWorkerGeneration = generation;
+        }
+        try
+        {
+            for (var attempt = 0; attempt < 100; attempt++)
+            {
+                await Task.Delay(25).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_disposed || !_subscriptions.TryGetValue(player, out var subscription) ||
+                        Interlocked.Read(ref subscription.Generation) != generation ||
+                        (!ReferenceEquals(player, _active) && (_crossfadeCancellation is null || !ReferenceEquals(player, _spare)))) return;
+                    var volumes = CrossfadeVolumes((int)_volume, _crossfadeCancellation is null ? 0 : _crossfadeProgress);
+                    var desired = ReferenceEquals(player, _active) ? volumes.Outgoing : volumes.Incoming;
+                    if (player.Volume != desired) player.Volume = desired;
+                    if (attempt >= 3 && player.IsPlaying && player.Time > 0 && player.Volume == desired) return;
+                }
+            }
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            lock (_gate)
+                if (owner.VolumeWorkerGeneration == generation) owner.VolumeWorkerGeneration = -1;
+        }
+    }
+
+    private void RefreshAudioRouteCore()
+    {
+        if (!_independentMusicOutput || _audioOutputDeviceId is null) return;
+        var mapped = AudioOutputRouting.DirectSoundDeviceId(_audioOutputDeviceId);
+        _directSoundDeviceId = mapped;
+        if (mapped.Length > 0) return;
+        QueueAudioOutputFallbackCore();
+    }
+
+    private void QueueAudioOutputFallbackCore()
+    {
+        if (_audioOutputDeviceId is null || _pendingFallbackDeviceId == _audioOutputDeviceId) return;
+        _pendingFallbackDeviceId = _audioOutputDeviceId;
+        ThreadPool.QueueUserWorkItem(_ => AudioOutputFallback?.Invoke(this, EventArgs.Empty));
+    }
+
+    private void CheckAudioOutput()
+    {
+        if (Interlocked.Exchange(ref _checkingOutput, 1) != 0) return;
+        try
+        {
+            string? deviceId;
+            lock (_gate) deviceId = !_disposed && _independentMusicOutput ? _audioOutputDeviceId : null;
+            if (deviceId is null || AudioOutputRouting.DirectSoundDeviceId(deviceId).Length > 0) return;
+            lock (_gate)
+            {
+                if (!_disposed && _audioOutputDeviceId == deviceId) QueueAudioOutputFallbackCore();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        { LocalAppLog.Shared.Warning("audio-devices", "Could not refresh the audio output route.", ex); }
+        finally { Volatile.Write(ref _checkingOutput, 0); }
     }
 
     private void QueuePlayerEvent(MediaPlayer player, long generation, bool endReached)
@@ -765,6 +943,7 @@ public sealed class PlaybackService : IDisposable
 
             if (ended)
             {
+                _playRequested = false;
                 _handledEndReachedGeneration = _mediaGeneration;
                 _trackEnded = true;
             }
@@ -777,6 +956,7 @@ public sealed class PlaybackService : IDisposable
 
     private void EncounteredError(MediaPlayer player, long generation)
     {
+        CheckAudioOutput();
         Track? activeFailure = null;
         Track? fadeFailure = null;
         lock (_gate)
@@ -792,6 +972,7 @@ public sealed class PlaybackService : IDisposable
                 if (_currentTrack is { } current && !string.Equals(_reportedFailurePath, current.Path, StringComparison.OrdinalIgnoreCase))
                 {
                     _reportedFailurePath = current.Path;
+                    if (_pendingFallbackDeviceId is null) _playRequested = false;
                     activeFailure = current;
                 }
             }
@@ -815,6 +996,7 @@ public sealed class PlaybackService : IDisposable
     private void ReportPlaybackFailureCore(Track? track)
     {
         if (track is null || string.Equals(_reportedFailurePath, track.Path, StringComparison.OrdinalIgnoreCase)) return;
+        if (_pendingFallbackDeviceId is null) _playRequested = false;
         _reportedFailurePath = track.Path;
         LocalAppLog.Shared.Warning("playback", $"LibVLC could not open or decode '{track.Path}'. {_libVlc.LastLibVLCError}");
         PlaybackFailed?.Invoke(track);
@@ -862,6 +1044,7 @@ public sealed class PlaybackService : IDisposable
             if (_disposed) return;
             CancelCrossfadeCore();
             _disposed = true;
+            _outputMonitor.Dispose();
             _active.Stop();
             Unsubscribe(_active);
             _activeMedia?.Dispose();

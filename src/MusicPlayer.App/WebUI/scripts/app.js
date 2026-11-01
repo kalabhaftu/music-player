@@ -3,6 +3,7 @@ import { createLibraryViews } from "./library.js";
 import { createPlayerUi } from "./player.js";
 import { lyricLinesMarkup, parseLyricsText, createLyricsSearch, createLyricsLoader } from "./lyrics.js";
 import { contrastingInk } from "./colors.js";
+import { installSelects, syncSelect } from "./selects.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -61,6 +62,7 @@ function fmtDuration(seconds) { const n = Math.max(0, Math.floor(Number(seconds)
 function bytesLabel(bytes) { const value = Number(bytes)||0; return value > 1024**3 ? `${(value/1024**3).toFixed(1)} GB` : value > 1024**2 ? `${(value/1024**2).toFixed(0)} MB` : `${(value/1024).toFixed(0)} KB`; }
 
 const state = { view:"Home", search:"", filter:"all", searchQuery:"", searchPages:{songs:0,albums:0,artists:0,playlists:0}, searchResults:{}, duplicateSort:"Title", duplicateDescending:false, duplicateOffset:0, sort:"Title", descending:false, videoSupportEnabled:false, offset:0, pageSize:200, total:0, items:[], group:null, playlist:null, track:null, trackDetails:null, playing:false, position:0, duration:0, volume:75, shuffle:false, repeat:"Off", repeatA:null, repeatB:null, queue:[], queueTotal:0, queueOffset:0, queueIndex:-1, panel:"queue", panelOpen:true, history:["Home"], historyIndex:0, settings:{}, modal:null, muted:false, scan:null, loading:false, lyricLines:[], lyricText:"", lyricsRaw:"", lyricsSource:"none", lyricsLoadingTrackId:"", lyricsAutoError:"", lyricsRevision:0, lyricsLoadRevision:0, immersiveLyricsOpen:false, lyricsSearchResults:[], lyricsSearchTrackId:"", updateCheckActive:false, aboutInfo:null };
+state.layoutWindowExpanded=false;
 const lyricsSearch = createLyricsSearch(trackId => call("searchLyrics", {id:trackId}, false));
 const automaticLyrics = createLyricsLoader(trackId=>call("getLyrics",{id:trackId}),trackId=>searchLyricsResults(trackId,false));
 async function searchLyricsResults(trackId, manual=false) {
@@ -69,7 +71,9 @@ async function searchLyricsResults(trackId, manual=false) {
 async function ensureLyricsLoaded(trackId, allowRemote=!!state.settings.autoLoadLyrics) {
   return automaticLyrics.load(trackId,{allowRemote,track:state.track?.id===trackId?state.track:null});
 }
-async function loadLyricsForTrack(trackId,allowRemote=!!state.settings.autoLoadLyrics) {
+async function loadLyricsForTrack(trackId,allowRemote=!!state.settings.autoLoadLyrics,force=false) {
+  if(!force&&trackId&&state.lyricsLoadingTrackId===trackId)return null;
+  if(!force&&trackId&&state.lyricsTrack?.id===trackId&&(state.lyricLines.length||!allowRemote||state.lyricsSource==="lrclib"))return null;
   if(!trackId){state.lyricsLoadRevision++;state.lyricsLoadingTrackId="";state.lyricsTrack=null;state.lyricLines=[];state.lyricText="";state.lyricsRaw="";state.lyricsSource="none";state.lyricsRevision++;updatePlayer();return null;}
   const revision=++state.lyricsLoadRevision;
   state.lyricsLoadingTrackId=trackId;state.lyricsAutoError="";
@@ -131,7 +135,7 @@ function applySettingsSearch(query=$("#globalSearch")?.value||""){
       const match=settingsMatch(query,original);
       row.hidden=active&&!match;
       if(match){matches++;sectionMatches++;}
-      for(const label of $$('b,span',row))highlightSettingText(label,query);
+      for(const label of $$(':scope > div:first-child > b,:scope > div:first-child > span',row))highlightSettingText(label,query);
     }
     section.hidden=active&&!sectionMatches;
   }
@@ -168,20 +172,34 @@ $("#routeView").addEventListener("input",event=>{const control=event.target;if(c
 $("#routeView").addEventListener("change",async event=>{const control=event.target;if(!control.matches("[data-setting]:not(.toggle)"))return;event.preventDefault();event.stopImmediatePropagation();await persistSettingControl(control,control.value);if(control.dataset.setting==="windowTransparency"){const output=control.parentElement?.querySelector("output");if(output)output.value=control.value+"%";}},true);
 $("#routeView").addEventListener("click",async event=>{const control=event.target.closest("[data-setting].toggle");if(!control)return;event.preventDefault();event.stopImmediatePropagation();const key=control.dataset.setting,wasEnabled=control.classList.contains("on"),enabled=!wasEnabled;control.classList.toggle("on",enabled);control.setAttribute("aria-checked",String(enabled));if(await persistSettingControl(control,enabled)){if(key==="autoLoadLyrics"&&!wasEnabled&&enabled&&state.track)void loadLyricsForTrack(state.track.id,true);if(key==="transparentWindow"){const range=$("[data-setting='windowTransparency']");if(range)range.disabled=!enabled;}}},true);
 function applyLayoutPreferences(){
-  const collapsed=layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??(window.innerWidth<=900);
-  const maxSidebar=Math.max(180,Math.min(360,window.innerWidth-360-(window.innerWidth>900&&state.panelOpen?220:0)));
-  const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,maxSidebar);
-  const sidebarWidth=collapsed?78:expandedWidth;
+  const savedCollapse=layoutDrag.sidebarCollapsed??state.settings.sidebarCollapsed??null;
+  const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
+  const collapsed=savedCollapse===true||window.innerWidth<expandedWidth+360;
+  const sidebarWidth=collapsed?0:expandedWidth;
+  const preferredRightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,460);
   const maxRight=Math.max(240,window.innerWidth-sidebarWidth-360);
-  const rightWidth=clamp(layoutDrag.rightWidth??state.settings.rightPanelWidth??294,240,Math.min(460,maxRight));
+  const rightWidth=Math.min(preferredRightWidth,maxRight);
   document.documentElement.style.setProperty("--sidebar",`${sidebarWidth}px`);
   document.documentElement.style.setProperty("--right",`${rightWidth}px`);
   const root=$("#appRoot");
   const columnWidths=state.settings.songColumnWidths||{};
   for(const key of ["title","album","added","year","plays","duration"]){const width=Number(columnWidths[key]);if(Number.isFinite(width)&&width>0)root?.style.setProperty(`--song-col-${key}`,`${width}px`);else root?.style.removeProperty(`--song-col-${key}`);}
   root?.classList.toggle("sidebar-collapsed",collapsed);
+  const compactPanel=window.innerWidth-sidebarWidth-preferredRightWidth<360;
+  if(!compactPanel)state.queuePanelOverlay=false;
+  const panelVisible=!!state.panelOpen&&(!compactPanel||!!state.queuePanelOverlay);
+  root.classList.toggle("panel-open",panelVisible);
+  root.classList.toggle("panel-closed",!panelVisible);
+  root.classList.toggle("panel-compact",compactPanel);
+  root.classList.toggle("panel-peek",compactPanel&&panelVisible&&!!state.queuePanelOverlay);
+  const panelScroll=$("#panelScroll");panelScroll.inert=!panelVisible;panelScroll.setAttribute("aria-hidden",String(!panelVisible));
+  const panelToggle=$("#panelToggleBtn"),panelLabel=panelVisible?"Hide queue sidebar":"Show queue sidebar";
+  panelToggle.setAttribute("aria-label",panelLabel);panelToggle.title=panelLabel;panelToggle.setAttribute("aria-expanded",String(panelVisible));
+  if(!panelVisible&&$("#rightPanel").contains(document.activeElement))panelToggle.focus();
   const toggle=$("#sidebarToggleBtn");
-  if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));}
+  if(toggle){const label=collapsed?"Expand sidebar":"Collapse sidebar";toggle.title=label;toggle.setAttribute("aria-label",label);toggle.setAttribute("aria-pressed",String(collapsed));toggle.setAttribute("aria-expanded",String(!collapsed));}
+  const sidebar=root?.querySelector(".sidebar");
+  if(sidebar){sidebar.inert=collapsed;sidebar.setAttribute("aria-hidden",String(collapsed));if(collapsed&&sidebar.contains(document.activeElement))toggle?.focus();}
   const navResize=$("#sidebarResize"); if(navResize)navResize.setAttribute("aria-valuenow",String(Math.round(sidebarWidth)));
   const panelResize=$("#panelResize"); if(panelResize)panelResize.setAttribute("aria-valuenow",String(Math.round(rightWidth)));
 }
@@ -261,7 +279,7 @@ function openUiResetDialog(){
   const body=`<p>Choose which interface preferences to restore. Every group is selected by default.</p>${choices.map(([key,title,description])=>`<label class="reset-choice"><input type="checkbox" data-reset-category="${key}" checked><span><b>${title}</b><small>${description}</small></span></label>`).join("")}`;
   openModal("Reset UI settings",body,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="reset-ui-settings">Reset selected settings</button>`);
 }
-function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.style.left=`${Math.min(x,innerWidth-230)}px`; menu.style.top=`${Math.min(y,innerHeight-370)}px`; menu.classList.add("show"); }
+function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.classList.add("show");const bounds=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(x,innerWidth-bounds.width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-bounds.height-8))}px`; }
 
 async function addToPlaylist(trackId) { const data=await call("getPlaylists"); if(!data.playlists?.length) return newPlaylist(trackId); openModal("Add to playlist",`<label class="modal-field"><span>Choose a playlist</span><select class="field" id="playlistChoice">${data.playlists.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="add-to-playlist" data-track-id="${esc(trackId)}">Add</button>`); }
 function newPlaylist(trackId="") { openModal("New playlist",`<label class="modal-field"><span>Playlist name</span><input class="field" id="playlistName" maxlength="120" placeholder="Playlist name"></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="create-playlist" data-track-id="${esc(trackId)}">Create playlist</button>`); }
@@ -287,7 +305,7 @@ async function action(name,el) {
     case "shuffle-view": await call("shuffleView",{view:state.view,group:state.group}); await refreshCurrent(); break;
     case "play-group": await call("playGroup",{type:el.dataset.type,id}); await refreshCurrent(); break;
     case "play-playlist-card": await call("playPlaylist",{playlistId:id}); await refreshCurrent(); break;
-    case "favorite": await call("toggleFavorite",{id:id||state.track?.id}); await refreshCurrent(); await renderView(); break;
+    case "favorite": await call("toggleFavorite",{id:id||state.track?.id}); break;
     case "context": contextMenu(el.getBoundingClientRect().right,el.getBoundingClientRect().bottom,id); break;
     case "play-next": await call("playNext",{id}); await refreshCurrent(); break;
     case "queue": await call("addToQueue",{id}); await refreshCurrent(); break;
@@ -356,7 +374,7 @@ async function action(name,el) {
       }
       break;
     }
-    case "refresh-devices": await call("refreshAudioDevices"); await renderView(); break;
+    case "refresh-devices": await refreshAudioControls(await call("refreshAudioDevices")); break;
     case "save-eq": openModal("Save equalizer preset",`<label class="modal-field"><span>Preset name</span><input class="field" id="presetName" maxlength="60"></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-eq">Save preset</button>`); break;
     case "check-updates": { if(el.dataset.busy==="true")break;el.dataset.busy="true";applyUpdateCheckState(true);try{await call("checkUpdates");}catch{}finally{el.dataset.busy="false";applyUpdateCheckState(false);}break;}
     case "open-release": await call("openRelease",{url:el.dataset.url}); break;
@@ -447,9 +465,9 @@ document.addEventListener("click",async e=>{
     else if(kind==="rename-playlist"){await call("renamePlaylist",{playlistId:state.playlist.id,name:$("#playlistName").value});state.playlist.name=$("#playlistName").value;closeModal();await renderView();}
     else if(kind==="add-to-playlist"){await call("addToPlaylist",{playlistId:$("#playlistChoice").value,trackId:modalCmd.dataset.trackId});closeModal();toast("Added to playlist.");}
     else if(kind==="set-rating"){await call("setRating",{id:modalCmd.dataset.trackId,rating:Number($("#ratingValue").value)});closeModal();await renderView();}
-    else if(kind==="save-lyrics"){const trackId=modalCmd.dataset.trackId;modalCmd.disabled=true;try{const result=await call("saveLyrics",{id:trackId,text:$("#lyricsEditor").value,mode:$("#lyricsMode").value,offsetMilliseconds:Number($("#lyricsOffset").value)||0});automaticLyrics.forget(trackId);lyricsSearch.forget(trackId);await loadLyricsForTrack(trackId,false);closeModal();toast(result?.storage==="sidecar-fallback"?"The audio file couldn’t be updated, so lyrics were saved beside it.":result?.storage==="sidecar"?"Lyrics saved beside the audio file.":"Lyrics embedded in the audio file.");await renderView();}catch(error){modalCmd.disabled=false;toast(error?.message||"Could not save lyrics. Check file permissions and try saving beside the audio file.");}}
+    else if(kind==="save-lyrics"){const trackId=modalCmd.dataset.trackId;modalCmd.disabled=true;try{const result=await call("saveLyrics",{id:trackId,text:$("#lyricsEditor").value,mode:$("#lyricsMode").value,offsetMilliseconds:Number($("#lyricsOffset").value)||0});automaticLyrics.forget(trackId);lyricsSearch.forget(trackId);await loadLyricsForTrack(trackId,false,true);closeModal();toast(result?.storage==="sidecar-fallback"?"The audio file couldn’t be updated, so lyrics were saved beside it.":result?.storage==="sidecar"?"Lyrics saved beside the audio file.":"Lyrics embedded in the audio file.");await renderView();}catch(error){modalCmd.disabled=false;toast(error?.message||"Could not save lyrics. Check file permissions and try saving beside the audio file.");}}
     else if(kind==="save-tags"){const tags={};$$('[data-tag]').forEach(el=>tags[el.dataset.tag]=el.value);tags.customFields={};$$('[data-custom-tag]').forEach(el=>tags.customFields[el.dataset.customTag]=el.value);tags.additionalFields={};$$('[data-additional-tag]').forEach(el=>tags.additionalFields[el.dataset.additionalTag]=el.value);await call("saveTags",{id:modalCmd.dataset.trackId,tags,artworkToken:$("#modalLayer").dataset.artworkToken||""});closeModal();toast("Tags saved with a backup.");await renderView();}
-    else if(kind==="save-eq"){await call("saveEqualizerPreset",{name:$("#presetName").value});closeModal();await renderView();}
+    else if(kind==="save-eq"){await flushEqualizer();await call("saveEqualizerPreset",{name:$("#presetName").value});closeModal();await refreshAudioControls();}
     else if(kind==="reset-ui-settings"){const groups=$$('[data-reset-category]:checked').map(input=>input.dataset.resetCategory);if(!groups.length){closeModal();return;}await call("resetUiSettings",{groups});const bootstrap=await call("getBootstrap");state.settings={...(bootstrap.settings||{}),resolvedTheme:bootstrap.resolvedTheme||"Dark"};state.panel=bootstrap.panel||"queue";closeModal();setTheme(state.settings);applyLayoutPreferences();setPanelOpen(bootstrap.panelOpen??state.settings.rightPanelOpen??(window.innerWidth>1180),false);updatePanel();toast("Selected UI settings restored.");await renderView();}
     } catch (error) { if (kind === "save-lyrics") toast(error?.message || "Could not save lyrics. Check file permissions and try saving beside the audio file."); } return;
   }
@@ -540,12 +558,14 @@ document.addEventListener("keydown",async e=>{
 },true);
 
 function updateQueueCurrentIndicator() {
+  const subtitle=$("#routeView .page-head p");if(state.view==="Queue"&&subtitle)subtitle.textContent=`${Math.max(0,state.queueTotal-state.queueIndex-1)} upcoming tracks`;
   for (const row of $$(".queue-table tbody tr[data-queue-index]")) {
     const index = Number(row.dataset.queueIndex), current = index === Number(state.queueIndex);
     row.classList.toggle("queue-current", current);
     if (current) row.setAttribute("aria-current", "true"); else row.removeAttribute("aria-current");
     const cell = row.querySelector("td.index");
     if (cell) cell.textContent = current ? "▶" : String(index + 1);
+    const handle=row.querySelector("[data-queue-drag]");if(handle)handle.disabled=index<=state.queueIndex;
     if (row.hasAttribute("tabindex")) row.setAttribute("aria-label", `Play ${row.querySelector(".song-info b")?.textContent || "track"}${current ? ", currently playing" : ""}`);
   }
 }
@@ -562,13 +582,32 @@ $("#globalSearch").addEventListener("input",e=>{
 $("#backBtn").addEventListener("click",()=>{if(state.historyIndex>0){state.historyIndex--;navigate(state.history[state.historyIndex],false);}});
 $("#forwardBtn").addEventListener("click",()=>{if(state.historyIndex<state.history.length-1){state.historyIndex++;navigate(state.history[state.historyIndex],false);}});
 $("#scanPause").addEventListener("click",()=>call("toggleScanPause")); $("#scanCancel").addEventListener("click",()=>call("cancelScan"));
+function showScanDetails(show){$("#scanStrip").hidden=!show;$("#scanToggle").setAttribute("aria-expanded",String(show));}
+$("#scanToggle").addEventListener("click",()=>{const widget=$("#scanWidget");widget.classList.remove("details-dismissed");showScanDetails($("#scanStrip").hidden);});
+$("#scanWidget").addEventListener("pointerenter",()=>{if(!$("#scanWidget").classList.contains("details-dismissed"))showScanDetails(true);});
+$("#scanWidget").addEventListener("pointerleave",()=>{if(!$("#scanWidget").contains(document.activeElement))showScanDetails(false);$("#scanWidget").classList.remove("details-dismissed");});
+$("#scanToggle").addEventListener("focus",()=>showScanDetails(true));
+$("#scanHide").addEventListener("click",()=>{$("#scanWidget").classList.add("details-dismissed");showScanDetails(false);$("#scanToggle").blur();});
+document.addEventListener("pointerdown",event=>{if(!event.target.closest("#scanWidget"))showScanDetails(false);});
 $("#topMenuToggle").addEventListener("click",()=>{const menu=$("#topMenu"),show=menu.hidden;menu.hidden=!show;$("#topMenuToggle").setAttribute("aria-expanded",String(show));});
-$("#sidebarToggleBtn").addEventListener("click",async()=>{const collapsed=$("#appRoot").classList.contains("sidebar-collapsed");const value=!collapsed;state.settings.sidebarCollapsed=value;layoutDrag.sidebarCollapsed=value;applyLayoutPreferences();try{await call("updateSettings",{settings:{sidebarCollapsed:value}})}catch{}});
+$("#sidebarToggleBtn").addEventListener("click",async()=>{
+  const root=$("#appRoot"),collapsed=root.classList.contains("sidebar-collapsed"),value=!collapsed;
+  state.settings.sidebarCollapsed=value;layoutDrag.sidebarCollapsed=value;applyLayoutPreferences();
+  try{await call("updateSettings",{settings:{sidebarCollapsed:value}})}catch{}
+  if(!value&&collapsed){
+    const expandedWidth=clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);
+    const minimumWidth=Math.ceil(expandedWidth+400);
+    if(window.innerWidth<minimumWidth)try{const result=await call("expandWindowForQueue",{minimumWidth});state.layoutWindowExpanded=state.layoutWindowExpanded||!!result?.expanded;}catch{}
+  }else if(value&&state.layoutWindowExpanded&&!root.classList.contains("panel-open")){
+    state.layoutWindowExpanded=false;try{await call("restoreWindowAfterQueue");}catch{}
+  }
+});
 $("#topMenu").addEventListener("click",()=>{$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");});
 document.addEventListener("click",e=>{if(!e.target.closest(".top-menu-wrap")){$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");}});
 async function setImmersiveMode(enabled){
   const layer=$("#immersivePlayer");
   if(enabled&&!state.track){toast("Choose a track before opening the full-screen player.");return;}
+  if(!enabled)await closeImmersiveDrawer();
   try{await call("setImmersiveMode",{enabled});layer.hidden=!enabled;document.documentElement.classList.toggle("immersive-active",enabled);if(enabled){updatePlayer();revealImmersiveExit();if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);}}
   catch{if(enabled){layer.hidden=true;document.documentElement.classList.remove("immersive-active");}}
 }
@@ -584,6 +623,27 @@ function setImmersiveLyricsOpen(open){
   revealImmersiveExit();
 }
 let immersiveExitTimer;
+let immersiveDrawerReturn=null;
+async function closeImmersiveDrawer(){
+  if(!immersiveDrawerReturn)return;
+  const previous=immersiveDrawerReturn;immersiveDrawerReturn=null;
+  $(".main").append($("#content"));$("#immersiveDrawer").hidden=true;
+  $$('#immersivePlayer [data-view]').forEach(button=>button.setAttribute("aria-expanded","false"));
+  await previous.restore();$("#content").scrollTop=previous.scroll;
+  if(state.view==="Queue")void renderView(false,null,true);
+  if(state.view==="Audio")void refreshAudioControls();
+  if(state.libraryDirty)scheduleLibraryRefresh();
+}
+async function openImmersiveDrawer(view){
+  if(immersiveDrawerReturn&&state.view===view){await closeImmersiveDrawer();return;}
+  if(!immersiveDrawerReturn)immersiveDrawerReturn={scroll:$("#content").scrollTop,restore:libraryViews.capturePage()};
+  $("#immersiveDrawer").hidden=false;$("#immersiveDrawerBody").append($("#content"));
+  $("#immersiveDrawer").dataset.drawerView=view;
+  $("#immersiveDrawerTitle").textContent=view==="Audio"?"Equalizer":"Queue";
+  $$('#immersivePlayer [data-view]').forEach(button=>button.setAttribute("aria-expanded",String(button.dataset.view===view)));
+  await navigate(view,false);$("#immersiveDrawerClose").focus();
+}
+$("#immersiveDrawerClose").addEventListener("click",()=>closeImmersiveDrawer());
 function revealImmersiveExit(){const layer=$("#immersivePlayer");layer.classList.add("controls-visible");clearTimeout(immersiveExitTimer);immersiveExitTimer=setTimeout(()=>layer.classList.remove("controls-visible"),2400);}
 $("#playBtn").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();}); $("#prevBtn").addEventListener("click",async()=>{await call("previous");await refreshCurrent();}); $("#nextBtn").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
 $("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true));
@@ -591,8 +651,8 @@ $("#immersiveExit").addEventListener("click",()=>setImmersiveMode(false));
 $("#immersivePlayer").addEventListener("pointermove",revealImmersiveExit);
 $("#immersiveLyricsToggle").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(!state.immersiveLyricsOpen);});
 $("#immersiveLyricsClose").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(false);});
-$("#immersivePlayer").addEventListener("click",async event=>{const view=event.target.closest("[data-view]");if(!view)return;event.preventDefault();event.stopPropagation();await setImmersiveMode(false);if(view.dataset.view==="Audio"&&state.view==="Audio")await toggleAudioView();else await navigate(view.dataset.view||"Home");});
-document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("#immersivePlayer").hidden){event.preventDefault();setImmersiveMode(false);}},true);
+$("#immersivePlayer").addEventListener("click",async event=>{const view=event.target.closest("[data-view]");if(!view)return;event.preventDefault();event.stopPropagation();await openImmersiveDrawer(view.dataset.view);});
+document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("#immersivePlayer").hidden&&!$(".select-popup")&&$("#modalLayer").hidden){event.preventDefault();if($("#contextMenu").classList.contains("show")){$("#contextMenu").classList.remove("show");event.stopImmediatePropagation();return;}if(immersiveDrawerReturn)void closeImmersiveDrawer();else void setImmersiveMode(false);}},true);
 $("#immersivePlay").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();});
 $("#immersivePrev").addEventListener("click",async()=>{await call("previous");await refreshCurrent();});
 $("#immersiveNext").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
@@ -614,16 +674,38 @@ immersiveProgress.addEventListener("input",()=>{progressRange.value=immersivePro
 immersiveProgress.addEventListener("pointerup",()=>{if(state.seeking){progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});}});
 immersiveProgress.addEventListener("change",()=>{if(!state.seeking)state.seeking=true;progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});});
 $("#volumeRange").addEventListener("input",e=>setVolume(e.target.value)); $("#muteBtn").addEventListener("click",toggleMute);
-function setPanelOpen(open,persist=true){const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;const root=$("#appRoot");root.classList.toggle("panel-closed",!state.panelOpen);root.classList.toggle("panel-open",state.panelOpen);$("#panelToggleBtn").setAttribute("aria-label",state.panelOpen?"Hide Now Playing panel":"Show Now Playing panel");$("#panelToggleBtn").title=state.panelOpen?"Hide Now Playing panel":"Show Now Playing panel";if(persist&&changed){state.settings.rightPanelOpen=next;panelOpenSave=panelOpenSave.catch(()=>{}).then(()=>call("updateSettings",{settings:{rightPanelOpen:next}})).catch(()=>{});}}
+function setPanelOpen(open,persist=true){
+  const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;applyLayoutPreferences();
+  if(persist&&changed){state.settings.rightPanelOpen=next;panelOpenSave=panelOpenSave.catch(()=>{}).then(()=>call("updateSettings",{settings:{rightPanelOpen:next}})).catch(()=>{});}
+}
+async function openQueuePanel(){
+  const wasAutoHidden=$("#appRoot").classList.contains("panel-compact");
+  setPanelOpen(true);
+  if(wasAutoHidden){
+    state.queuePanelOverlay=true;
+    applyLayoutPreferences();
+  }
+  $("#panelClose").focus();
+}
+async function closeQueuePanel(){
+  state.queuePanelOverlay=false;
+  setPanelOpen(false);
+  if(state.layoutWindowExpanded&&!$("#appRoot").classList.contains("sidebar-collapsed"))return;
+  if(state.layoutWindowExpanded){state.layoutWindowExpanded=false;try{await call("restoreWindowAfterQueue");}catch{}}
+}
+async function toggleQueuePanel(){
+  const root=$("#appRoot"),visible=root.classList.contains("panel-open")&&!root.classList.contains("panel-closed");
+  if(visible)await closeQueuePanel();else await openQueuePanel();
+}
 function startPanelResize(handle,kind){
   let active=false;
-  const move=e=>{if(!active)return;const collapsed=$("#appRoot").classList.contains("sidebar-collapsed"),navWidth=collapsed?78:clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);if(kind==="sidebar"){const max=Math.max(180,window.innerWidth-360-(state.panelOpen?220:0));layoutDrag.sidebarWidth=clamp(e.clientX,180,Math.min(360,max));layoutDrag.sidebarCollapsed=false;}else{const max=Math.max(240,window.innerWidth-navWidth-360);layoutDrag.rightWidth=clamp(window.innerWidth-e.clientX,240,Math.min(460,max));}applyLayoutPreferences();};
+  const move=e=>{if(!active)return;const collapsed=$("#appRoot").classList.contains("sidebar-collapsed"),navWidth=collapsed?0:clamp(layoutDrag.sidebarWidth??state.settings.navigationWidth??232,180,360);if(kind==="sidebar"){const max=Math.max(180,window.innerWidth-360-(state.panelOpen?220:0));layoutDrag.sidebarWidth=clamp(e.clientX,180,Math.min(360,max));layoutDrag.sidebarCollapsed=false;}else{const max=Math.max(240,window.innerWidth-navWidth-360);layoutDrag.rightWidth=clamp(window.innerWidth-e.clientX,240,Math.min(460,max));}applyLayoutPreferences();};
   const finish=async()=>{if(!active)return;active=false;document.documentElement.removeAttribute("data-resizing");const settings={};if(kind==="sidebar"){settings.navigationWidth=String(Math.round(layoutDrag.sidebarWidth??state.settings.navigationWidth??232));settings.sidebarCollapsed=!!layoutDrag.sidebarCollapsed;state.settings={...state.settings,...settings};layoutDrag.sidebarWidth=null;layoutDrag.sidebarCollapsed=null;}else{settings.rightPanelWidth=Number(Math.round(layoutDrag.rightWidth??state.settings.rightPanelWidth??294));state.settings={...state.settings,...settings};layoutDrag.rightWidth=null;}applyLayoutPreferences();try{await call("updateSettings",{settings})}catch{/* The current window keeps the adjusted layout if saving fails. */}};
   handle.addEventListener("pointerdown",e=>{if(e.button!==0)return;e.preventDefault();active=true;document.documentElement.dataset.resizing="true";handle.setPointerCapture(e.pointerId);move(e);});
   handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",finish);handle.addEventListener("pointercancel",finish);handle.addEventListener("lostpointercapture",finish);
   handle.addEventListener("keydown",async e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key))return;e.preventDefault();const delta=(e.shiftKey?20:10)*(e.key==="ArrowRight"?1:-1),settings={};if(kind==="sidebar"){settings.navigationWidth=String(Math.round(clamp((state.settings.navigationWidth??232)+delta,180,360)));settings.sidebarCollapsed=false;}else settings.rightPanelWidth=Number(Math.round(clamp((state.settings.rightPanelWidth??294)-delta,240,460)));state.settings={...state.settings,...settings};applyLayoutPreferences();try{await call("updateSettings",{settings})}catch{}});
 }
-startPanelResize($("#sidebarResize"),"sidebar");startPanelResize($("#panelResize"),"panel");window.addEventListener("resize",()=>{layoutDrag.sidebarCollapsed=null;applyLayoutPreferences();});
+startPanelResize($("#sidebarResize"),"sidebar");startPanelResize($("#panelResize"),"panel");window.addEventListener("resize",()=>{layoutDrag.sidebarCollapsed=null;applyLayoutPreferences();$("#contextMenu").classList.remove("show");});
 function startColumnResize(handle,event){
   if(event.button!==0)return;
   const key=handle.dataset.columnResize,heading=handle.closest("th"),minimum={title:160,album:90,added:76,year:50,plays:50,duration:50}[key]||60;
@@ -646,8 +728,13 @@ function updateScanPresentation(scan) {
   const phase=cancelling?"Cancelling":scan?.paused?"Paused":active?"Scanning":"";
   const details=`${phase?`${phase} · `:""}${scan?.filesFound||0} tracks · ${scan?.directoriesVisited||0} folders${scan?.currentPath?` · ${scan.currentPath}`:""}`;
   const strip=$("#scanStrip");
-  strip.hidden=!active&&!terminal;
+  $("#scanWidget").hidden=!active&&!terminal;
+  if(!active&&!terminal)showScanDetails(false);
   strip.dataset.outcome=terminal?scan.outcome:"";
+  $("#scanWidget").classList.toggle("scan-paused",!!scan?.paused||!active);
+  $("#scanWidget").classList.toggle("scan-error",scan?.outcome==="error");
+  $("#scanHeading").textContent=active?`${phase} library`:scan?.outcome==="error"?"Scan failed":"Library scan";
+  $("#scanToggle").setAttribute("aria-label",active?`${phase} library · ${scan?.filesFound||0} tracks found. Show details`:scan?.message||"Library scan details");
   $("#scanText").textContent=active?details:terminal?scan.message:"";
   $("#scanPause").hidden=!active;
   $("#scanCancel").hidden=!active;
@@ -675,10 +762,31 @@ function updateScanPresentation(scan) {
     action.textContent=hasRoots?"Scan folders":"Add music folder";
   }
 }
-$("#panelClose").addEventListener("click",()=>setPanelOpen(false));$("#panelToggleBtn").addEventListener("click",()=>setPanelOpen(!state.panelOpen));$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
-$("#routeView").addEventListener("change",async e=>{if(e.target.id==="sortSelect"){state.sort=e.target.value;state.offset=0;await renderView();}if(e.target.id==="duplicateSort"){state.duplicateSort=e.target.value;state.duplicateOffset=0;await renderView();}if(e.target.id==="outputDevice")await call("setAudioDevice",{id:e.target.value});if(e.target.id==="crossfade")await call("setCrossfade",{seconds:Number(e.target.value)});if(e.target.id==="eqPreset"){await call("setEqualizerPreset",{name:e.target.value});await renderView();}if(e.target.matches("[data-setting]")){const s={};s[e.target.dataset.setting]=e.target.value;await call("updateSettings",{settings:s});state.settings={...state.settings,...s};setTheme(state.settings);}});
+$("#panelClose").addEventListener("click",()=>void closeQueuePanel());$("#panelToggleBtn").addEventListener("click",()=>void toggleQueuePanel());$$('.panel-tabs [data-panel]').forEach(b=>b.addEventListener("click",async()=>{state.panel=b.dataset.panel;updatePanel();await call("setPanelMode",{mode:state.panel});state.settings.rightSidebarMode=state.panel==="info"?"Info":"Queue";}));
+async function refreshAudioControls(data=undefined){
+  data??=await call("getAudioSettings");
+  const editing=!!pendingEqBands||!!eqWrite;const preset=$("#eqPreset");if(preset&&!editing){preset.innerHTML=["Off","Custom",...(data.presets||[])].filter((value,index,all)=>all.indexOf(value)===index).map(name=>`<option ${name==="Custom"?'disabled ':''}value="${esc(name)}">${esc(name)}</option>`).join("");preset.value=data.currentPreset||"Off";syncSelect(preset);}
+  if(!editing)for(const input of $$("[data-eq]")){input.value=String(data.bands?.[Number(input.dataset.eq)]?.value||0);input.nextElementSibling.textContent=`${Number(input.value).toFixed(1)} dB`;}
+  const output=$("#outputDevice");if(output){output.innerHTML=(data.devices||[]).map(device=>`<option value="${esc(device.id)}">${esc(device.name)}</option>`).join("");output.value=data.selectedId||"";syncSelect(output);}
+}
+$("#routeView").addEventListener("change",async e=>{if(e.target.id==="sortSelect"){state.sort=e.target.value;state.offset=0;await renderView();}if(e.target.id==="duplicateSort"){state.duplicateSort=e.target.value;state.duplicateOffset=0;await renderView();}if(e.target.id==="outputDevice"){await call("setAudioDevice",{id:e.target.value});await refreshAudioControls();}if(e.target.id==="crossfade")await call("setCrossfade",{seconds:Number(e.target.value)});if(e.target.id==="eqPreset"){await flushEqualizer();await call("setEqualizerPreset",{name:e.target.value});await refreshAudioControls();}});
 $("#routeView").addEventListener("click",event=>{const toggle=event.target.closest('[data-setting="transparentWindow"]');if(toggle)requestAnimationFrame(()=>{const range=$('[data-setting="windowTransparency"]');if(range)range.disabled=!toggle.classList.contains("on");});},true);
-$("#routeView").addEventListener("input",async e=>{if(e.target.matches("[data-eq]")){e.target.nextElementSibling.textContent=`${Number(e.target.value).toFixed(1)} dB`;await call("setEqualizerBand",{index:Number(e.target.dataset.eq),value:Number(e.target.value)});}if(e.target.id==="audioVolume")await setVolume(e.target.value);});
+let pendingEqBands=null,eqWrite=null,eqTimer=null;
+function flushEqualizer(){
+  clearTimeout(eqTimer);eqTimer=null;if(eqWrite)return eqWrite;
+  if(!pendingEqBands)return Promise.resolve();
+  eqWrite=(async()=>{try{while(pendingEqBands){const bands=pendingEqBands;pendingEqBands=null;await call("setEqualizerBands",{bands});}}finally{eqWrite=null;}})();return eqWrite;
+}
+$("#routeView").addEventListener("input",e=>{
+  if(e.target.matches("[data-eq]")){
+    e.target.nextElementSibling.textContent=`${Number(e.target.value).toFixed(1)} dB`;
+    const preset=$("#eqPreset");if(preset&&preset.value!=="Custom"){preset.value="Custom";syncSelect(preset);}
+    pendingEqBands=$$("[data-eq]").sort((a,b)=>Number(a.dataset.eq)-Number(b.dataset.eq)).map(input=>Number(input.value));
+    if(eqTimer===null)eqTimer=setTimeout(()=>flushEqualizer().catch(error=>toast(error.message||"Equalizer could not be updated.")),50);
+  }
+  if(e.target.id==="audioVolume")void setVolume(e.target.value);
+});
+$("#routeView").addEventListener("change",e=>{if(e.target.matches("[data-eq]"))void flushEqualizer().catch(error=>toast(error.message));});
 $("#routeView").addEventListener("input",e=>{if(e.target.dataset.setting!=="windowTransparency")return;state.settings.windowTransparency=e.target.value;const output=e.target.parentElement?.querySelector("output");if(output)output.value=e.target.value+"%";setTheme(state.settings);});
 let navigationPointer = null;
 function clearNavigationDrag() {
@@ -735,24 +843,38 @@ $("#routeView").addEventListener("click",async e=>{
 $("#modalClose").addEventListener("click",closeModal); $("#modalLayer").addEventListener("click",e=>{if(e.target===$("#modalLayer"))closeModal();});
 
 let libraryRefreshTimer=null;
+function scheduleLibraryRefresh(){
+  clearTimeout(libraryRefreshTimer);
+  if(!state.libraryDirty)return;
+  $("#libraryRefresh").hidden=false;
+  if(state.scan?.active||["Settings","Audio","Lyrics","Queue","Now Playing"].includes(state.view))return;
+  libraryRefreshTimer=setTimeout(async()=>{
+    // Keep an expanded/paged list intact; the explicit refresh remains available.
+    if(state.offset>0||state.modal||$("#modalLayer").hidden===false)return;
+    state.libraryDirty=false;$("#libraryRefresh").hidden=true;
+    await renderView(false,null,true);
+  },1800);
+}
+$("#libraryRefresh").addEventListener("click",async()=>{state.libraryDirty=false;$("#libraryRefresh").hidden=true;await renderView(false,null,true);});
 onEvent((name,data)=>{
-  if(name==="windowRestored"){void (async()=>{await refreshCurrent();const fresh=await call("getBootstrap");state.settings={...state.settings,...fresh.settings};setTheme(state.settings);updateScanPresentation(fresh.scan);applyUpdateCheckState(!!fresh.updateCheckActive);state.latestRelease=fresh.latestRelease||null;state.updateAvailable=fresh.updateAvailable||null;await renderView();})();}
+  if(name==="windowRestored"){void (async()=>{await refreshCurrent();const fresh=await call("getBootstrap");state.settings={...state.settings,...fresh.settings};setTheme(state.settings);updateScanPresentation(fresh.scan);applyUpdateCheckState(!!fresh.updateCheckActive);state.latestRelease=fresh.latestRelease||null;state.updateAvailable=fresh.updateAvailable||null;if(fresh.libraryRevision!==state.libraryRevision){state.libraryRevision=fresh.libraryRevision;libraryViews.invalidateCache();state.libraryDirty=true;scheduleLibraryRefresh();}})();}
   else if(name==="playbackStateChanged"){
-    const wasPlaying=state.playing;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});state.positionUpdatedAt=performance.now();
+    const wasPlaying=state.playing,volume=state.volume;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});if(state.volumeEditing)state.volume=volume;state.positionUpdatedAt=performance.now();
     updatePlayer();
-    if(!wasPlaying&&state.playing&&state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);
+    if(!wasPlaying&&state.playing&&state.track&&state.lyricsTrack?.id!==state.track.id&&state.lyricsLoadingTrackId!==state.track.id)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);
   }
-  else if(name==="trackChanged"){state.track=data.track||null;state.trackId=state.track?.id||"";state.lyricsLoadRevision++;state.lyricsLoadingTrackId="";state.lyricLines=[];state.lyricText="";state.lyricsTrack=null;state.lyricsRaw="";state.lyricsSource="none";state.lyricsAutoError="";state.lyricsRevision++;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});state.positionUpdatedAt=performance.now();if(state.settings.autoOpenPanel&&window.innerWidth>900)setPanelOpen(true);updatePlayer();updatePanel();loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);if(state.view==="Lyrics"||state.view==="Now Playing")renderView();}
-  else if (name === "queueChanged") { state.queue = data.entries || []; state.queueOffset = data.queueOffset || 0; state.queueTotal = data.totalCount || 0; state.queueIndex = data.queueIndex ?? -1; updatePanel(); if (state.view === "Queue") { if (data.itemsChanged) renderView(); else updateQueueCurrentIndicator(); } }
-  else if(name==="favoriteChanged"){const favorite=!!data.favorite;if(state.track?.id===data.id){state.track.favorite=favorite;updatePlayer();updatePanel();}for(const collection of [state.items,state.queue,state.queueItems])for(const track of collection||[])if(track.id===data.id)track.favorite=favorite;for(const button of $$('[data-action="favorite"]'))if(button.dataset.id===data.id){button.classList.toggle("on",favorite);button.setAttribute("aria-pressed",String(favorite));button.setAttribute("aria-label",favorite?"Remove from favorites":"Add to favorites");button.title=favorite?"Remove from favorites":"Add to favorites";if(!button.classList.contains("heart"))button.textContent=favorite?"♥ Favorited":"♡ Favorite";}}
+  else if(name==="trackChanged"){const volume=state.volume;state.trackEventRevision=(state.trackEventRevision||0)+1;state.track=data.track||null;state.trackId=state.track?.id||"";state.lyricsLoadRevision++;state.lyricsLoadingTrackId="";state.lyricLines=[];state.lyricText="";state.lyricsTrack=null;state.lyricsRaw="";state.lyricsSource="none";state.lyricsAutoError="";state.lyricsRevision++;Object.assign(state,data,{position:Number(data.positionSeconds)||0,duration:Number(data.durationSeconds)||0});if(state.volumeEditing)state.volume=volume;state.positionUpdatedAt=performance.now();if(state.settings.autoOpenPanel&&!$("#appRoot").classList.contains("panel-compact"))setPanelOpen(true);updatePlayer();updatePanel();loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);if(state.view==="Lyrics"||state.view==="Now Playing")renderView();}
+  else if (name === "queueChanged") { state.queueEventRevision=(state.queueEventRevision||0)+1;state.queue = data.entries || []; state.queueOffset = data.queueOffset || 0; state.queueTotal = data.totalCount || 0; state.queueIndex = data.queueIndex ?? -1; updatePanel(); if (state.view === "Queue") { if (data.itemsChanged)void renderView(false,null,true); else updateQueueCurrentIndicator(); } }
+  else if(name==="favoriteChanged"){const favorite=!!data.favorite;if(state.view==="Favorites"&&!favorite){const removedIndex=(state.items||[]).findIndex(track=>track.id===data.id);for(const row of $$("tr[data-track]"))if(row.dataset.track===data.id)row.remove();state.items=(state.items||[]).filter(track=>track.id!==data.id);state.total=Math.max(0,(state.total||0)-1);if(removedIndex>=0){state.nextOffset=Math.max(0,(state.nextOffset||0)-1);if(removedIndex<(state.offset||0))state.offset=Math.max(0,state.offset-1);}const subtitle=$("#routeView .page-head p");if(subtitle)subtitle.textContent=`${state.total.toLocaleString()} tracks`;}if(state.track?.id===data.id){state.track.favorite=favorite;updatePlayer();updatePanel();}for(const collection of [state.items,state.queue,state.queueItems])for(const track of collection||[])if(track.id===data.id)track.favorite=favorite;for(const button of $$('[data-action="favorite"]'))if(button.dataset.id===data.id){button.classList.toggle("on",favorite);button.setAttribute("aria-pressed",String(favorite));button.setAttribute("aria-label",favorite?"Remove from favorites":"Add to favorites");button.title=favorite?"Remove from favorites":"Add to favorites";if(!button.classList.contains("heart"))button.textContent=favorite?"♥ Favorited":"♡ Favorite";}}
   else if(name==="trackAvailabilityChanged"){if(state.track?.id===data.id)state.track.fileUnavailable=!!data.fileUnavailable;for(const track of state.queue||[])if(track.id===data.id)track.fileUnavailable=!!data.fileUnavailable;for(const track of state.queueItems||[])if(track.id===data.id)track.fileUnavailable=!!data.fileUnavailable;updatePlayer();updatePanel();if(state.view==="Queue")renderView();}
-  else if(name==="scanChanged")updateScanPresentation(data);
+  else if(name==="scanChanged"){const wasActive=state.scan?.active;updateScanPresentation(data);if(wasActive&&!data.active)scheduleLibraryRefresh();}
+  else if(name==="audioOutputChanged"){if(state.view==="Audio")void refreshAudioControls();}
   else if(name==="updateCheckState")applyUpdateCheckState(!!data.checking);
   else if(name==="latestReleaseChanged"){state.latestRelease=data.release||null;state.updateAvailable=data.release||null;if(state.view==="Settings")renderView();}
   else if(name==="libraryChanged"){
     state.libraryRevision=data.revision??((state.libraryRevision||0)+1);
-    libraryViews.invalidateCache();clearTimeout(libraryRefreshTimer);
-    libraryRefreshTimer=setTimeout(()=>{if(!["Settings","Audio","Lyrics"].includes(state.view))void renderView();},150);
+    libraryViews.invalidateCache();
+    if(data.reason!=="favorite"&&data.reason!=="listening"){state.libraryDirty=true;scheduleLibraryRefresh();}
   }
   else if(name==="defaultAppsChanged"){
     state.settings.needsDefaultSelection=data.needsDefaultSelection;
@@ -765,6 +887,7 @@ onEvent((name,data)=>{
 });
 
 async function start() {
+  installSelects();
   paintIcons();
   $$("#navigation .nav-item[data-view]").forEach(item=>{const label=item.querySelector("span:not([data-icon])")?.textContent?.trim();if(label){item.setAttribute("aria-label",label);item.title=label;}});
   try {
@@ -781,7 +904,10 @@ async function start() {
     state.updateCheckActive=!!data.updateCheckActive; state.latestRelease=data.latestRelease||null; state.updateAvailable=data.updateAvailable||null;
     state.scan=data.scan||null; state.view=data.view||"Home"; state.search=data.search||""; state.group=data.group||null; state.playlist=data.playlist||null;
     if(state.view==="Search")$("#globalSearch").value=state.search;
-    state.trackId=state.track?.id||"";setTheme(state.settings); setPanelOpen(state.panelOpen,false); await renderView(); updateScanPresentation(state.scan); loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);
+    [state.sort,state.descending]=({"Most Played":["PlayCount",true],"Recently Played":["LastPlayed",true],"Recently Added":["Added",true]})[state.view]||["Title",false];
+    state.trackId=state.track?.id||"";setTheme(state.settings); setPanelOpen(state.panelOpen,false);updatePlayer();updatePanel();
+    const initialView=renderView();updateScanPresentation(state.scan);loadTrackDetails(state.track);if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);
+    await initialView;
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     await call("uiReady");
     if(data.updateAvailable)openModal(`Music Player ${esc(data.updateAvailable.tag||"")} is available`,"Updates are opened in your browser and are never installed automatically.",`<button class="action" data-modal-close>Later</button><button class="action primary" data-action="open-release" data-url="${esc(data.updateAvailable.url||"")}">View release</button>`);
@@ -789,3 +915,7 @@ async function start() {
   catch(error) { $("#routeView").innerHTML=`<div class="empty-state"><b>Music Player could not connect to Windows</b>${esc(error.message)}</div>`; }
 }
 start();
+
+document.addEventListener("pointerdown",event=>{
+  if(state.queuePanelOverlay&&!$("#rightPanel").contains(event.target)&&!$("#panelToggleBtn").contains(event.target)&&$("#modalLayer").hidden&&!event.target.closest(".context-menu,.select-popup"))void closeQueuePanel();
+});

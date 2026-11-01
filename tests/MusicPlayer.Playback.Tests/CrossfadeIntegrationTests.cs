@@ -154,7 +154,10 @@ public sealed class CrossfadeIntegrationTests : IDisposable
         var timer = Stopwatch.StartNew();
         while (!condition())
         {
-            Assert.True(timer.Elapsed < TimeSpan.FromSeconds(6), "Native crossfade did not reach the expected state.");
+            // This fixture is eight seconds long and the fade begins in its
+            // final two seconds. Leave room for ARM64 decoder startup before
+            // expecting the fade progress to advance.
+            Assert.True(timer.Elapsed < TimeSpan.FromSeconds(10), "Native crossfade did not reach the expected state.");
             await Task.Delay(20);
         }
     }

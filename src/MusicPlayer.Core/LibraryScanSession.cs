@@ -11,6 +11,7 @@ public sealed class LibraryScanSession : IDisposable
     private readonly long _runId;
     private readonly StringComparer _pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
     private readonly List<string> _pendingSeen = new(SeenBatchSize);
+    private readonly List<(string Path, ScanExcludedPathKind? Kind)> _pendingProtected = new(SeenBatchSize);
     private readonly HashSet<string> _pendingSet;
     private readonly SqliteCommand _stateCommand;
     private readonly SqliteCommand _excludeCommand;
@@ -129,10 +130,8 @@ public sealed class LibraryScanSession : IDisposable
     public void MarkPathIncomplete(string path)
     {
         ThrowIfDisposed();
-        var normalized = NormalizeRoot(path);
-        _incompleteCommand.Parameters["$path"].Value = normalized;
-        _incompleteCommand.Parameters["$prefix"].Value = RootPrefix(normalized);
-        _incompleteCommand.ExecuteNonQuery();
+        _pendingProtected.Add((NormalizeRoot(path), null));
+        if (_pendingProtected.Count >= SeenBatchSize) FlushProtectedPaths();
     }
 
     /// <summary>Legacy exclusions are conservatively retained until a user removes them.</summary>
@@ -141,17 +140,15 @@ public sealed class LibraryScanSession : IDisposable
     public void MarkExcludedPath(string path, ScanExcludedPathKind kind)
     {
         ThrowIfDisposed();
-        var normalized = NormalizeRoot(path);
-        var command = kind == ScanExcludedPathKind.DefaultExcluded ? _defaultExcludeCommand : _excludeCommand;
-        command.Parameters["$path"].Value = normalized;
-        command.Parameters["$prefix"].Value = RootPrefix(normalized);
-        command.ExecuteNonQuery();
+        _pendingProtected.Add((NormalizeRoot(path), kind));
+        if (_pendingProtected.Count >= SeenBatchSize) FlushProtectedPaths();
     }
 
     public int Complete()
     {
         ThrowIfDisposed();
         FlushSeen();
+        FlushProtectedPaths();
         using var transaction = _connection.BeginTransaction();
         var collation = OperatingSystem.IsWindows() ? " COLLATE NOCASE" : string.Empty;
         using var remove = _connection.CreateCommand();
@@ -240,6 +237,32 @@ public sealed class LibraryScanSession : IDisposable
         transaction.Commit();
         _completed = true;
         return removed;
+    }
+
+    private void FlushProtectedPaths()
+    {
+        if (_pendingProtected.Count == 0) return;
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            foreach (var item in _pendingProtected)
+            {
+                var command = item.Kind is null ? _incompleteCommand
+                    : item.Kind == ScanExcludedPathKind.DefaultExcluded ? _defaultExcludeCommand : _excludeCommand;
+                command.Transaction = transaction;
+                command.Parameters["$path"].Value = item.Path;
+                command.Parameters["$prefix"].Value = RootPrefix(item.Path);
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+            _pendingProtected.Clear();
+        }
+        finally
+        {
+            _incompleteCommand.Transaction = null;
+            _excludeCommand.Transaction = null;
+            _defaultExcludeCommand.Transaction = null;
+        }
     }
 
     public void FlushSeen()
