@@ -14,7 +14,7 @@ public sealed partial class LibraryStore
     private static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
     private readonly object _sessionGate = new();
     private readonly HashSet<string> _purgedPaths = new(PathComparer);
-    public bool UseCachedFingerprints { get; set; }
+    public bool UseCachedFingerprints { get; set; } = true;
 
     public void SetBrowsingAvailability(IEnumerable<string> roots, IEnumerable<string> paths)
         => _hidden = new(roots.Select(root => RootPrefix(NormalizeRoot(root))).Distinct(PathComparer).ToArray(),

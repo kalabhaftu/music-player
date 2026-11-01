@@ -19,7 +19,6 @@ public sealed partial class MainWindow
                     _startupBackgroundWorkStarted = true;
                     _ = StartStartupScanAsync();
                     _ = CheckForUpdatesAsync(false);
-                    _ = PrepareDuplicatesInBackgroundAsync();
                 }
                 return null;
             case "getBootstrap":
