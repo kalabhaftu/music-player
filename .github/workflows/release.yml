@@ -309,14 +309,14 @@ jobs:
             -PfxPath "$env:RUNNER_TEMP\music-player-signing.pfx" `
             -Password $env:SIGNING_PASSWORD
       # actions/upload-artifact v7, pinned to the verified tag commit.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
         with:
           name: music-player-upgrade-fixtures
           path: artifacts/upgrade-fixtures/
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
         with:
           name: music-player-release-assets
@@ -391,7 +391,7 @@ jobs:
           & tests/MusicPlayer.Ui.Tests/Test-MsixPackage.ps1 -BundlePath $bundle[0].FullName -PreviousBundlePath artifacts/upgrade-fixtures/MusicPlayer-0.9.9-x64-arm64.msixbundle -Architecture '${{ matrix.arch }}'
       - name: Upload installed runtime evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: installed-${{ matrix.arch }}-evidence
           path: artifacts/ui-evidence/
@@ -476,7 +476,7 @@ jobs:
           }
       - name: Upload comparative resource evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: performance-evidence
           path: artifacts/ui-evidence/performance/
