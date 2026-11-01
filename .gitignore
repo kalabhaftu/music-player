@@ -17,3 +17,5 @@ TestResults/
 node_modules/
 /local_music_player.html
 /local_music_player_v2.html
+Cleanup-MusicPlayerLocalBuilds.bat
+Cleanup-MusicPlayerLocalBuilds.ps1
