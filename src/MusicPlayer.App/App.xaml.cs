@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using MusicPlayer.Core;
 
 namespace MusicPlayer.App;
@@ -7,6 +9,7 @@ public partial class App : Application
 {
     private Window? _window;
     private readonly Queue<FileActivationRequest> _pendingFileActivations = new();
+    private bool _drainingActivations;
     public App()
     {
         UnhandledException += (_, args) => LocalAppLog.Shared.Error("ui-crash", "Unhandled WinUI exception.", args.Exception);
@@ -22,15 +25,23 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        using var startup = StartupSplash.TryShow();
         try
         {
             // Integrity checks, migrations and recovery finish on a worker before any
             // service can write. The UI dispatcher stays available during disk work.
-            var store = await Task.Run(LibraryStore.InAppData);
-            _window ??= new MainWindow(store);
+            startup?.SetStatus("Preparing your library…");
+            var storeTask = Task.Run(LibraryStore.InAppData);
+            var playbackTask = Task.Run(() => new PlaybackService());
+            await Task.WhenAll(storeTask, playbackTask);
+            startup?.SetStatus("Opening Music Player…");
+            var early = _pendingFileActivations.ToArray();_pendingFileActivations.Clear();
+            var openingTrack = Program.InitialActivation.Action == FileActivationAction.Play && Program.InitialActivation.Paths.Count > 0;
+            openingTrack |= early.Any(request => request.Action == FileActivationAction.Play && request.Paths.Count > 0);
+            _window ??= new MainWindow(storeTask.Result, playbackTask.Result, openingTrack);
             _window.Activate();
             HandleActivation(Program.InitialActivation);
-            while (_pendingFileActivations.TryDequeue(out var pending)) HandleActivation(pending);
+            foreach (var pending in early) HandleActivation(pending);
         }
         catch (Exception ex)
         {
@@ -47,21 +58,34 @@ public partial class App : Application
             return;
         }
 
-        _window.Activate();
+        if (_window is MainWindow mainWindow) mainWindow.ShowAndActivate();
+        else _window.Activate();
         if (request.Paths.Count == 0) return;
+        _pendingFileActivations.Enqueue(request);
+        if (!_drainingActivations) _ = DrainActivationsAsync();
+    }
 
-        var mainWindow = (MainWindow)_window;
-        switch (request.Action)
+    private async Task DrainActivationsAsync()
+    {
+        _drainingActivations = true;
+        try
         {
-            case FileActivationAction.AddToQueue:
-                _ = mainWindow.AddExternalFilesToQueueAsync(request.Paths);
-                break;
-            case FileActivationAction.CreatePlaylist:
-                _ = mainWindow.CreatePlaylistFromExternalFilesAsync(request.Paths);
-                break;
-            default:
-                _ = mainWindow.PlayExternalFilesAsync(request.Paths);
-                break;
+            while (_pendingFileActivations.Count > 0 && _window is MainWindow mainWindow)
+            {
+                await Task.Delay(150);
+                var request = _pendingFileActivations.Dequeue();
+                var paths = request.Paths.ToList();
+                while (_pendingFileActivations.TryPeek(out var next) && next.Action == request.Action)
+                    paths.AddRange(_pendingFileActivations.Dequeue().Paths);
+                var selected = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                switch (request.Action)
+                {
+                    case FileActivationAction.AddToQueue: await mainWindow.AddExternalFilesToQueueAsync(selected); break;
+                    case FileActivationAction.CreatePlaylist: await mainWindow.CreatePlaylistFromExternalFilesAsync(selected); break;
+                    default: await mainWindow.PlayExternalFilesAsync(selected); break;
+                }
+            }
         }
+        finally { _drainingActivations = false; }
     }
 }

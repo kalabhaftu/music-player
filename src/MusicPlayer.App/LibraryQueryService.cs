@@ -229,7 +229,7 @@ internal sealed class LibraryQueryService
         {
             result = _store.GetTracksPageWithCount(request.Search, request.Sort, request.Descending, request.Filter,
                 request.GroupColumn, request.GroupValue, request.Offset, request.PageSize,
-                HideExactDuplicates && request.GroupColumn is null);
+                HideExactDuplicates);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) when (request.View == "Songs")
@@ -270,7 +270,7 @@ internal sealed class LibraryQueryService
         var search = String(payload, "search");
         var offset = Math.Max(0, Int(payload, "offset"));
         var pageSize = Math.Clamp(Int(payload, "pageSize", 60), 1, 200);
-        var groups = _store.GetGroupsPage(column, search, offset, pageSize).Select(group => GroupDto(group, column)).ToArray();
+        var groups = _store.GetGroupsPage(column, search, offset, pageSize, hideExactDuplicates: HideExactDuplicates).Select(group => GroupDto(group, column)).ToArray();
         return new { groups, totalCount = _store.CountGroups(column, search) };
     }
 
@@ -313,7 +313,7 @@ internal sealed class LibraryQueryService
     {
         var offset = Math.Max(0, requestedOffset);
         var pageSize = Math.Clamp(requestedPageSize, 1, 60);
-        var page = _store.GetArtistAlbumsPage(artist, offset, pageSize + 1);
+        var page = _store.GetArtistAlbumsPage(artist, offset, pageSize + 1, HideExactDuplicates);
         return new { groups = page.Take(pageSize).Select(group => GroupDto(group, "album")).ToArray(), hasMore = page.Count > pageSize };
     }
 
@@ -419,11 +419,12 @@ internal sealed class LibraryQueryService
             _ => null
         };
         return _store.GetTrackPaths(_context.View == "Search" ? _context.Search : string.Empty, _sort, _descending, filter,
-            _context.GroupColumn, _context.GroupValue, hideExactDuplicates: HideExactDuplicates && _context.GroupColumn is null);
+            _context.GroupColumn, _context.GroupValue, hideExactDuplicates: HideExactDuplicates);
     }
 
     public IReadOnlyList<string> GroupTrackPaths(string column, string value) =>
-        _store.GetTrackPaths(groupColumn: column, groupValue: value);
+        _store.GetTrackPaths(sort: column == "album" ? TrackSort.TrackNumber : column == "artist" ? TrackSort.PlayCount : TrackSort.Title,
+            descending: column == "artist", groupColumn: column, groupValue: value, hideExactDuplicates: HideExactDuplicates);
 
     public Track? ResolveTrack(string? id) =>
         ResolveTrackPath(id) is { } path ? _store.GetTrack(path) : null;
@@ -578,7 +579,7 @@ internal sealed class LibraryQueryService
 
     private object SearchGroupPage(string column, string query, int offset, int size, CancellationToken cancellationToken)
     {
-        var groups = _store.GetGroupsPage(column, query, offset, size, cancellationToken);
+        var groups = _store.GetGroupsPage(column, query, offset, size, cancellationToken, HideExactDuplicates);
         cancellationToken.ThrowIfCancellationRequested();
         var count = _store.CountGroups(column, query, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();

@@ -15,7 +15,13 @@
 AppId={{8B3371D0-13A1-4410-9E60-A49AD1A5F08C}
 AppName=Music Player
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductVersion={#AppVersion}.0
 AppPublisher=Kalabhaftu
+VersionInfoCompany=Kalabhaftu
+VersionInfoProductName=Music Player
+VersionInfoDescription=Music Player Installer
+VersionInfoOriginalFileName=MusicPlayer-Setup-{#Architecture}.exe
 DefaultDirName={autopf}\Music Player
 DefaultGroupName=Music Player
 UninstallDisplayIcon={app}\MusicPlayer.exe

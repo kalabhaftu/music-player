@@ -104,7 +104,7 @@ test("downloaded timed lyrics actually scroll both views and follow a backwards 
   globalThis.document={hidden:false,addEventListener(){}};
   context.after(()=>{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;});
   const lines=parseLyricsText("[00:01]First\n[00:03]Second").lines;
-  function root(){const nodes=lines.map((_,index)=>({dataset:{lyricIndex:String(index)},classList:{toggle(){}},offsetHeight:30,getBoundingClientRect:()=>({top:150+index*100})}));return {dataset:{},nodes,querySelector:selector=>nodes[Number(selector.match(/\d+/)[0])]};}
+  function root(){const nodes=lines.map((_,index)=>({dataset:{lyricIndex:String(index)},classList:{toggle(){}},offsetTop:150+index*100,offsetHeight:30,getBoundingClientRect:()=>({top:150+index*100})}));return {dataset:{},nodes,querySelector:selector=>nodes[Number(selector.match(/\d+/)[0])]};}
   const main=root(),immersive=root(),scrolls=[];
   const scroller={scrollTop:0,clientHeight:100,getBoundingClientRect:()=>({top:0}),scrollTo:value=>scrolls.push(value.top)};
   const state={lyricLines:lines,lyricsTrack:{id:"a"},track:{id:"a"},view:"Lyrics",immersiveLyricsOpen:true,playing:false,position:4,settings:{motionStyle:"Off"}};

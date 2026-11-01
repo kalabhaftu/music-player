@@ -11,9 +11,18 @@ public sealed partial class MainWindow
             case "setAudioDevice": await SetAudioDeviceAsync(String(payload, "id")); return null;
             case "setCrossfade": SetCrossfade(Int(payload, "seconds")); return null;
             case "refreshAudioDevices": return await AudioSettingsAsync();
-            case "setEqualizerPreset": SetEqualizerPreset(String(payload, "name")); return null;
-            case "setEqualizerBand": SetEqualizerBand(Int(payload, "index"), (float)Double(payload, "value")); return null;
-            case "saveEqualizerPreset": SaveEqualizerPreset(String(payload, "name")); return null;
+            case "setEqualizerPreset": await SetEqualizerPresetAsync(String(payload, "name")); return null;
+            case "setEqualizerBand":
+            {
+                var bands = CurrentEqualizerBands(10);
+                var index = Int(payload, "index");
+                if (index < 0 || index >= bands.Length) throw new ArgumentOutOfRangeException(nameof(index));
+                bands[index] = (float)Double(payload, "value");
+                await SetEqualizerBandsAsync(bands); return null;
+            }
+            case "setEqualizerBands":
+                await SetEqualizerBandsAsync(payload.GetProperty("bands").EnumerateArray().Select(value => value.GetSingle()).ToArray()); return null;
+            case "saveEqualizerPreset": await SaveEqualizerPresetAsync(String(payload, "name")); return null;
             case "updateSettings": await UpdateWebSettingsAsync(payload); return null;
             case "resetUiSettings":
             {

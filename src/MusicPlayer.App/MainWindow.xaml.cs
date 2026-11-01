@@ -20,7 +20,8 @@ public sealed partial class MainWindow : Window
     private readonly PlaybackQueueCoordinator _playbackQueue = new();
     private IReadOnlyList<string> _queue => _playbackQueue.Entries;
     private readonly SemaphoreSlim _externalFileActionGate = new(1, 1);
-    private readonly PlaybackService _playback = new();
+    private readonly TaskCompletionSource _shellReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly PlaybackService _playback;
     private readonly PlaybackCommandCoordinator _playbackCommands;
     private SystemMediaTransportControls? _systemControls;
     private TaskbarPeekControls? _taskbarPeekControls;
@@ -56,25 +57,27 @@ public sealed partial class MainWindow : Window
 
     private void OnTracksPurged(IReadOnlyList<string> paths) => DispatcherQueue.TryEnqueue(() => ApplyPurgedTracks(paths));
 
-    public MainWindow(LibraryStore store)
+    public MainWindow(LibraryStore store, PlaybackService? playback = null, bool openingExternalTrack = false)
     {
+        _playback = playback ?? new PlaybackService();
         _store = store;
         _store.TracksPurged += OnTracksPurged;
         if (_store.GetSetting("accent-mode") is null) _store.SetSetting("accent-mode", "Artwork");
         InitializeComponent();
+        ShellRoot.Loaded += (_, _) => _shellReady.TrySetResult();
         ShellRoot.ActualThemeChanged += (_, _) => ApplyNativeWindowChrome();
         _libraryQueries = new(_store, _appData);
         _libraryQueries.RestoreContext(_store.GetSetting("last-view-context"));
         _playbackCommands = new(_playbackQueue, _playback, _store.GetTrack, GetCurrentQueuePaths);
         _playlistLibrary = new(_store);
         _playerSettings = new(_store);
+        if (_store.GetSetting("minimize-to-tray") is null) _store.SetSetting("minimize-to-tray", "true");
         _libraryLocations = new(_store);
         var videoExtensions = _libraryLocations.GetEnabledVideoExtensions();
         _playback.SetVideoExtensions(videoExtensions);
         _libraryQueries.SetVideoExtensions(videoExtensions);
         _playback.VideoSurfaceRequested = RequestVideoPlaybackSurface;
         _trackAvailability = new(_store, _libraryQueries, _libraryLocations, Path.Combine(_appData, "Artwork"));
-        _libraryQueries.SetUnavailableRoots(_libraryLocations.GetLibraryRoots().Where(root => !Directory.Exists(root)));
         _libraryFileWatcher = new();
         _libraryFileWatcher.PathsRemoved += paths => _ = HandleLibraryPathsRemovedAsync(paths);
         _libraryFileWatcher.RescanRequested += RequestLibraryWatcherRescan;
@@ -89,6 +92,19 @@ public sealed partial class MainWindow : Window
         _crossfadeSeconds = ReadCrossfadeSeconds();
         _playback.Volume = volume;
         _playback.SelectAudioOutputDevice(_store.GetSetting("audio-output-device"));
+        if (_playback.AudioOutputDeviceId.Length == 0)
+        {
+            _store.SetSetting("audio-output-device", "");
+            _store.SetSetting("audio-output-name", "System default");
+        }
+        _playback.AudioOutputFallback += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_windowClosed) return;
+            if (!_playback.ApplyPendingAudioOutputFallback(CancelCrossfadeAndRestoreQueue)) return;
+            _store.SetSetting("audio-output-device", "");
+            _store.SetSetting("audio-output-name", "System default");
+            _webBridge?.SendEvent("audioOutputChanged", new { selectedId = "", selectedName = "System default" });
+        });
         ApplyStoredEqualizer();
         _playback.TrackEnded += Playback_TrackEnded;
         _playback.CrossfadeCompleted += Playback_CrossfadeCompleted;
@@ -111,7 +127,7 @@ public sealed partial class MainWindow : Window
             ApplyNativeWindowIcon();
             ApplyNativeWindowChrome();
         };
-        RestoreSession();
+        RestoreSession(loadMedia: !openingExternalTrack);
         WebUi.Loaded += WebUi_Loaded;
     }
 

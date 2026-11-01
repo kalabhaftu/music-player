@@ -210,6 +210,15 @@ internal sealed class PlaybackQueueCoordinator
         if (_entries.Count != previousCount) ContentRevision++;
     }
 
+    public void InsertNextRange(IEnumerable<string> paths, string? currentTrackPath)
+    {
+        var selected = paths.ToArray();
+        if (selected.Length == 0) return;
+        EnsureCurrentTrack(currentTrackPath);
+        _entries.InsertRange(Math.Clamp(CurrentIndex + 1, 0, _entries.Count), selected);
+        ContentRevision++;
+    }
+
     public void ToggleShuffle(IEnumerable<string> currentViewPaths, string? currentTrackPath)
     {
         Shuffle = !Shuffle;

@@ -134,7 +134,7 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
         indexed += repaired;
         var removed = scan.Complete();
         if (removed > 0) store.InvalidateExactFingerprintSnapshot();
-        store.PruneUnreferencedArtwork(artworkCache);
+        if (indexed > 0 || removed > 0 || forceRefresh) store.PruneUnreferencedArtwork(artworkCache);
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         return new(indexed, skipped, removed, unavailableRoots.Distinct(comparer).ToArray(), incompletePaths.Distinct(comparer).ToArray(), filesFound);
     }
@@ -186,19 +186,21 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
         {
             // Normal scans only query bounded pages and reopen files whose cached cover
             // disappeared. Avoid one database connection per song in large libraries.
-            for (var offset = 0; ; offset += pageSize)
+            foreach (var root in scanRoots)
             {
-                control.Token.ThrowIfCancellationRequested();
-                // Artwork repair updates metadata too, which can change titles. Page
-                // by immutable path so those updates cannot shift unseen rows between
-                // offsets and leave stale artwork behind.
-                var page = store.GetTracksPage(sort: TrackSort.Path, offset: offset, pageSize: pageSize);
-                foreach (var track in page)
+                for (var offset = 0; ; offset += pageSize)
                 {
-                    if (string.IsNullOrWhiteSpace(track.ArtworkPath) || File.Exists(track.ArtworkPath)) continue;
-                    await RefreshOneAsync(track).ConfigureAwait(false);
+                    control.Token.ThrowIfCancellationRequested();
+                    // A watcher update to one folder must not page through the whole library.
+                    var page = store.GetTracksPage(groupColumn: "folder", groupValue: root,
+                        sort: TrackSort.Path, offset: offset, pageSize: pageSize);
+                    foreach (var track in page)
+                    {
+                        if (string.IsNullOrWhiteSpace(track.ArtworkPath) || File.Exists(track.ArtworkPath)) continue;
+                        await RefreshOneAsync(track).ConfigureAwait(false);
+                    }
+                    if (page.Count < pageSize) break;
                 }
-                if (page.Count < pageSize) break;
             }
         }
         if (batch.Count > 0)

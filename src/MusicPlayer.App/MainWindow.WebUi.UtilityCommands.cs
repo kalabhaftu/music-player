@@ -1,12 +1,18 @@
 using System.Text.Json;
 using System.Diagnostics;
 using MusicPlayer.Core;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
+using WinRT.Interop;
 
 namespace MusicPlayer.App;
 
 public sealed partial class MainWindow
 {
+    private RectInt32? _queuePanelOriginalBounds;
+
     private async Task<object?> HandleWebUiUtilityCommandAsync(string name, JsonElement payload)
     {
         switch (name)
@@ -48,6 +54,10 @@ public sealed partial class MainWindow
             }
             case "setPanelMode":
                 _store.SetSetting("right-sidebar-mode", String(payload, "mode") == "info" ? "Info" : "Queue"); return null;
+            case "expandWindowForQueue":
+                return ExpandWindowForQueue(Int(payload, "minimumWidth"));
+            case "restoreWindowAfterQueue":
+                RestoreWindowAfterQueue(); return null;
             case "setImmersiveMode":
                 SetImmersiveMode(payload.TryGetProperty("enabled", out var immersive) && immersive.ValueKind == JsonValueKind.True);
                 return null;
@@ -65,5 +75,45 @@ public sealed partial class MainWindow
             }
             default: throw new InvalidOperationException("This Music Player command is not available in the utility handler.");
         }
+    }
+
+    private object ExpandWindowForQueue(int minimumWidthDip)
+    {
+        if (_immersiveMode) return new { expanded = false };
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = AppWindow.GetFromWindowId(windowId);
+        if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped) return new { expanded = false };
+
+        var display = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Nearest);
+        var scale = Math.Max(1, ShellRoot.XamlRoot?.RasterizationScale ?? 1);
+        var requestedWidth = (int)Math.Ceiling(Math.Clamp(minimumWidthDip, 560, 1800) * scale);
+        var current = appWindow.Size;
+        var targetWidth = Math.Min(display.WorkArea.Width, Math.Max(current.Width, requestedWidth));
+        var targetHeight = Math.Min(current.Height, display.WorkArea.Height);
+        if (targetWidth <= current.Width && targetHeight >= current.Height) return new { expanded = false };
+
+        _queuePanelOriginalBounds ??= new RectInt32(appWindow.Position.X, appWindow.Position.Y, current.Width, current.Height);
+        var x = Math.Clamp(appWindow.Position.X, display.WorkArea.X, display.WorkArea.X + display.WorkArea.Width - targetWidth);
+        var y = Math.Clamp(appWindow.Position.Y, display.WorkArea.Y, display.WorkArea.Y + display.WorkArea.Height - targetHeight);
+        appWindow.MoveAndResize(new RectInt32(x, y, targetWidth, targetHeight), display);
+        return new { expanded = true };
+    }
+
+    private void RestoreWindowAfterQueue()
+    {
+        if (_queuePanelOriginalBounds is not { } original) return;
+        _queuePanelOriginalBounds = null;
+        if (_immersiveMode) return;
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = AppWindow.GetFromWindowId(windowId);
+        if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped) return;
+        var display = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Nearest);
+        var width = Math.Min(original.Width, display.WorkArea.Width);
+        var height = Math.Min(original.Height, display.WorkArea.Height);
+        var x = Math.Clamp(original.X, display.WorkArea.X, display.WorkArea.X + display.WorkArea.Width - width);
+        var y = Math.Clamp(original.Y, display.WorkArea.Y, display.WorkArea.Y + display.WorkArea.Height - height);
+        appWindow.MoveAndResize(new RectInt32(x, y, width, height), display);
     }
 }
