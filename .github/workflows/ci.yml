@@ -68,7 +68,7 @@ jobs:
         run: dotnet build src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --no-restore -p:Platform=${{ matrix.arch }} -p:RuntimeIdentifier=${{ matrix.rid }} -p:AppxPackageSigningEnabled=false -p:GenerateAppxPackageOnBuild=false
       - name: Restore validated media fixtures
         id: media-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: artifacts/media-fixtures
           key: windows-media-${{ hashFiles('tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1') }}
@@ -82,7 +82,7 @@ jobs:
           "MUSICPLAYER_MEDIA_FIXTURES=$PWD/artifacts/media-fixtures" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - name: Cache validated media fixtures
         if: steps.media-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: artifacts/media-fixtures
           key: windows-media-${{ hashFiles('tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1') }}
