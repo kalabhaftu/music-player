@@ -113,7 +113,7 @@ function resetLyricsSync() {
 
 function initLyricsScrollListeners() {
   const content = $("#content");
-  if (content) {
+  if (content && typeof content.addEventListener === "function") {
     const onUserScroll = () => {
       if (state.view === "Lyrics" && state.lyricLines?.length > 0) {
         userPausedLyricsSync = true;
@@ -126,7 +126,7 @@ function initLyricsScrollListeners() {
   }
 
   const immersive = $("#immersiveLyricsScroll");
-  if (immersive) {
+  if (immersive && typeof immersive.addEventListener === "function") {
     const onUserImmersiveScroll = () => {
       if (state.lyricLines?.length > 0) {
         userPausedImmersiveSync = true;
@@ -138,19 +138,23 @@ function initLyricsScrollListeners() {
     immersive.addEventListener("touchmove", onUserImmersiveScroll, { passive: true });
   }
 
-  $("#resumeLyricsBtn")?.addEventListener("click", () => {
-    userPausedLyricsSync = false;
-    const btn = $("#resumeLyricsBtn");
-    if (btn) btn.hidden = true;
-    scrollToActiveLyric($("#lyricsLines"), $("#content"), true);
-  });
+  const resumeBtn = $("#resumeLyricsBtn");
+  if (resumeBtn && typeof resumeBtn.addEventListener === "function") {
+    resumeBtn.addEventListener("click", () => {
+      userPausedLyricsSync = false;
+      resumeBtn.hidden = true;
+      scrollToActiveLyric($("#lyricsLines"), $("#content"), true);
+    });
+  }
 
-  $("#immersiveResumeLyricsBtn")?.addEventListener("click", () => {
-    userPausedImmersiveSync = false;
-    const ibtn = $("#immersiveResumeLyricsBtn");
-    if (ibtn) ibtn.hidden = true;
-    scrollToActiveLyric($("#immersiveLyricsLines"), $("#immersiveLyricsScroll"), true);
-  });
+  const immersiveResumeBtn = $("#immersiveResumeLyricsBtn");
+  if (immersiveResumeBtn && typeof immersiveResumeBtn.addEventListener === "function") {
+    immersiveResumeBtn.addEventListener("click", () => {
+      userPausedImmersiveSync = false;
+      immersiveResumeBtn.hidden = true;
+      scrollToActiveLyric($("#immersiveLyricsLines"), $("#immersiveLyricsScroll"), true);
+    });
+  }
 }
 
 function updateActiveLyric(){

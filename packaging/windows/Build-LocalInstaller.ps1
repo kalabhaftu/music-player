@@ -55,9 +55,9 @@ if ($RebuildApp -or !(Test-Path -LiteralPath $manifest)) {
     & (Join-Path $PSScriptRoot 'Prepare-PortablePackage.ps1') -PublishDirectory $publish -DestinationDirectory $payload -Version $Version -Architecture x64
     foreach ($file in Get-ChildItem -LiteralPath $payload -File | Where-Object { $_.Name -like 'MusicPlayer*.exe' -or $_.Name -like 'MusicPlayer*.dll' -or $_.Extension -eq '.ps1' }) {
         if ($file.Extension -eq '.ps1') {
-            $null = Set-AuthenticodeSignature -LiteralPath $file.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
+            $null = Set-AuthenticodeSignature -LiteralPath $file.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.sectigo.com'
         } else {
-            & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 $certificate.Thumbprint /s My $file.FullName
+            & $signtool sign /fd SHA256 /tr http://timestamp.sectigo.com /td SHA256 /sha1 $certificate.Thumbprint /s My $file.FullName
             if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($file.Name)" }
         }
         & (Join-Path $PSScriptRoot 'Assert-LocalSignature.ps1') -Path $file.FullName
@@ -83,7 +83,7 @@ if (!(Test-Path -LiteralPath $bootstrapper)) { Invoke-WebRequest -Uri 'https://g
 $vendor = Get-AuthenticodeSignature -LiteralPath $bootstrapper
 if ($vendor.Status -ne 'Valid' -or $vendor.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation') { throw 'The WebView2 bootstrapper is damaged or lacks a valid Microsoft signature.' }
 Copy-Item -LiteralPath $bootstrapper -Destination (Join-Path $payload 'MicrosoftEdgeWebView2Setup.exe') -Force
-$signCommand = '$q' + $signtool + '$q sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 ' + $certificate.Thumbprint + ' /s My $f'
+$signCommand = '$q' + $signtool + '$q sign /fd SHA256 /tr http://timestamp.sectigo.com /td SHA256 /sha1 ' + $certificate.Thumbprint + ' /s My $f'
 & $compiler "/DAppVersion=$Version" '/DArchitecture=x64' "/DSourceDir=$payload" "/DOutputDir=$work" '/DSignedBuild' "/Smusicplayer=$signCommand" (Join-Path $PSScriptRoot 'MusicPlayer.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 $setup = Join-Path $work 'MusicPlayer-Setup-x64.exe'
@@ -107,3 +107,4 @@ if ($Install) {
     & (Join-Path $PSScriptRoot 'Assert-LocalSignature.ps1') -Path (Join-Path $registration.InstallLocation 'unins000.exe')
     Write-Host "Installation passed; every installed payload file matches its source. Log: $log"
 }
+
