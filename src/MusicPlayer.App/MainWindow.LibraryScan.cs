@@ -97,10 +97,10 @@ public sealed partial class MainWindow : Window
                 { LocalAppLog.Shared.Error("database", "Could not read the index count before the startup scan; the scan will rebuild the damaged index if needed.", ex); }
                 LocalAppLog.Shared.Info("scanner", $"Startup scan prepared: scope=selected-music-folders, configuredRoots={roots.Count}, rootsPreviouslyConfigured={rootsWereConfigured}, indexedTracks={libraryTracks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}, roots=[{string.Join(", ", roots.Select(DescribeRoot))}].");
                 _libraryFileWatcher.SetRoots(roots, _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
-                return roots.ToArray();
+                return (Roots: roots.ToArray(), IndexedTracks: libraryTracks ?? 0);
             });
             if (_windowClosed) return;
-            if (prepared.Length > 0) StartScan(prepared);
+            if (prepared.IndexedTracks == 0 && prepared.Roots.Length > 0) StartScan(prepared.Roots);
             else _ = ReconcileIndexedLibraryAtStartupAsync();
         }
         catch (Exception ex) { LocalAppLog.Shared.Warning("scanner", "Startup library checks could not be prepared; manual scanning remains available.", ex); }
@@ -131,7 +131,7 @@ public sealed partial class MainWindow : Window
                 if (_windowClosed) return;
                 foreach (var path in result.RemovedPaths)
                     _webBridge?.SendEvent("trackAvailabilityChanged", new { id = LibraryStore.TrackHandleId(path), fileUnavailable = true });
-                PublishLibraryChanged();
+                if (result.RemovedPaths.Count > 0 || result.RecoveredCount > 0) PublishLibraryChanged();
             });
         }
         catch (Exception ex)

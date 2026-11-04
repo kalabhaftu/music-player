@@ -2,7 +2,13 @@
 
 Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming. C# namespaces are implementation details.
 
-## [1.0.2] (pending release)
+## [1.0.3]
+
+- Eliminate recursive startup disk scanning when the library is already indexed, allowing instant app startup from SQLite.
+- Defer SHA-256 duplicate fingerprinting to on-demand duplicate view navigation instead of thrashing the disk on startup.
+- Prevent redundant UI reload notifications during initial track availability checks.
+
+## [1.0.2]
 
 - Show startup feedback immediately, initialize audio and the library in parallel, and reuse unchanged track metadata when opening files.
 - Keep favorites, settings, and background indexing from replacing the active library page; retain the saved library during launch checks and batch folder changes more conservatively.
