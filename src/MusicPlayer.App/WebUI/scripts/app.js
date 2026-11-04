@@ -204,7 +204,7 @@ function applyLayoutPreferences(){
   const panelResize=$("#panelResize"); if(panelResize)panelResize.setAttribute("aria-valuenow",String(Math.round(rightWidth)));
 }
 let scanOutcomeGeneration=0;
-const playerUi = createPlayerUi({state,$,$$,call,command,cover,esc,fmtDuration,svg,lyricLinesMarkup,loadLyricsForTrack}); const {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute}=playerUi;
+const playerUi = createPlayerUi({state,$,$$,call,command,cover,esc,fmtDuration,svg,lyricLinesMarkup,loadLyricsForTrack}); const {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute,resetLyricsSync}=playerUi;
 let toastTimer;
 let searchTimer;
 let searchInputRevision=0;
@@ -422,6 +422,7 @@ async function seekToLyricLine(element){
   if(!state.track||state.lyricsTrack?.id!==state.track.id)throw new Error("Play this track before seeking from its lyrics.");
   const seconds=Number(element?.dataset.lyricSeconds);
   if(!Number.isFinite(seconds)||seconds<0)return;
+  resetLyricsSync();
   await call("seek",{seconds});state.position=seconds;state.positionUpdatedAt=performance.now();state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();
 }
 async function handleMenu(actionName,id) { $("#contextMenu").classList.remove("show"); const actions={play:"play-track","play-next":"play-next",queue:"queue",playlist:"playlist","create-playlist-with-track":"create-playlist-with-track",favorite:"favorite",rating:"rating",lyrics:"lyrics",tags:"tags","restore-tags":"restore-tags",details:"details",location:"location"}; await action(actions[actionName],{dataset:{id}}); }
@@ -537,6 +538,41 @@ document.addEventListener("keydown",async e=>{
   if(e.code==="Space"&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON|A/.test(document.activeElement.tagName)&&!document.activeElement.isContentEditable){e.preventDefault();await call("playPause");await refreshCurrent();return;}
   if((e.altKey||e.metaKey)&&e.key==="ArrowLeft"){e.preventDefault();await call("previous");return;}
   if((e.altKey||e.metaKey)&&e.key==="ArrowRight"){e.preventDefault();await call("next");return;}
+  if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&!e.altKey&&!e.metaKey&&!e.ctrlKey){
+    const target=document.activeElement;
+    const isTextOrSlider=target&&(/INPUT|TEXTAREA/.test(target.tagName)||target.isContentEditable||target.getAttribute?.("role")==="slider"||target.matches?.('input[type="range"], .resize-handle'));
+    if(!isTextOrSlider){
+      e.preventDefault();
+      const current=Math.max(0,state.position||0);
+      const delta=(e.key==="ArrowRight"?5:-5)*(e.shiftKey?2:1);
+      const targetPos=Math.max(0,Math.min(state.duration||0,current+delta));
+      state.position=targetPos;
+      void call("seek",{seconds:targetPos});
+      resetLyricsSync?.();
+      updatePlayer();
+      return;
+    }
+  }
+  if(e.key==="ArrowUp"||e.key==="ArrowDown"){
+    const target=document.activeElement;
+    const isFormInput=target&&(/INPUT|TEXTAREA|SELECT/.test(target.tagName)||target.isContentEditable||target.getAttribute?.("role")==="slider"||target.closest?.(".select-popup, .context-menu, #modalLayer:not([hidden])"));
+    const focusedRow=target?.closest?.("tr[data-track], tr[data-queue-index], .queue-row");
+    if(focusedRow){
+      const sibling=e.key==="ArrowUp"?focusedRow.previousElementSibling:focusedRow.nextElementSibling;
+      if(sibling&&(sibling.matches("tr[data-track]")||sibling.matches("tr[data-queue-index]")||sibling.matches(".queue-row"))){
+        e.preventDefault();
+        sibling.focus();
+        sibling.scrollIntoView({block:"nearest"});
+        return;
+      }
+    } else if(!isFormInput){
+      e.preventDefault();
+      const step=(e.shiftKey?10:5)*(e.key==="ArrowUp"?1:-1);
+      const nextVol=Math.max(0,Math.min(100,Math.round((Number(state.volume)||0)+step)));
+      void setVolume(nextVol);
+      return;
+    }
+  }
   if(e.key==="Enter"&&e.target.matches("tr[data-track]")){await action("play-track",{dataset:{id:e.target.dataset.track}});}
   if(e.key==="Enter"&&e.target.matches("[data-open-type]"))e.target.click();
   if(e.key==="Escape"){closeModal();$("#contextMenu").classList.remove("show");}
@@ -660,7 +696,7 @@ $("#immersiveHeart").addEventListener("click",()=>action("favorite",{dataset:{id
 $("#shuffleBtn").addEventListener("click",async()=>{await call("toggleShuffle");await refreshCurrent();}); $("#repeatBtn").addEventListener("click",async()=>{await call("cycleRepeat");await refreshCurrent();}); $("#abBtn").addEventListener("click",async()=>{await call("toggleAbRepeat");await refreshCurrent();}); $("#heartBtn").addEventListener("click",()=>action("favorite",{dataset:{id:state.track?.id||""}}));
 const progressRange=$("#progressRange");let lastSeekCommit={seconds:-1,time:0};
 function previewSeek(){const seconds=clamp(progressRange.value,0,Math.max(1,state.duration));state.seekPreviewSeconds=seconds;progressRange.style.setProperty("--range-progress",`${seconds/Math.max(1,state.duration)*100}%`);$("#currentTime").textContent=fmtDuration(seconds);}
-async function commitSeek(){const seconds=clamp(progressRange.value,0,Math.max(1,state.duration));const now=Date.now();if(lastSeekCommit.seconds===seconds&&now-lastSeekCommit.time<350){state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();return;}lastSeekCommit={seconds,time:now};try{await call("seek",{seconds});state.position=seconds;}finally{state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();}}
+async function commitSeek(){const seconds=clamp(progressRange.value,0,Math.max(1,state.duration));const now=Date.now();if(lastSeekCommit.seconds===seconds&&now-lastSeekCommit.time<350){state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();return;}lastSeekCommit={seconds,time:now};resetLyricsSync?.();try{await call("seek",{seconds});state.position=seconds;}finally{state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();}}
 progressRange.addEventListener("pointerdown",()=>{state.seeking=true;previewSeek();});
 progressRange.addEventListener("input",previewSeek);
 progressRange.addEventListener("pointerup",()=>{if(state.seeking)commitSeek().catch(()=>{});});
