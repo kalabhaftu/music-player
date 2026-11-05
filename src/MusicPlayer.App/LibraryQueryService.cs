@@ -371,6 +371,17 @@ internal sealed class LibraryQueryService
         else if (!string.IsNullOrWhiteSpace(requestedView) && requestedView != "Playlist")
             playlistId = null;
 
+        if (payload.TryGetProperty("sort", out var sortProp) && sortProp.ValueKind == JsonValueKind.String &&
+            sortProp.GetString() is { } sortStr && !string.IsNullOrWhiteSpace(sortStr))
+        {
+            _sort = ParseSort(sortStr);
+        }
+        if (payload.TryGetProperty("descending", out var descProp) &&
+            descProp.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            _descending = descProp.GetBoolean();
+        }
+
         _context = new(view, search, groupColumn, groupValue, playlistId);
         PersistContext();
     }
@@ -407,8 +418,37 @@ internal sealed class LibraryQueryService
     public IReadOnlyList<string> CurrentTrackPaths()
     {
         var playlistId = _context.PlaylistId;
-        if (_context.View == "Playlist" && !string.IsNullOrWhiteSpace(playlistId))
-            return _store.GetPlaylistPaths(playlistId);
+        if ((_context.View == "Playlist" || !string.IsNullOrWhiteSpace(playlistId)) && !string.IsNullOrWhiteSpace(playlistId))
+        {
+            var playlistPaths = _store.GetPlaylistPaths(playlistId);
+            if (playlistPaths.Count > 0) return playlistPaths;
+        }
+
+        var isAlbum = _context.View == "Album" || string.Equals(_context.GroupColumn, "album", StringComparison.OrdinalIgnoreCase);
+        var sort = _sort;
+        var descending = _descending;
+
+        if (isAlbum)
+        {
+            sort = TrackSort.TrackNumber;
+            descending = false;
+        }
+        else if (_context.View == "Recently Added")
+        {
+            sort = TrackSort.Added;
+            descending = true;
+        }
+        else if (_context.View == "Recently Played")
+        {
+            sort = TrackSort.LastPlayed;
+            descending = true;
+        }
+        else if (_context.View == "Most Played")
+        {
+            sort = TrackSort.PlayCount;
+            descending = true;
+        }
+
         var filter = _context.View switch
         {
             "Favorites" => "favorites",
@@ -418,7 +458,7 @@ internal sealed class LibraryQueryService
             "Videos" => "videos",
             _ => null
         };
-        return _store.GetTrackPaths(_context.View == "Search" ? _context.Search : string.Empty, _sort, _descending, filter,
+        return _store.GetTrackPaths(_context.View == "Search" ? _context.Search : string.Empty, sort, descending, filter,
             _context.GroupColumn, _context.GroupValue, hideExactDuplicates: HideExactDuplicates);
     }
 

@@ -85,7 +85,18 @@ function card(item,type="album") {
   const id=esc(clean(item.id)||name); const key=esc(name);
   if(type==="track") return `<article class="card ${item.fileUnavailable?"unavailable-track":""}" tabindex="0" data-action="play" data-id="${id}">${cover(item)}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(item.fileUnavailable?"File unavailable":subOf(item))}</div><button class="play-fab" data-action="play" data-id="${id}" title="Play">${svg("play")}</button></article>`;
   const playAction=type==="playlist"?"play-playlist-card":"play-group";
-  return `<article class="card" tabindex="0" data-open-type="${type}" data-open-id="${id}" data-open-name="${type==="folder"?id:key}">${cover(item,type==="artist"?"round":"")}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(subOf(item) || `${item.trackCount||item.count||0} tracks`)}</div><button class="play-fab" data-action="${playAction}" data-type="${type}" data-id="${id}" title="Play">${svg("play")}</button></article>`;
+  const countVal = item.trackCount || item.count;
+  const countLabel = countVal ? `${countVal} ${countVal === 1 ? "song" : "songs"}` : "";
+  let sub;
+  if(type==="album"){
+    const artist=clean(item.artist)||clean(item.albumArtist);
+    sub=[artist,countLabel,item.year?String(item.year):""].filter(Boolean).join(" · ");
+  } else if(type==="artist"){
+    sub=countLabel;
+  } else {
+    sub=subOf(item)||countLabel;
+  }
+  return `<article class="card" tabindex="0" data-open-type="${type}" data-open-id="${id}" data-open-name="${type==="folder"?id:key}">${cover(item,type==="artist"?"round":"")}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(sub)}</div><button class="play-fab" data-action="${playAction}" data-type="${type}" data-id="${id}" title="Play">${svg("play")}</button></article>`;
 }
 function cardGrid(items,type="album") {
   if(items?.length) return `<div class="card-grid">${items.map(item=>card(item,type)).join("")}</div>`;

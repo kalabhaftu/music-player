@@ -249,6 +249,58 @@ button.lyric-line { cursor:pointer; }
 .action:disabled,.icon-btn:disabled { opacity:.42; cursor:default; }
 :focus-visible { outline:2px solid rgba(var(--accent-rgb),.8); outline-offset:2px; }
 
+/* Prevent Chromium 2-horizontal-line outline bug on table rows and seekbar focus artifacts */
+tr:focus, tr:focus-visible,
+.song-table tr:focus, .song-table tr:focus-visible,
+.song-table tbody tr:focus, .song-table tbody tr:focus-visible,
+.queue-table tr:focus, .queue-table tr:focus-visible,
+.queue-row:focus, .queue-row:focus-visible,
+input[type="range"]:focus, input[type="range"]:focus-visible,
+.timeline input[type="range"]:focus, .timeline input[type="range"]:focus-visible,
+.player-right input[type="range"]:focus, .player-right input[type="range"]:focus-visible {
+  outline: none !important;
+}
+
+.song-table tbody tr:focus-visible,
+.queue-table tbody tr:focus-visible,
+.queue-row:focus-visible {
+  background: var(--row-hover) !important;
+}
+
+.lyrics-resume-btn {
+  position: fixed;
+  bottom: 110px;
+  right: 32px;
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  background: var(--surface-float, #181c19);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+.lyrics-resume-btn:hover {
+  background: var(--accent);
+  color: var(--accent-ink, #0a0c0a);
+  transform: translateY(-2px);
+}
+.lyrics-resume-btn[hidden] {
+  display: none !important;
+}
+.immersive-lyrics-resume {
+  position: absolute;
+  bottom: 24px;
+  right: 28px;
+  z-index: 40;
+}
+
 /* UI controls and column choices */
 .context-menu { max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
 .volume-control { position:relative; display:flex; align-items:center; flex:0 0 auto; gap:7px; }

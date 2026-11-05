@@ -55,6 +55,7 @@
         </div>
       </header>
       <div class="content" id="content" tabindex="-1"><div id="routeView"></div></div>
+      <button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button>
     </main>
 
     <aside class="now-panel" id="rightPanel" aria-label="Now Playing">
@@ -94,6 +95,7 @@
         <section class="immersive-lyrics" id="immersiveLyricsPanel" aria-label="Lyrics" aria-hidden="true" inert>
           <header><div class="immersive-lyrics-heading">Lyrics <span class="immersive-lyric-source" id="immersiveLyricsSource"></span></div><button class="ctrl immersive-lyrics-close" id="immersiveLyricsClose" aria-label="Hide lyrics" title="Hide lyrics" data-icon="close"></button></header>
           <div class="immersive-lyrics-scroll" id="immersiveLyricsScroll"><div class="lyrics-lines" id="immersiveLyricsLines"></div></div>
+          <button class="lyrics-resume-btn immersive-lyrics-resume" id="immersiveResumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button>
         </section>
       </div>
       <div class="immersive-timeline"><div class="immersive-time-labels"><span id="immersiveCurrentTime">0:00</span><span id="immersiveTotalTime">0:00</span></div><input id="immersiveProgress" type="range" min="0" max="1" value="0" aria-label="Track position"></div>

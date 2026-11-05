@@ -15,9 +15,9 @@
   --selection-color: var(--accent);
   --selection-ink: var(--accent-ink);
   --sidebar-surface: #090a09;
-  --main-surface: #101210;
+  --main-surface: #090a09;
   --right-surface: #090a09;
-  --player-surface: rgba(10,11,10,.95);
+  --player-surface: rgba(9,10,9,.95);
   --surface-raised: #171917;
   --surface-hover: #212421;
   --surface-control: #242724;
@@ -79,7 +79,7 @@
   --muted: #d1d0c9;
   --muted-2: #aaa9a2;
   --sidebar-surface: var(--art-sidebar);
-  --main-surface: var(--art-main);
+  --main-surface: var(--art-sidebar);
   --right-surface: var(--art-sidebar);
   --player-surface: var(--art-sidebar);
   --surface-raised: var(--art-raised);

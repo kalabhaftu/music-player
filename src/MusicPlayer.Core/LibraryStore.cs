@@ -1364,8 +1364,16 @@ public sealed partial class LibraryStore
     private static string[] SplitSearchTerms(string? value) => string.IsNullOrWhiteSpace(value)
         ? Array.Empty<string>()
         : value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private static string BuildColumnSearchPredicate(string column, IReadOnlyList<string> terms, string parameterPrefix) =>
-        terms.Count == 0 ? "1=1" : string.Join(" AND ", terms.Select((_, index) => $"{column} LIKE ${parameterPrefix}{index} ESCAPE '\\'"));
+    private static string BuildColumnSearchPredicate(string column, IReadOnlyList<string> terms, string parameterPrefix)
+    {
+        if (terms.Count == 0) return "1=1";
+        if (column == "album")
+        {
+            return string.Join(" AND ", terms.Select((_, index) =>
+                $"({column} LIKE ${parameterPrefix}{index} ESCAPE '\\' OR artist LIKE ${parameterPrefix}{index} ESCAPE '\\' OR album_artist LIKE ${parameterPrefix}{index} ESCAPE '\\')"));
+        }
+        return string.Join(" AND ", terms.Select((_, index) => $"{column} LIKE ${parameterPrefix}{index} ESCAPE '\\'"));
+    }
     private static void BindColumnSearch(SqliteCommand command, IReadOnlyList<string> terms, string parameterPrefix)
     {
         for (var index = 0; index < terms.Count; index++)

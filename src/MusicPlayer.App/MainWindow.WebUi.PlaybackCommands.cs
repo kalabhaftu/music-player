@@ -15,6 +15,13 @@ public sealed partial class MainWindow
                 if (track is null) return null;
                 _libraryQueries.SetContext(payload);
                 var paths = _libraryQueries.CurrentTrackPaths();
+                if ((paths.Count <= 1 || !paths.Contains(track.Path, StringComparer.OrdinalIgnoreCase)) &&
+                    !string.IsNullOrWhiteSpace(track.Album) &&
+                    (string.Equals(_libraryQueries.CurrentView, "Album", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(String(payload, "groupColumn"), "album", StringComparison.OrdinalIgnoreCase)))
+                {
+                    paths = _store.GetTrackPaths(sort: TrackSort.TrackNumber, descending: false, groupColumn: "album", groupValue: track.Album, hideExactDuplicates: _store.UseCachedFingerprints);
+                }
                 _playbackQueue.SelectTrack(paths, track.Path);
                 PlayTrack(track, false, _queueIndex);
                 PublishQueueStateIfChanged();

@@ -88,22 +88,112 @@ function renderImmersiveLyrics(){
   else lines.innerHTML=`<div class="empty-state"><b>No lyrics found</b>${esc(state.lyricsAutoError||"Search LRCLIB or edit lyrics to add them.")}</div>`;
 }
 
+let userPausedLyricsSync = false;
+let userPausedImmersiveSync = false;
+let lastLyricsTrackId = null;
+
+function scrollToActiveLyric(element, scroller, immediate = false) {
+  if (!element || !scroller) return;
+  const activeElement = element.querySelector(".active");
+  if (!activeElement) return;
+  const targetTop = activeElement.offsetTop - (scroller.clientHeight - activeElement.offsetHeight) / 2;
+  scroller.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: !immediate && (state.settings.motionStyle === "Off" || matchMedia("(prefers-reduced-motion: reduce)").matches) ? "auto" : "smooth"
+  });
+}
+
+function resetLyricsSync() {
+  userPausedLyricsSync = false;
+  userPausedImmersiveSync = false;
+  const btn = $("#resumeLyricsBtn"), ibtn = $("#immersiveResumeLyricsBtn");
+  if (btn) btn.hidden = true;
+  if (ibtn) ibtn.hidden = true;
+}
+
+function initLyricsScrollListeners() {
+  const content = $("#content");
+  if (content && typeof content.addEventListener === "function") {
+    const onUserScroll = () => {
+      if (state.view === "Lyrics" && state.lyricLines?.length > 0) {
+        userPausedLyricsSync = true;
+        const btn = $("#resumeLyricsBtn");
+        if (btn) btn.hidden = false;
+      }
+    };
+    content.addEventListener("wheel", onUserScroll, { passive: true });
+    content.addEventListener("touchmove", onUserScroll, { passive: true });
+  }
+
+  const immersive = $("#immersiveLyricsScroll");
+  if (immersive && typeof immersive.addEventListener === "function") {
+    const onUserImmersiveScroll = () => {
+      if (state.lyricLines?.length > 0) {
+        userPausedImmersiveSync = true;
+        const ibtn = $("#immersiveResumeLyricsBtn");
+        if (ibtn) ibtn.hidden = false;
+      }
+    };
+    immersive.addEventListener("wheel", onUserImmersiveScroll, { passive: true });
+    immersive.addEventListener("touchmove", onUserImmersiveScroll, { passive: true });
+  }
+
+  const resumeBtn = $("#resumeLyricsBtn");
+  if (resumeBtn && typeof resumeBtn.addEventListener === "function") {
+    resumeBtn.addEventListener("click", () => {
+      userPausedLyricsSync = false;
+      resumeBtn.hidden = true;
+      scrollToActiveLyric($("#lyricsLines"), $("#content"), true);
+    });
+  }
+
+  const immersiveResumeBtn = $("#immersiveResumeLyricsBtn");
+  if (immersiveResumeBtn && typeof immersiveResumeBtn.addEventListener === "function") {
+    immersiveResumeBtn.addEventListener("click", () => {
+      userPausedImmersiveSync = false;
+      immersiveResumeBtn.hidden = true;
+      scrollToActiveLyric($("#immersiveLyricsLines"), $("#immersiveLyricsScroll"), true);
+    });
+  }
+}
+
 function updateActiveLyric(){
   const trackId=state.lyricsTrack?.id;
+  if (trackId !== lastLyricsTrackId) {
+    lastLyricsTrackId = trackId;
+    resetLyricsSync();
+  }
   const canFollow=state.lyricLines.length>0&&!!trackId&&trackId===state.track?.id;
   let active=-1;
   if(canFollow)active=activeLyricIndex(state.lyricLines,currentPosition());
   const canFollowMain=canFollow&&state.view==="Lyrics";
   const canFollowImmersive=canFollow&&state.immersiveLyricsOpen&&!$("#immersivePlayer").hidden;
-  const roots=[{element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content")},{element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll")}];
-  for(const {element,enabled,scroller} of roots){
+  const roots=[
+    {element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn")},
+    {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn")}
+  ];
+  for(const {element,enabled,scroller,userPaused,btn} of roots){
     if(!element)continue;
-    const key=`${trackId||""}:${active}:${state.lyricsRevision||0}:${enabled}:${scroller?.clientWidth}:${scroller?.clientHeight}`;
+    const key=`${trackId||""}:${active}:${state.lyricsRevision||0}:${enabled}:${scroller?.clientWidth}:${scroller?.clientHeight}:${userPaused}`;
     if(element.dataset.activeLyricKey===key)continue;
     element.dataset.activeLyricKey=key;
     const nodes=$$("[data-lyric-index]",element);
-    for(const node of nodes){const index=Number(node.dataset.lyricIndex);node.classList.toggle("active",enabled&&index===active);node.classList.toggle("past",enabled&&index<active);node.classList.toggle("upcoming",enabled&&(active<0||index>active));}
-    if(!enabled||active<0||!scroller)continue;
+    for(const node of nodes){
+      const index=Number(node.dataset.lyricIndex);
+      node.classList.toggle("active",enabled&&index===active);
+      node.classList.toggle("past",enabled&&index<active);
+      node.classList.toggle("upcoming",enabled&&(active<0||index>active));
+    }
+    if(!enabled||active<0||!scroller){
+      if(btn) btn.hidden = true;
+      continue;
+    }
+    if(userPaused){
+      if(btn) btn.hidden = false;
+      continue;
+    } else {
+      if(btn) btn.hidden = true;
+    }
     const activeElement=element.querySelector(`[data-lyric-index="${active}"]`);if(!activeElement)continue;
     const targetTop=activeElement.offsetTop-(scroller.clientHeight-activeElement.offsetHeight)/2;
     scroller.scrollTo({top:Math.max(0,targetTop),behavior:state.settings.motionStyle==="Off"||matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
@@ -188,5 +278,6 @@ async function toggleMute(){if(state.muted){await setVolume(state.lastVolume||75
     else if(!active&&progressTimer!==null){clearInterval(progressTimer);progressTimer=null;}
   }
   document.addEventListener("visibilitychange",()=>{syncProgressTimer();if(!document.hidden)void refreshCurrent();});
-  return {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute};
+  initLyricsScrollListeners();
+  return {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute,resetLyricsSync};
 }

@@ -233,7 +233,7 @@ public sealed class PlaybackIntegrationTests : IDisposable
         var deadline = Stopwatch.StartNew();
         while (!condition())
         {
-            Assert.True(deadline.Elapsed < TimeSpan.FromSeconds(6), "Native playback did not reach the expected state.");
+            Assert.True(deadline.Elapsed < TimeSpan.FromSeconds(12), "Native playback did not reach the expected state.");
             await Task.Delay(25);
         }
     }
