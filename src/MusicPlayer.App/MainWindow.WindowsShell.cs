@@ -81,7 +81,7 @@ public sealed partial class MainWindow : Window
             var dark = artworkSurface || ShellRoot.RequestedTheme == ElementTheme.Dark ||
                 (ShellRoot.RequestedTheme == ElementTheme.Default && ShellRoot.ActualTheme == ElementTheme.Dark);
             var background = artworkSurface ? _webArtworkTitleBarColor!.Value :
-                dark ? Color.FromArgb(255, 16, 18, 16) : Color.FromArgb(255, 240, 242, 239);
+                dark ? Color.FromArgb(255, 9, 10, 9) : Color.FromArgb(255, 240, 242, 239);
             var foreground = dark ? Color.FromArgb(255, 247, 248, 246) : Color.FromArgb(255, 25, 29, 25);
             static Color Shift(Color color, int amount) => Color.FromArgb(255,
                 (byte)Math.Clamp(color.R + amount, 0, 255),
@@ -145,7 +145,7 @@ public sealed partial class MainWindow : Window
             panel = artwork.Panel.Hex, raised = artwork.Raised.Hex, hover = artwork.Hover.Hex,
             control = artwork.Control.Hex, accent = artwork.Accent.Hex
         };
-        return (palette, Color.FromArgb(255, artwork.Main.R, artwork.Main.G, artwork.Main.B));
+        return (palette, Color.FromArgb(255, artwork.Sidebar.R, artwork.Sidebar.G, artwork.Sidebar.B));
     }
 
     private static void ApplyAccent(Color color)
@@ -504,3 +504,4 @@ public sealed partial class MainWindow : Window
 
     private void WebUiFailureClose_Click(object sender, RoutedEventArgs e) => ExitMusicPlayer();
 }
+
