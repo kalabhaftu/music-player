@@ -235,13 +235,28 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
     private static bool IsDefaultIgnoredDirectory(string path)
     {
         var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-        if (name.Equals("AppData", StringComparison.OrdinalIgnoreCase) || GeneratedOrApplicationFolders.Contains(name)) return true;
+        if (name.StartsWith('.')) return true;
+        if (name.Equals("AppData", StringComparison.OrdinalIgnoreCase)) return true;
+        if (GeneratedOrApplicationFolders.Contains(name))
+        {
+            if (name.Equals("Temp", StringComparison.OrdinalIgnoreCase) || name.Equals("tmp", StringComparison.OrdinalIgnoreCase))
+            {
+                var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(path));
+                var root = Path.GetPathRoot(path);
+                var comp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                var tempPath = Path.TrimEndingDirectorySeparator(Path.GetTempPath());
+                return (parent is not null && root is not null && string.Equals(
+                    Path.TrimEndingDirectorySeparator(parent), Path.TrimEndingDirectorySeparator(root), comp)) ||
+                    string.Equals(path, tempPath, comp);
+            }
+            return true;
+        }
         if (!SystemFolders.Contains(name)) return false;
-        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(path));
-        var root = Path.GetPathRoot(path);
+        var parentSystem = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(path));
+        var rootSystem = Path.GetPathRoot(path);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return parent is not null && root is not null && string.Equals(
-            Path.TrimEndingDirectorySeparator(parent), Path.TrimEndingDirectorySeparator(root), comparison);
+        return parentSystem is not null && rootSystem is not null && string.Equals(
+            Path.TrimEndingDirectorySeparator(parentSystem), Path.TrimEndingDirectorySeparator(rootSystem), comparison);
     }
 
     public static bool IsDefaultExcludedDirectory(string path) => IsDefaultIgnoredDirectory(path);

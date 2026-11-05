@@ -39,14 +39,21 @@ internal sealed class TrackAvailabilityService(
                     continue;
                 }
 
-                queries.SetTrackUnavailable(path, true);
-                if (!protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path)) removedFromPage.Add(path);
-                else unavailable++;
+                if (!protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path))
+                {
+                    removedFromPage.Add(path);
+                }
+                else
+                {
+                    queries.SetTrackUnavailable(path, true);
+                    unavailable++;
+                }
             }
 
             if (removedFromPage.Count > 0)
             {
                 store.PurgeDeletedTracks(removedFromPage);
+                queries.ForgetDeletedPaths(removedFromPage);
                 removed.AddRange(removedFromPage);
                 // Deletions collapse the ordered result set; revisit this page's offset
                 // so the shifted tracks are not skipped.
@@ -61,7 +68,7 @@ internal sealed class TrackAvailabilityService(
         // Include saved references whose index row was pruned during scanning.
         var orphaned = store.GetReferencedPaths().Where(path => !File.Exists(path) &&
             !protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path)).ToArray();
-        if (orphaned.Length > 0) { store.PurgeDeletedTracks(orphaned); removed.AddRange(orphaned); }
+        if (orphaned.Length > 0) { store.PurgeDeletedTracks(orphaned); queries.ForgetDeletedPaths(orphaned); removed.AddRange(orphaned); }
         if (removed.Count > 0) store.PruneUnreferencedArtwork(artworkDirectory);
         return new(removed, unavailable, recovered);
     }

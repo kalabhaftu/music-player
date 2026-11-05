@@ -157,6 +157,7 @@ public sealed partial class MainWindow : Window
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be opened."); return; }
 
             await Task.Run(() => _store.UpsertTracks(tracks));
+            EnsureExternalParentFoldersTracked(paths);
             CancelCrossfadeAndRestoreQueue();
             var nextQueue = QueueNavigation.BuildExternalOpenQueue(
                 tracks.Select(track => track.Path), _playback.CurrentTrack?.Path, _queue, _queueIndex);
@@ -183,6 +184,7 @@ public sealed partial class MainWindow : Window
             if (tracks.Count == 0) { await ShowNoticeAsync("No supported audio files could be added."); return; }
 
             await Task.Run(() => _store.UpsertTracks(tracks));
+            EnsureExternalParentFoldersTracked(paths);
             CancelCrossfadeAndRestoreQueue();
             _playbackQueue.InsertNextRange(tracks.Select(track => track.Path), RetainedCurrentPath);
             PublishLibraryChanged();
@@ -274,6 +276,47 @@ public sealed partial class MainWindow : Window
             }
             return tracks;
         });
+    }
+
+
+    private void EnsureExternalParentFoldersTracked(IEnumerable<string> paths)
+    {
+        var configuredRoots = _libraryLocations.GetLibraryRoots();
+        var newRoots = new List<string>();
+        foreach (var path in paths)
+        {
+            try
+            {
+                var folder = Path.GetDirectoryName(Path.GetFullPath(path));
+                if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) continue;
+                var tempPath = Path.TrimEndingDirectorySeparator(Path.GetTempPath());
+                if (folder.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsDriveRoot(folder)) continue;
+
+                var isAlreadyCovered = configuredRoots.Any(root =>
+                    string.Equals(root, folder, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
+                    IsWithinRoot(folder, root));
+                if (!isAlreadyCovered && !newRoots.Contains(folder, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal))
+                {
+                    newRoots.Add(folder);
+                }
+            }
+            catch (Exception ex)
+            {
+                LocalAppLog.Shared.Warning("library", "Could not check folder for external track.", ex);
+            }
+        }
+
+        if (newRoots.Count > 0)
+        {
+            foreach (var root in newRoots)
+            {
+                _libraryLocations.AddLibraryRoot(root);
+            }
+            var allRoots = _libraryLocations.GetLibraryRoots();
+            _libraryFileWatcher.SetRoots(allRoots, _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
+            StartScan(newRoots);
+        }
     }
 
     private void PublishQueueStateIfChanged() => PublishQueueState();

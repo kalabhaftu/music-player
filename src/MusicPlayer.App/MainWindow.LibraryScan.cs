@@ -100,7 +100,7 @@ public sealed partial class MainWindow : Window
                 return (Roots: roots.ToArray(), IndexedTracks: libraryTracks ?? 0);
             });
             if (_windowClosed) return;
-            if (prepared.IndexedTracks == 0 && prepared.Roots.Length > 0) StartScan(prepared.Roots);
+            if (prepared.Roots.Length > 0) StartScan(prepared.Roots);
             else _ = ReconcileIndexedLibraryAtStartupAsync();
         }
         catch (Exception ex) { LocalAppLog.Shared.Warning("scanner", "Startup library checks could not be prepared; manual scanning remains available.", ex); }
