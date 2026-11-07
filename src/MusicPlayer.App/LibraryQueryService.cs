@@ -30,6 +30,8 @@ internal sealed class LibraryQueryService
     private readonly object _rootAvailabilityGate = new();
     private readonly object _folderCacheGate = new();
     private readonly object _searchGate = new();
+    private static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private readonly HashSet<string> _excludedDirectories = new(PathComparer);
     private IReadOnlyList<string>? _folderCache;
     private SearchBatch? _activeSearch;
     private long _latestSearchRequestId;
@@ -50,6 +52,10 @@ internal sealed class LibraryQueryService
         _store = store;
         _store.UseCachedFingerprints = true;
         _artworkDirectory = Path.GetFullPath(Path.Combine(appDataDirectory, "Artwork"));
+        var savedExclusions = ReadJsonSetting("ignored-directories", Array.Empty<string>());
+        foreach (var item in savedExclusions.Where(p => !string.IsNullOrWhiteSpace(p)))
+            _excludedDirectories.Add(NormalizeRootPath(item));
+        RefreshBrowsingAvailability();
     }
 
     public string CurrentView => _context.View;
@@ -507,11 +513,22 @@ internal sealed class LibraryQueryService
         RefreshBrowsingAvailability();
     }
 
+    public void SetExcludedDirectories(IEnumerable<string> exclusions)
+    {
+        var normalized = exclusions.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizeRootPath).ToArray();
+        lock (_rootAvailabilityGate)
+        {
+            _excludedDirectories.Clear();
+            foreach (var item in normalized) _excludedDirectories.Add(item);
+        }
+        RefreshBrowsingAvailability();
+    }
+
     private void RefreshBrowsingAvailability()
     {
         // Always acquire these locks in the same order.
         lock (_availabilityGate) lock (_rootAvailabilityGate)
-            _store.SetBrowsingAvailability(_unavailableRootPaths, _unavailableTrackPaths);
+            _store.SetBrowsingAvailability(_unavailableRootPaths.Concat(_excludedDirectories), _unavailableTrackPaths);
         InvalidateFolders();
     }
 

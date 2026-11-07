@@ -52,7 +52,20 @@ public sealed partial class MainWindow
         var picker = new FolderPicker(); picker.FileTypeFilter.Add("*"); InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
         var folder = await picker.PickSingleFolderAsync(); if (folder is null) return;
         _libraryLocations.AddScanExclusion(folder.Path);
+        _libraryQueries.SetExcludedDirectories(_libraryLocations.GetScanExclusions());
+        await Task.Run(() => _store.PurgeTracksUnderExcludedDirectories([folder.Path]));
+        _libraryFileWatcher.SetRoots(_libraryLocations.GetLibraryRoots(), _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
+        PublishLibraryChanged("exclusionAdded");
+
     }
 
-    private void RemoveExclusion(string path) => _libraryLocations.RemoveScanExclusion(path);
+    private void RemoveExclusion(string path)
+    {
+        _libraryLocations.RemoveScanExclusion(path);
+        _libraryQueries.SetExcludedDirectories(_libraryLocations.GetScanExclusions());
+        _libraryFileWatcher.SetRoots(_libraryLocations.GetLibraryRoots(), _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
+        var roots = _libraryLocations.GetLibraryRoots();
+        if (roots.Length > 0) StartScan(roots);
+        else PublishLibraryChanged("library");
+    }
 }

@@ -84,8 +84,8 @@ public sealed partial class MainWindow : Window
                     if (roots.Count == 0) roots = LibraryScanner.DefaultRoots().ToList();
                 }
 
-                roots = NormalizeRootSet(roots).ToList();
-                if (!rootsWereConfigured || previousScope != LibraryRootScopeVersion)
+                var preCount = roots.Count; var exclusions = _libraryLocations.GetScanExclusions(); roots = NormalizeRootSet(roots.Concat(_store.DiscoverUnconfiguredMusicRoots(roots, exclusions))).ToList(); _store.PurgeTracksUnderExcludedDirectories(exclusions); _libraryQueries.SetExcludedDirectories(exclusions);
+                if (!rootsWereConfigured || previousScope != LibraryRootScopeVersion || roots.Count != preCount)
                 {
                     _store.SetSetting("library-roots", JsonSerializer.Serialize(roots));
                     _store.SetSetting("library-roots-configured", "true");
@@ -199,7 +199,7 @@ public sealed partial class MainWindow : Window
             if (_windowClosed) return;
             var indexedBefore = prepared.Count;
             LocalAppLog.Shared.Info("scanner", $"Starting {(forceRefresh ? "index rebuild" : "library scan")}: roots={scanRoots.Length}, indexedTracksBefore={indexedBefore}, roots=[{prepared.Description}].");
-            var ignored = _libraryLocations.GetScanExclusions();
+            var ignored = _libraryLocations.GetScanExclusions(); _store.PurgeTracksUnderExcludedDirectories(ignored); _libraryQueries.SetExcludedDirectories(ignored);
             var publishedIndexed = 0;
             var committedIndexed = 0;
             var nextLibraryRefreshUtc = DateTimeOffset.MinValue;

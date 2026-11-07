@@ -56,7 +56,7 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
         ".git", ".hg", ".svn", ".vs", ".idea", ".vscode",
         "node_modules", "bin", "obj", "build", "dist", "target", "packages", "TestResults",
         "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", ".venv",
-        ".cache", ".npm", ".nuget", ".gradle", "Temp", "tmp", "Caches", "CrashDumps",
+        ".cache", ".npm", ".nuget", ".gradle", ".obsidian", ".trash", ".subversion", ".metadata", "Temp", "tmp", "Caches", "CrashDumps",
         "INetCache", "Temporary Internet Files", "MicrosoftEdgeBackups", "Package Cache",
         "Games", "GameLibrary", "GamesLibrary", "SteamLibrary", "steamapps", "XboxGames", "Epic Games"
     };
@@ -235,7 +235,9 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
     private static bool IsDefaultIgnoredDirectory(string path)
     {
         var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-        if (name.StartsWith('.')) return true;
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (name.StartsWith("..")) return false;
+        if (name.StartsWith('.') && !OperatingSystem.IsWindows()) return true;
         if (name.Equals("AppData", StringComparison.OrdinalIgnoreCase)) return true;
         if (GeneratedOrApplicationFolders.Contains(name))
         {

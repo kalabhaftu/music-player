@@ -12,7 +12,7 @@ public sealed record IndexedFileState(long Length, DateTime ModifiedUtc);
 
 public sealed partial class LibraryStore
 {
-    private const int SchemaVersion = 10;
+    private const int SchemaVersion = 11;
     private readonly string _databasePath;
     private readonly string _connectionString;
     private readonly LocalAppLog _log;
@@ -1314,6 +1314,7 @@ public sealed partial class LibraryStore
                   PRIMARY KEY(run_id,root_path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_seen(run_id INTEGER NOT NULL, path TEXT NOT NULL, PRIMARY KEY(run_id,path),
                   FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_user_ignored(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path),
                   FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_default_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL,
@@ -1323,6 +1324,22 @@ public sealed partial class LibraryStore
                 CREATE INDEX IF NOT EXISTS ix_tracks_path_nocase ON tracks(path COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS ix_scan_seen_run_path_nocase ON scan_seen(run_id,path COLLATE NOCASE);
                 PRAGMA user_version=10;
+                """;
+            migrate.ExecuteNonQuery();
+            transaction.Commit();
+
+            version = 10;
+        }
+        if (version == 10)
+        {
+            using var transaction = connection.BeginTransaction();
+            using var migrate = connection.CreateCommand();
+            migrate.Transaction = transaction;
+            migrate.CommandText = """
+                CREATE TABLE IF NOT EXISTS scan_user_ignored(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                PRAGMA user_version=11;
+
+
                 """;
             migrate.ExecuteNonQuery();
             transaction.Commit();

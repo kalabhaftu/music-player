@@ -24,6 +24,98 @@ public sealed partial class LibraryStore
     public void ReinstateTrack(string path) { lock (_sessionGate) _purgedPaths.Remove(path); }
     public event Action<IReadOnlyList<string>>? TracksPurged;
 
+    /// <summary>Immediately purges all indexed tracks that sit under any of the given excluded directories.</summary>
+    public int PurgeTracksUnderExcludedDirectories(IEnumerable<string> excludedPaths)
+    {
+        var prefixes = excludedPaths
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => RootPrefix(NormalizeRoot(p)))
+            .Distinct(PathComparer)
+            .ToArray();
+        if (prefixes.Length == 0) return 0;
+
+        var pathsToPurge = new List<string>();
+        lock (_sessionGate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT path FROM tracks";
+            using var reader = command.ExecuteReader();
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            while (reader.Read())
+            {
+                var trackPath = reader.GetString(0);
+                if (prefixes.Any(prefix => trackPath.StartsWith(prefix, comparison)))
+                {
+                    pathsToPurge.Add(trackPath);
+                }
+            }
+        }
+
+        if (pathsToPurge.Count > 0)
+        {
+            PurgeDeletedTracks(pathsToPurge);
+            InvalidateFingerprintState();
+            _log.Info("library-store", $"Purged {pathsToPurge.Count} tracks under excluded directories.");
+        }
+        return pathsToPurge.Count;
+    }
+
+    /// <summary>
+    /// Scans indexed tracks for active folders on accessible storage that are not covered by any
+    /// configured library root or exclusion, adopting them so their files are continuously tracked.
+    /// </summary>
+    public IReadOnlyList<string> DiscoverUnconfiguredMusicRoots(IEnumerable<string> configuredRoots, IEnumerable<string> ignoredDirectories)
+    {
+        var rootPrefixes = configuredRoots.Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => RootPrefix(NormalizeRoot(r))).Distinct(PathComparer).ToArray();
+        var ignoredPrefixes = ignoredDirectories.Where(i => !string.IsNullOrWhiteSpace(i))
+            .Select(i => RootPrefix(NormalizeRoot(i))).Distinct(PathComparer).ToArray();
+        var ignoredParentDirs = ignoredDirectories.Where(i => !string.IsNullOrWhiteSpace(i)).Select(i => { try { return Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(i))); } catch { return null; } }).Where(p => !string.IsNullOrEmpty(p)).ToHashSet(PathComparer);
+
+        var candidateFolders = new HashSet<string>(PathComparer);
+        lock (_sessionGate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT DISTINCT path FROM tracks";
+            using var reader = command.ExecuteReader();
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            while (reader.Read())
+            {
+                var trackPath = reader.GetString(0);
+                if (rootPrefixes.Any(r => trackPath.StartsWith(r, comparison)))
+                    continue;
+                if (ignoredPrefixes.Any(i => trackPath.StartsWith(i, comparison)))
+                    continue;
+
+                var dir = Path.GetDirectoryName(trackPath);
+                if (string.IsNullOrWhiteSpace(dir)) continue;
+
+                string? musicRoot = null;
+                var current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+                while (!string.IsNullOrEmpty(current))
+                {
+                    var parent = Path.GetDirectoryName(current);
+                    if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, comparison)) break;
+                    var name = Path.GetFileName(current);
+                    if (name.Equals("Music", StringComparison.OrdinalIgnoreCase) || ignoredParentDirs.Contains(current))
+                    {
+                        musicRoot = current;
+                        break;
+                    }
+                    current = Path.TrimEndingDirectorySeparator(parent);
+                }
+
+                if (musicRoot is not null && Directory.Exists(musicRoot))
+                {
+                    candidateFolders.Add(musicRoot);
+                }
+            }
+        }
+        return candidateFolders.ToArray();
+    }
+
     /// <summary>Confirmed filesystem deletions remove user references as well as index rows.
     /// Does not touch media, tag backups, or recovery copies.</summary>
     public void PurgeDeletedTracks(IEnumerable<string> paths)

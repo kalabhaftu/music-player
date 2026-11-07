@@ -16,6 +16,8 @@ public sealed partial class MainWindow
                 if (!_libraryScan.IsRunning)
                 {
                     var roots = _libraryLocations.GetLibraryRoots();
+                    var unconfigured = _store.DiscoverUnconfiguredMusicRoots(roots, _libraryLocations.GetScanExclusions());
+                    if (unconfigured.Count > 0) { roots = roots.Concat(unconfigured).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToArray(); _libraryLocations.SetLibraryRoots(roots); }
                     if (roots.Length == 0 && name == "rebuildLibraryIndex") StartScan(roots, forceRefresh: true);
                     else if (roots.Length == 0) await AddFolderFromWebAsync();
                     else StartScan(roots, forceRefresh: name == "rebuildLibraryIndex");

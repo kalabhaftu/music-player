@@ -74,6 +74,13 @@ internal sealed class LibraryLocationService(LibraryStore store)
         catch (JsonException ex) { LocalAppLog.Shared.Warning("settings", $"Saved setting '{key}' was invalid JSON.", ex); return new(StringComparer.OrdinalIgnoreCase); }
     }
 
+    public void SetLibraryRoots(IEnumerable<string> newRoots)
+    {
+        var roots = newRoots.Select(NormalizeRoot).Where(root => root is not null).Cast<string>().Distinct(PathComparer).ToArray();
+        store.SetSetting("library-roots", JsonSerializer.Serialize(roots));
+        store.SetSetting("library-roots-configured", "true");
+    }
+
     public string AddLibraryRoot(string rawPath)
     {
         var path = NormalizeRoot(rawPath) ?? throw new ArgumentException("That folder path is not valid.");

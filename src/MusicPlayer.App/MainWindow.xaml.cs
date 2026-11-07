@@ -76,6 +76,7 @@ public sealed partial class MainWindow : Window
         var videoExtensions = _libraryLocations.GetEnabledVideoExtensions();
         _playback.SetVideoExtensions(videoExtensions);
         _libraryQueries.SetVideoExtensions(videoExtensions);
+        _libraryQueries.SetExcludedDirectories(_libraryLocations.GetScanExclusions());
         _playback.VideoSurfaceRequested = RequestVideoPlaybackSurface;
         _trackAvailability = new(_store, _libraryQueries, _libraryLocations, Path.Combine(_appData, "Artwork"));
         _libraryFileWatcher = new();
