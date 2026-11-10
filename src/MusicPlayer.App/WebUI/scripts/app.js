@@ -389,7 +389,8 @@ async function action(name,el) {
     case "go-to-folder": {
       const filePath = el?.dataset?.path || state.track?.path;
       if (!filePath) break;
-      const folderPath = filePath.replace(/[/\][^/\]+$/, "");
+      const lastSlash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+      const folderPath = lastSlash > 0 ? filePath.slice(0, lastSlash) : filePath;
       state.group = { column: "folder", name: folderPath, id: folderPath };
       await navigate("Folder");
       break;
