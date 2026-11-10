@@ -55,6 +55,7 @@
         </div>
       </header>
       <div class="content" id="content" tabindex="-1"><div id="routeView"></div></div>
+      <button class="lyrics-resume-btn main-lyrics-resume" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button>
     </main>
 
     <aside class="now-panel" id="rightPanel" aria-label="Now Playing">
@@ -84,7 +85,7 @@
   </div>
   <section class="immersive-player" id="immersivePlayer" aria-label="Full-screen player" hidden>
     <div class="immersive-art-backdrop"><img id="immersiveBackdrop" alt=""></div>
-    <div class="immersive-topbar"><span>NOW PLAYING</span><div style="display:flex;gap:8px;"><button class="immersive-exit" id="immersiveFullscreenToggle" aria-label="Toggle full screen" title="Toggle full screen"><span data-icon="expand"></span></button><button class="immersive-exit" id="immersiveExit" aria-label="Close now playing" title="Close"><span data-icon="close"></span><span>Close</span></button></div></div>
+    <div class="immersive-topbar"><span id="immersiveTopTitle">NOW PLAYING</span><div style="display:flex;gap:8px;"><button class="immersive-exit" id="immersiveFullscreenToggle" aria-label="Toggle full screen" title="Toggle full screen"><span data-icon="expand"></span></button><button class="immersive-exit" id="immersiveExit" aria-label="Close now playing" title="Close"><span data-icon="close"></span><span>Close</span></button></div></div>
     <div class="immersive-content" id="immersiveContent">
       <div class="immersive-stage" id="immersiveStage">
         <div class="immersive-art-column">

@@ -289,7 +289,7 @@ function openUiResetDialog(){
   const body=`<p>Choose which interface preferences to restore. Every group is selected by default.</p>${choices.map(([key,title,description])=>`<label class="reset-choice"><input type="checkbox" data-reset-category="${key}" checked><span><b>${title}</b><small>${description}</small></span></label>`).join("")}`;
   openModal("Reset UI settings",body,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="reset-ui-settings">Reset selected settings</button>`);
 }
-function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.classList.add("show");const bounds=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(x,innerWidth-bounds.width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-bounds.height-8))}px`; }
+function contextMenu(x,y,id) { const menu=$("#contextMenu"); menu.dataset.id=id; menu.innerHTML=`<button data-menu-action="play">Play</button><button data-menu-action="play-next">Play next</button><button data-menu-action="queue">Add to queue</button><button data-menu-action="playlist">Add to playlist</button><button data-menu-action="create-playlist-with-track">Create playlist with this song…</button><button data-menu-action="favorite">Toggle favorite</button><button data-menu-action="rating">Set rating…</button><hr><button data-menu-action="lyrics">Lyrics</button><button data-menu-action="find-lyrics">Find lyrics…</button><button data-menu-action="edit-lyrics">Edit lyrics…</button><button data-menu-action="tags">Edit tags</button><button data-menu-action="restore-tags">Restore previous tags</button><button data-menu-action="details">Track details</button><button data-menu-action="location">Show in File Explorer</button>`; menu.classList.add("show");const bounds=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(x,innerWidth-bounds.width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-bounds.height-8))}px`; }
 
 async function addToPlaylist(trackId) { const data=await call("getPlaylists"); if(!data.playlists?.length) return newPlaylist(trackId); openModal("Add to playlist",`<label class="modal-field"><span>Choose a playlist</span><select class="field" id="playlistChoice">${data.playlists.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="add-to-playlist" data-track-id="${esc(trackId)}">Add</button>`); }
 function newPlaylist(trackId="") { openModal("New playlist",`<label class="modal-field"><span>Playlist name</span><input class="field" id="playlistName" maxlength="120" placeholder="Playlist name"></label>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="create-playlist" data-track-id="${esc(trackId)}">Create playlist</button>`); }
@@ -303,7 +303,16 @@ async function openDetails(id) {
   openModal("Track details",`${detailList(fields)}<h3>Additional standard tags</h3>${detailList(additional)}<h3>Custom tags</h3>${detailList(custom)}<h3>Recent tag backups</h3>${backups.length?`<ul>${backups.map(created=>`<li>${esc(created)}</li>`).join("")}</ul>`:`<p class="muted">No tag backups.</p>`}`);
 }
 
-async function editLyrics(initialText = null,trackId=state.lyricsTrack?.id||state.trackId||state.track?.id) { const d=await call("getLyrics",{id:trackId});const source=initialText!==null?"LRCLIB result (not saved)":({sidecar:"Sidecar file",embedded:"Embedded audio tags",none:"No saved lyrics"})[d.source]||"Unknown source";openModal("Edit lyrics",`<p>${esc(d.track?.title||"")} · ${esc(d.track?.artist||"")}</p><p class="lyric-source">Current lyrics: ${esc(source)}</p><div class="lyric-edit-toolbar"><button class="action" id="stampLyric" title="Insert timestamp at current position">⏱ Stamp position</button><div class="field-inline"><label for="lyricsOffset">Offset (ms)</label><input class="field" id="lyricsOffset" type="number" value="${Number(d.offsetMilliseconds)||0}"></div><select class="select" id="lyricsMode" title="Where to save lyrics"><option value="embed" selected>Embed in audio file</option><option value="sidecar">Save beside audio file</option></select></div><textarea class="textarea" id="lyricsEditor" placeholder="Enter lyrics or paste [mm:ss.xx] timestamped LRC text">${esc(initialText ?? (d.raw || (state.lyricsTrack?.id === trackId ? state.lyricsRaw : "") || ""))}</textarea>`,`<button class="action danger" data-modal-command="remove-lyrics" data-track-id="${esc(d.track?.id||"")}" style="margin-right:auto;" title="Remove lyrics from audio file, sidecar, and library">Remove lyrics</button><button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-lyrics" data-track-id="${esc(d.track?.id||"")}">Save lyrics</button>`); $("#stampLyric").addEventListener("click",()=>{const editor=$("#lyricsEditor"),time=Math.max(0,state.position),m=Math.floor(time/60),s=(time%60).toFixed(2).padStart(5,"0"),stamp=`[${m}:${s}]`;const p=editor.selectionStart;editor.setRangeText(`${stamp}`,p,p,"end");editor.focus();}); }
+async function editLyrics(initialText = null,trackId=state.lyricsTrack?.id||state.trackId||state.track?.id) {
+  const d=await call("getLyrics",{id:trackId});
+  const source=initialText!==null?"LRCLIB result (not saved)":({sidecar:"Sidecar file",embedded:"Embedded audio tags",none:"No saved lyrics"})[d.source]||"Unknown source";
+  const activeRaw = (state.lyricsTrack?.id === trackId || state.track?.id === trackId) ? (state.lyricsRaw || "") : "";
+  const activeHasTimestamps = parseLyricsText(activeRaw).lines.length > 0;
+  const diskHasTimestamps = parseLyricsText(d.raw || "").lines.length > 0;
+  const defaultText = initialText !== null ? initialText : (activeHasTimestamps ? activeRaw : (diskHasTimestamps ? d.raw : (activeRaw || d.raw || "")));
+  openModal("Edit lyrics",`<p>${esc(d.track?.title||"")} · ${esc(d.track?.artist||"")}</p><p class="lyric-source">Current lyrics: ${esc(source)}</p><div class="lyric-edit-toolbar"><button class="action" id="stampLyric" title="Insert timestamp at current position">⏱ Stamp position</button><div class="field-inline"><label for="lyricsOffset">Offset (ms)</label><input class="field" id="lyricsOffset" type="number" value="${Number(d.offsetMilliseconds)||0}"></div><select class="select" id="lyricsMode" title="Where to save lyrics"><option value="embed" selected>Embed in audio file</option><option value="sidecar">Save beside audio file</option></select></div><textarea class="textarea" id="lyricsEditor" placeholder="Enter lyrics or paste [mm:ss.xx] timestamped LRC text">${esc(defaultText)}</textarea>`,`<button class="action danger" data-modal-command="remove-lyrics" data-track-id="${esc(d.track?.id||"")}" style="margin-right:auto;" title="Remove lyrics from audio file, sidecar, and library">Remove lyrics</button><button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-lyrics" data-track-id="${esc(d.track?.id||"")}">Save lyrics</button>`);
+  $("#stampLyric").addEventListener("click",()=>{const editor=$("#lyricsEditor"),time=Math.max(0,state.position),m=Math.floor(time/60),s=(time%60).toFixed(2).padStart(5,"0"),stamp=`[${m}:${s}]`;const p=editor.selectionStart;editor.setRangeText(`${stamp}`,p,p,"end");editor.focus();});
+}
 async function editTags(id) { const d=await call("getTags",{id}); const t=d.track; const fields=[["title","Title"],["artist","Artist"],["album","Album"],["albumArtist","Album artist"],["genre","Genre"],["year","Year"],["trackNumber","Track number"]]; const custom=Object.entries(d.customFields||{}).map(([key,value])=>`<label class="modal-field"><span>${esc(key)}</span><input class="field" data-custom-tag="${esc(key)}" value="${esc(value)}"></label>`).join("");const additional=Object.entries(d.additionalFields||{}).map(([key,value])=>`<label class="modal-field"><span>${esc(key.replaceAll("_"," "))}</span><input class="field" data-additional-tag="${esc(key)}" value="${esc(value)}"></label>`).join(""); openModal("Edit tags",`${fields.map(([key,label])=>`<label class="modal-field"><span>${label}</span><input class="field" data-tag="${key}" value="${esc(t[key]||"")}"></label>`).join("")}<div class="toolbar"><button class="action" id="chooseArtwork">Choose artwork…</button><span id="artworkPath"></span></div>${custom?`<details><summary>Additional format-specific fields</summary>${custom}</details>`:""}${additional?`<details><summary>Additional standard fields</summary>${additional}</details>`:""}<p>${esc(d.customFormat||"Audio tags")} · Saving creates a recoverable backup.</p>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-tags" data-track-id="${esc(id)}">Save tags</button>`); $("#modalLayer").dataset.artworkToken="";$("#chooseArtwork").addEventListener("click",async()=>{const picked=await call("pickArtwork");if(picked?.token){$("#modalLayer").dataset.artworkToken=picked.token;$("#artworkPath").textContent=picked.name;}}); }
 
 
@@ -406,6 +415,7 @@ async function action(name,el) {
     }
     case "clear-recent-searches": {
       try { localStorage.removeItem("musicplayer_recent_searches"); } catch {}
+      invalidateCache();
       await renderView();
       break;
     }
@@ -417,12 +427,13 @@ async function action(name,el) {
           const filtered = existing.filter(item => item.toLowerCase() !== term.toLowerCase());
           localStorage.setItem("musicplayer_recent_searches", JSON.stringify(filtered));
         } catch {}
+        invalidateCache();
         await renderView();
       }
       break;
     }
     case "play": case "play-track": await call("playTrack",{id,...trackContext}); await refreshCurrent(); break;
-    case "play-view": await call("playView",{view:state.view,group:state.group}); await refreshCurrent(); break;
+    case "play-view": await call("playView",{view:el?.dataset?.view||state.view,group:state.group}); await refreshCurrent(); break;
     case "shuffle-view": await call("shuffleView",{view:state.view,group:state.group}); await refreshCurrent(); break;
     case "play-group": await call("playGroup",{type:el.dataset.type,id}); await refreshCurrent(); break;
     case "play-playlist-card": await call("playPlaylist",{playlistId:id}); await refreshCurrent(); break;
@@ -465,12 +476,21 @@ async function action(name,el) {
     case "clear-queue": askConfirm("Clear upcoming queue?","Remove upcoming tracks from the queue? The current track keeps playing.","Clear queue","clear-queue"); break;
     case "play-queue": await call("playQueueEntry", { index: Number(el.dataset.index) }); break;
     case "queue-remove": await call("removeQueue", { index: Number(el.dataset.index) }); break;
-    case "edit-lyrics": await editLyrics(); break;
+    case "edit-lyrics": await editLyrics(null, el?.dataset?.id || el?.dataset?.trackId); break;
     case "search-lyrics": {
-      const trackId = state.lyricsTrack?.id || state.trackId || state.track?.id;
+      const trackId = el?.dataset?.id || el?.dataset?.trackId || state.lyricsTrack?.id || state.trackId || state.track?.id;
       if (!trackId) { toast("Choose a track before searching for lyrics."); break; }
-      const currentTitle = state.lyricsTrack?.title || state.track?.title || "";
-      const currentArtist = state.lyricsTrack?.artist || state.track?.artist || "";
+      let currentTitle = (state.lyricsTrack?.id === trackId ? state.lyricsTrack?.title : null) || (state.track?.id === trackId ? state.track?.title : "") || "";
+      let currentArtist = (state.lyricsTrack?.id === trackId ? state.lyricsTrack?.artist : null) || (state.track?.id === trackId ? state.track?.artist : "") || "";
+      if (!currentTitle) {
+        try {
+          const details = await call("getTrackDetails", { id: trackId });
+          if (details?.track) {
+            currentTitle = details.track.title || "";
+            currentArtist = details.track.artist || "";
+          }
+        } catch {}
+      }
       await openLyricsSearchDialog(trackId, currentTitle, currentArtist);
       break;
     }
@@ -525,7 +545,7 @@ async function seekToLyricLine(element){
   resetLyricsSync();
   await call("seek",{seconds});state.position=seconds;state.positionUpdatedAt=performance.now();state.seeking=false;state.seekPreviewSeconds=null;updatePlayer();
 }
-async function handleMenu(actionName,id) { $("#contextMenu").classList.remove("show"); const actions={play:"play-track","play-next":"play-next",queue:"queue",playlist:"playlist","create-playlist-with-track":"create-playlist-with-track",favorite:"favorite",rating:"rating",lyrics:"lyrics",tags:"tags","restore-tags":"restore-tags",details:"details",location:"location"}; await action(actions[actionName],{dataset:{id}}); }
+async function handleMenu(actionName,id) { $("#contextMenu").classList.remove("show"); const actions={play:"play-track","play-next":"play-next",queue:"queue",playlist:"playlist","create-playlist-with-track":"create-playlist-with-track",favorite:"favorite",rating:"rating",lyrics:"lyrics","find-lyrics":"search-lyrics","edit-lyrics":"edit-lyrics",tags:"tags","restore-tags":"restore-tags",details:"details",location:"location"}; await action(actions[actionName],{dataset:{id}}); }
 
 document.addEventListener("click",async e=>{
   const target=e.target instanceof Element?e.target:null;
