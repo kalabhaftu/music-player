@@ -47,7 +47,22 @@ function updatePlayer() {
   $("#playBtn").dataset.icon=state.playing?"pause":"play"; $("#playBtn").title=state.playing?"Pause":"Play"; $("#playBtn").setAttribute("aria-label",state.playing?"Pause":"Play"); $("#playBtn").setAttribute("aria-pressed",String(state.playing)); $("#playBtn").innerHTML=svg(state.playing?"pause":"play");
   const shuffleBtn=$("#shuffleBtn"); shuffleBtn.classList.toggle("active",state.shuffle); shuffleBtn.title=state.shuffle?"Shuffle on":"Shuffle off"; shuffleBtn.setAttribute("aria-label",shuffleBtn.title); shuffleBtn.setAttribute("aria-pressed",String(state.shuffle));
   const repeatBtn=$("#repeatBtn"); const repeatLabel=state.repeat==="Queue"?"Repeat all":state.repeat==="Track"?"Repeat one":"Repeat off"; repeatBtn.classList.toggle("active",state.repeat!=="Off"); repeatBtn.title=repeatLabel; repeatBtn.setAttribute("aria-label",repeatLabel); repeatBtn.setAttribute("aria-pressed",String(state.repeat!=="Off")); repeatBtn.innerHTML=`${svg("repeat")}${state.repeat==="Track"?'<span class="repeat-one" aria-hidden="true">1</span>':""}`;
-  const abBtn=$("#abBtn"); abBtn.classList.toggle("active",state.repeatA!==null); abBtn.title=state.repeatB!==null?"A–B repeat on":state.repeatA!==null?"Mark point B":"A–B repeat off"; abBtn.setAttribute("aria-label",abBtn.title); abBtn.setAttribute("aria-pressed",String(state.repeatA!==null));
+  const abBtn=$("#abBtn");
+  if(abBtn){
+    if(state.repeatA!==null&&state.repeatB!==null){
+      abBtn.innerHTML='<span class="ab-active">A–B</span>';
+      abBtn.classList.add("active");
+    }else if(state.repeatA!==null){
+      abBtn.innerHTML='<span class="ab-active">A</span>–B';
+      abBtn.classList.add("active");
+    }else{
+      abBtn.innerHTML='A–B';
+      abBtn.classList.remove("active");
+    }
+    abBtn.title=state.repeatB!==null?"A–B repeat on":state.repeatA!==null?"Mark point B":"A–B repeat off";
+    abBtn.setAttribute("aria-label",abBtn.title);
+    abBtn.setAttribute("aria-pressed",String(state.repeatA!==null));
+  }
   const favoriteLabel=t?.favorite?"Remove from favorites":"Add to favorites";
   const heartBtn=$("#heartBtn"); heartBtn.classList.toggle("on",!!t?.favorite); heartBtn.title=favoriteLabel; heartBtn.setAttribute("aria-label",favoriteLabel); heartBtn.setAttribute("aria-pressed",String(!!t?.favorite)); heartBtn.innerHTML=svg("heart");
   const fullPlay=$("#immersivePlay");fullPlay.innerHTML=svg(state.playing?"pause":"play");fullPlay.title=state.playing?"Pause":"Play";fullPlay.setAttribute("aria-label",fullPlay.title);
@@ -138,14 +153,15 @@ function initLyricsScrollListeners() {
     immersive.addEventListener("touchmove", onUserImmersiveScroll, { passive: true });
   }
 
-  const resumeBtn = $("#resumeLyricsBtn");
-  if (resumeBtn && typeof resumeBtn.addEventListener === "function") {
-    resumeBtn.addEventListener("click", () => {
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("#resumeLyricsBtn");
+    if (btn) {
       userPausedLyricsSync = false;
-      resumeBtn.hidden = true;
-      scrollToActiveLyric($("#lyricsLines"), $("#content"), true);
-    });
-  }
+      btn.hidden = true;
+      const target = $("#lyricsLines") || $(".lyrics-plain");
+      if (target) scrollToActiveLyric(target, $("#content"), true);
+    }
+  });
 
   const immersiveResumeBtn = $("#immersiveResumeLyricsBtn");
   if (immersiveResumeBtn && typeof immersiveResumeBtn.addEventListener === "function") {
@@ -170,7 +186,7 @@ function updateActiveLyric(){
   const canFollowMain = (canFollow || canFollowUntimed) && state.view === "Lyrics";
   const canFollowImmersive = (canFollow || canFollowUntimed) && state.immersiveLyricsOpen && !$("#immersivePlayer").hidden;
   const roots=[
-    {element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn"),isUntimed:canFollowUntimed},
+    {element:$("#lyricsLines")||$(".lyrics-plain"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn"),isUntimed:canFollowUntimed},
     {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn"),isUntimed:canFollowUntimed}
   ];
   for(const {element,enabled,scroller,userPaused,btn,isUntimed} of roots){
@@ -182,7 +198,12 @@ function updateActiveLyric(){
         const progress = Math.max(0, Math.min(1, currentPosition() / (state.duration || 1)));
         const effective = Math.max(0, Math.min(1, (progress - 0.04) / 0.88));
         const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-        if(maxScroll > 0) scroller.scrollTo({ top: effective * maxScroll, behavior: state.settings?.motionStyle === "Off" ? "auto" : "smooth" });
+        if(maxScroll > 0) {
+          const targetTop = effective * maxScroll;
+          if (Math.abs(scroller.scrollTop - targetTop) > 3) {
+            scroller.scrollTop = targetTop;
+          }
+        }
       }
       continue;
     }
@@ -234,7 +255,7 @@ function updatePanel() {
     const upcoming=state.queue.slice(start+1,start+14);
     patchMarkup(content,`<div class="panel-label"><span>Next in queue (${upcoming.length})</span>${upcoming.length?`<button class="action-subtle" data-action="clear-queue" title="Clear upcoming tracks">Clear</button>`:""}</div>${upcoming.length?upcoming.map((t,i)=>`<div class="queue-row ${t.fileUnavailable?"unavailable-track":""}" data-action="play-queue" data-index="${state.queueOffset+start+i+1}" data-context="track" data-context-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Play ${esc(t.title)}">${cover(t,"queue-thumb")}<div class="queue-copy"><b>${esc(t.title)}</b><span>${esc(t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist)}</span></div><span class="row-tools"><button class="ctrl" data-action="queue-remove" data-index="${state.queueOffset+start+i+1}" aria-label="Remove from queue">×</button></span></div>`).join(""):`<div class="empty-state">No upcoming tracks.</div>`}`);
   }
-  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span>${current.album ? `<b class="clickable-link" data-open-type="album" data-open-name="${esc(current.album)}" title="Go to album ${esc(current.album)}" role="button" tabindex="0">${esc(current.album)}</b>` : `<b>—</b>`}</div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div></div><div class="toolbar">${current.album ? `<button class="action" data-action="go-to-album" data-album="${esc(current.album)}" title="Open this track's album">Go to album</button>` : ""}<button class="action" data-action="details" data-id="${esc(current.id)}" title="Track details">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
+  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span>${current.album ? `<b class="clickable-link" data-open-type="album" data-open-name="${esc(current.album)}" title="Go to album ${esc(current.album)}" role="button" tabindex="0">${esc(current.album)}</b>` : `<b>—</b>`}</div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div></div><div class="toolbar">${current.album ? `<button class="action" data-action="go-to-album" data-album="${esc(current.album)}" title="Open this track's album">Go to album</button>` : `<button class="action" data-action="go-to-folder" data-path="${esc(current.path)}" title="Open this track's folder">Go to folder</button>`}<button class="action" data-action="details" data-id="${esc(current.id)}" title="Track details">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
   $$(".panel-tabs [data-panel]").forEach(b=>b.classList.toggle("active",b.dataset.panel===state.panel));
 }
 

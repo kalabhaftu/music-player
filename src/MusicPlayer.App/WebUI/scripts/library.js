@@ -1,3 +1,10 @@
+function rootIconName(name, path) {
+  const s = ((name || '') + ' ' + (path || '')).toLowerCase();
+  if (s.includes('music')) return 'music';
+  if (s.includes('download')) return 'download';
+  if (s.includes('drive') || /^[a-z]:\\?$/i.test(path || '')) return 'disc';
+  return 'folder';
+}
 import { createPageCache } from "./page-cache.js";
 import { lyricLinesMarkup } from "./lyrics.js";
 import { patchMarkup } from "./view-dom.js";
@@ -320,15 +327,27 @@ async function renderFolders(append=false) {
     +`<div class="folder-row scan-status" id="folderScanStatus" ${status?.active?"":"hidden"}><span class="scan-dot"></span><div><b id="folderScanTitle">${status?.paused?"Scan paused":"Scanning library"}</b><span id="folderScanDetails">${esc(status?.currentPath||"")} · ${status?.filesFound||0} tracks · ${status?.directoriesVisited||0} folders</span></div></div>`
     +`<section class="section"><div class="section-head"><h2>Indexed folders</h2><span class="muted">${Number(state.folderCount).toLocaleString()}</span></div>${cardGrid(state.folderItems,"folder")}</section>`
     +(state.nextOffset<state.folderCount&&pageFolders.length?`<button class="action load-more" data-action="load-folders">Load more folders</button>`:"")
-    +`<section class="section"><div class="section-head"><h2>Library roots</h2><button data-action="manage-roots">Manage</button></div><div class="folder-grid">${roots.map(root=>{const available=root.available!==false&&root.status!=="Unavailable";return `<div class="folder-row ${available?"":"folder-unavailable"}"><div class="folder-icon"></div><div style="min-width:0;flex:1"><b title="${esc(root.path)}">${esc(root.name||root.path)}</b><span>${esc(root.path)} · ${Number(root.trackCount||0).toLocaleString()} tracks · ${available?"Available":"Unavailable"}</span>${available?"":`<small class="folder-warning">Reconnect this drive, then rescan the library.</small>`}</div><button class="action" data-action="remove-root" data-path="${esc(root.path)}">Remove</button></div>`;}).join("")}</div>${roots.length?"":`<div class="empty-state"><b>No music folders added</b>Add a folder to build your local library.</div>`}</section>`;
+    +`<section class="section"><div class="section-head"><h2>Library roots</h2><button data-action="manage-roots">Manage</button></div><div class="folder-grid">${roots.map(root=>{const available=root.available!==false&&root.status!=="Unavailable";return `<div class="folder-row ${available?"":"folder-unavailable"}"><div class="folder-icon">${svg(rootIconName(root.name, root.path))}</div><div style="min-width:0;flex:1"><b title="${esc(root.path)}">${esc(root.name||root.path)}</b><span>${esc(root.path)} · ${Number(root.trackCount||0).toLocaleString()} tracks · ${available?"Available":"Unavailable"}</span>${available?"":`<small class="folder-warning">Reconnect this drive, then rescan the library.</small>`}</div><button class="action" data-action="remove-root" data-path="${esc(root.path)}">Remove</button></div>`;}).join("")}</div>${roots.length?"":`<div class="empty-state"><b>No music folders added</b>Add a folder to build your local library.</div>`}</section>`;
 }
 
 async function renderPlaylists() {
   const revision=renderRevision;const data=await call("getPlaylists");if(revision!==renderRevision)return null; const lists=data.playlists||[];
-  const smart=[["Most Played","trending","Songs played most often"],["With Lyrics","lyrics","Songs with available lyrics"],["Recently Played","clock","Your recent listening history"]];
-  if(data.videosEnabled)smart.push(["Videos","film","Video files only"]);
-  const smartRows=smart.map(([view,icon,description])=>`<button class="smart-playlist" data-view="${esc(view)}"><span class="smart-playlist-icon" data-icon="${icon}"></span><span><b>${esc(view)}</b><small>${esc(description)}</small></span><span class="smart-playlist-open">›</span></button>`).join("");
-  return viewHeader("Playlists","Your playlists are stored on this PC.",`<button class="action" data-action="import-playlist">Import M3U / M3U8</button><button class="action primary" data-action="new-playlist">＋ New playlist</button>`)+`<section class="section smart-playlists"><div class="section-head"><h2>Smart playlists</h2></div><div class="smart-playlist-grid">${smartRows}</div></section><section class="section"><div class="section-head"><h2>Your playlists</h2></div>${cardGrid(lists,"playlist")}</section>`;
+  const smart=[
+    {view:"Most Played",icon:"trending",desc:"Songs played most often",grad:"smart-grad-fire"},
+    {view:"With Lyrics",icon:"lyrics",desc:"Songs with available lyrics",grad:"smart-grad-purple"},
+    {view:"Recently Played",icon:"clock",desc:"Your recent listening history",grad:"smart-grad-teal"}
+  ];
+  if(data.videosEnabled)smart.push({view:"Videos",icon:"film",desc:"Video files only",grad:"smart-grad-blue"});
+  const smartCards=smart.map(s=>`
+    <article class="card smart-playlist-card ${s.grad}" tabindex="0" data-view="${esc(s.view)}">
+      <div class="cover smart-cover">
+        <div class="smart-hero-icon">${svg(s.icon)}</div>
+      </div>
+      <div class="card-title">${esc(s.view)}</div>
+      <div class="card-sub">${esc(s.desc)}</div>
+      <button class="play-fab" data-action="play-view" data-view="${esc(s.view)}" title="Play ${esc(s.view)}">${svg("play")}</button>
+    </article>`).join("");
+  return viewHeader("Playlists","Your playlists are stored on this PC.",`<button class="action" data-action="import-playlist">Import M3U / M3U8</button><button class="action primary" data-action="new-playlist">＋ New playlist</button>`)+`<section class="section smart-playlists"><div class="section-head"><h2>Smart playlists</h2></div><div class="card-grid">${smartCards}</div></section><section class="section"><div class="section-head"><h2>Your playlists</h2></div>${cardGrid(lists,"playlist")}</section>`;
 }
 
 async function renderPlaylistDetail(append=false) {
@@ -394,7 +413,7 @@ async function renderLyrics() {
   if(!state.lyricsTrack) return viewHeader("Lyrics","Choose a song to view lyrics.")+`<div class="empty-state"><b>No track selected</b>Lyrics appear here when a track is playing.</div>`;
   const lyrics=state.lyricLines.length?`<div class="lyrics-lines" id="lyricsLines">${renderLyricLines(state.lyricLines,esc,state.settings.seekFromLyrics!==false&&state.track?.id===lyricsTrackId)}</div>`:state.lyricText?`<p class="lyric-source">Untimed lyrics · automatic following requires timestamps.</p><div class="lyrics-plain">${esc(state.lyricText)}</div>`:`<div class="empty-state"><b>${state.lyricsLoadingTrackId===lyricsTrackId?"Finding lyrics…":"No lyrics found"}</b>${esc(state.lyricsAutoError||"Lyrics saved in the audio file or beside it load automatically. You can search LRCLIB manually.")}</div>`;
   const source=({sidecar:"Sidecar file",embedded:"Embedded in audio tags",lrclib:"LRCLIB (online)",none:"Not saved"})[data.source]||"Source unavailable";
-  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}`;
+  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyrics-view-wrap"><div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}<button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button></div>`;
 }
 
 async function renderAudio() {

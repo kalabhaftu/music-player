@@ -22,6 +22,13 @@ public sealed partial class MainWindow
                 {
                     paths = _store.GetTrackPaths(sort: TrackSort.TrackNumber, descending: false, groupColumn: "album", groupValue: track.Album, hideExactDuplicates: _store.UseCachedFingerprints);
                 }
+                else if ((paths.Count <= 1 || !paths.Contains(track.Path, StringComparer.OrdinalIgnoreCase)) &&
+                         !string.IsNullOrWhiteSpace(track.Artist) &&
+                         (string.Equals(_libraryQueries.CurrentView, "Artist", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(String(payload, "groupColumn"), "artist", StringComparison.OrdinalIgnoreCase)))
+                {
+                    paths = _store.GetTrackPaths(sort: TrackSort.PlayCount, descending: true, groupColumn: "artist", groupValue: track.Artist, hideExactDuplicates: _store.UseCachedFingerprints);
+                }
                 _playbackQueue.SelectTrack(paths, track.Path);
                 PlayTrack(track, false, _queueIndex);
                 PublishQueueStateIfChanged();

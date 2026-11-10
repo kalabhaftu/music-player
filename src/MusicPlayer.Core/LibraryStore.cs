@@ -1429,7 +1429,19 @@ public sealed partial class LibraryStore
         connection.Open();
         var visibility = _hidden;
         connection.CreateFunction<string, bool>("musicplayer_visible", path => !visibility.Contains(path), isDeterministic: true);
-        connection.CreateFunction<string, string>("musicplayer_directory", path => Path.GetDirectoryName(path) ?? string.Empty, isDeterministic: true);
+        connection.CreateFunction<string, string>("musicplayer_directory", path =>
+        {
+            if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                return dir is null ? string.Empty : Path.TrimEndingDirectorySeparator(dir);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }, isDeterministic: true);
         return connection;
     }
 
