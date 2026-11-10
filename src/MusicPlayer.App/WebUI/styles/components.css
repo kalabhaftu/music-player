@@ -24,7 +24,16 @@ input[type="range"] { accent-color:var(--accent); }
 .card:hover { background:var(--surface-hover); }
 .cover { position:relative; width:100%; aspect-ratio:1; overflow:hidden; border-radius:6px; background:linear-gradient(145deg,#182219,#090b09); box-shadow:0 14px 28px rgba(0,0,0,.25); }
 .cover.round { border-radius:50%; }.cover::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.28)); }.cover>img { position:absolute; inset:0; z-index:0; width:100%; height:100%; object-fit:cover; }.cover-art { position:absolute; inset:0; z-index:1; display:grid; place-items:center; color:rgba(255,255,255,.88); font-size:clamp(16px,2vw,26px); font-weight:900; letter-spacing:-1px; text-shadow:0 2px 16px rgba(0,0,0,.4); }
-.cover.c1 { background:linear-gradient(135deg,#4850ff,#9d46ff 55%,#ff4a76); }.cover.c2 { background:radial-gradient(circle at 70% 28%,#ffd052 0 12%,transparent 13%),linear-gradient(145deg,#1a2632,#1f7c77); }.cover.c3 { background:linear-gradient(145deg,#ff7d41,#a33160 55%,#351b5e); }.cover.c4 { background:radial-gradient(circle at 32% 40%,#b7ff2d 0 7%,transparent 8%),linear-gradient(145deg,#172219,#0d0f0d); }.cover.c5 { background:linear-gradient(160deg,#0f1c25,#29649f 45%,#3bd8d0); }.cover.c6 { background:linear-gradient(145deg,#1d1510,#7f3d24 55%,#f0ad55); }.cover.c7 { background:linear-gradient(135deg,#171717,#4c4c4c 60%,#9d9d9d); }.cover.c8 { background:linear-gradient(145deg,#25113d,#7b25b9 45%,#e15a9f); }.cover.c9 { background:linear-gradient(145deg,#131f23,#175968 45%,#38abc0); }.cover.c10 { background:linear-gradient(145deg,#2d1e06,#8f6711 50%,#f4d45f); }
+.cover.c1 { background:linear-gradient(145deg,#1e1b2e 0%,#312a4f 50%,#4a3d70 100%); }
+.cover.c2 { background:linear-gradient(145deg,#16222f 0%,#1d3647 50%,#2b546b 100%); }
+.cover.c3 { background:linear-gradient(145deg,#2b1718 0%,#462225 50%,#683236 100%); }
+.cover.c4 { background:linear-gradient(145deg,#13241b 0%,#1d3b2b 50%,#2f5a43 100%); }
+.cover.c5 { background:linear-gradient(145deg,#2a1e12 0%,#46311b 50%,#6f4e29 100%); }
+.cover.c6 { background:linear-gradient(145deg,#141a24 0%,#1f2d3f 50%,#334866 100%); }
+.cover.c7 { background:linear-gradient(145deg,#1d1d21 0%,#2e2f36 50%,#484954 100%); }
+.cover.c8 { background:linear-gradient(145deg,#251726 0%,#3e2140 50%,#5f3263 100%); }
+.cover.c9 { background:linear-gradient(145deg,#112324 0%,#1b393b 50%,#29595d 100%); }
+.cover.c10 { background:linear-gradient(145deg,#272116 0%,#403623 50%,#665536 100%); }
 .play-fab { position:absolute; right:8px; bottom:8px; z-index:3; width:40px; height:40px; opacity:0; transform:translateY(6px); border:0; border-radius:50%; display:grid; place-items:center; background:var(--accent); color:var(--accent-ink,#101210); box-shadow:0 9px 20px rgba(0,0,0,.34); transition:.17s ease; }
 .card:hover .play-fab,.card:focus-within .play-fab { opacity:1; transform:none; }.play-fab svg { width:17px; height:17px; transform:translateX(2px); }
 .card-title { overflow:hidden; margin-top:10px; color:var(--text); font-size:13px; font-weight:750; white-space:nowrap; text-overflow:ellipsis; }.card-sub { overflow:hidden; margin-top:4px; color:var(--muted); font-size:11px; white-space:nowrap; text-overflow:ellipsis; }
@@ -157,7 +166,9 @@ body.queue-pointer-dragging { cursor:grabbing; user-select:none; }
 .panel-current .panel-track-title .heart { flex:0 0 30px; }
 .panel-current p { font-size:11px; }
 .panel-meta { margin-top:18px; padding:10px 12px; border-radius:7px; background:#151815; }
-.panel-label { margin:20px 2px 9px; color:#d8ddd8; font-size:11px; font-weight:800; }
+.panel-label { margin:12px 2px 8px; color:#d8ddd8; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:space-between; }
+.action-subtle { background:none; border:none; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; color:var(--muted); cursor:pointer; transition:background .12s,color .12s; }
+.action-subtle:hover { color:var(--text); background:rgba(255,255,255,.08); }
 .now-panel .panel-content { padding-top:0; }
 .panel-tabs { height:30px; flex:0 0 30px; margin-top:10px; }
 .panel-tabs button:not(.icon-btn) { height:30px; }

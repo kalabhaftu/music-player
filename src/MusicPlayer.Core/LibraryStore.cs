@@ -501,6 +501,84 @@ public sealed partial class LibraryStore
         return paths;
     }
 
+    /// <summary>
+    /// Dynamically selects smart algorithmic track recommendations based on genre, artist,
+    /// favorites, play count, and randomized jitter, excluding currently queued or played paths.
+    /// </summary>
+    public IReadOnlyList<string> GetSmartAutoplayTracks(string currentTrackPath, string? genre, string? artist, IEnumerable<string>? excludePaths = null, int limit = 10)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        var excludes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(currentTrackPath))
+        {
+            try { excludes.Add(Path.GetFullPath(currentTrackPath)); }
+            catch { excludes.Add(currentTrackPath); }
+        }
+        if (excludePaths is not null)
+        {
+            foreach (var p in excludePaths)
+            {
+                if (!string.IsNullOrWhiteSpace(p))
+                {
+                    try { excludes.Add(Path.GetFullPath(p)); }
+                    catch { excludes.Add(p); }
+                }
+            }
+        }
+
+        command.CommandText = """
+            SELECT path, genre, artist, favorite, play_count
+            FROM tracks
+            WHERE duration_ms >= 15000
+            ORDER BY (
+                (CASE WHEN $genre != '' AND genre = $genre COLLATE NOCASE THEN 4.5 ELSE 0.0 END) +
+                (CASE WHEN $artist != '' AND artist = $artist COLLATE NOCASE THEN 3.0 ELSE 0.0 END) +
+                (CASE WHEN favorite = 1 THEN 2.0 ELSE 0.0 END) +
+                MIN(play_count * 0.4, 3.0) +
+                (abs(random()) % 300) / 100.0
+            ) DESC
+            LIMIT 150
+            """;
+        Add(command, "$genre", genre ?? string.Empty);
+        Add(command, "$artist", artist ?? string.Empty);
+
+        var result = new List<string>(limit);
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var path = reader.GetString(0);
+                string full;
+                try { full = Path.GetFullPath(path); }
+                catch { full = path; }
+                if (excludes.Contains(full)) continue;
+                result.Add(path);
+                if (result.Count >= limit) break;
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            using var fallbackCommand = connection.CreateCommand();
+            fallbackCommand.CommandText = "SELECT path FROM tracks ORDER BY random() LIMIT 20";
+            using var fbReader = fallbackCommand.ExecuteReader();
+            while (fbReader.Read())
+            {
+                var path = fbReader.GetString(0);
+                if (!string.Equals(path, currentTrackPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Add(path);
+                    if (result.Count >= limit) break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+
     private (IReadOnlyList<Track> Tracks, int Count) QueryTracks(string? search, TrackSort sort, bool descending, string? filter,
         string? groupColumn, string? groupValue, int? offset, int pageSize, bool countOnly, bool hideExactDuplicates = false,
         CancellationToken cancellationToken = default, bool fingerprintsAlreadyCurrent = false)

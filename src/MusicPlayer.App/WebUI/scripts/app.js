@@ -43,7 +43,17 @@ const icons = {
 function svg(name) { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[name] || icons.music}"/></svg>`; }
 function paintIcons(root = document) { $$('[data-icon]', root).forEach(node => { const name = node.dataset.icon; node.innerHTML = svg(name); }); }
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function initials(value) { return String(value || "MP").split(/\s+/).filter(Boolean).slice(0,2).map(word => word[0]).join("").toUpperCase() || "MP"; }
+function initials(value) {
+  if (!value) return "MP";
+  const clean = String(value).replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    const fallback = String(value).replace(/[^\p{L}\p{N}]/gu, "");
+    return fallback ? fallback.slice(0, 2).toUpperCase() : "MP";
+  }
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 function cover(item, extra = "") {
   const seed = String(item?.album ? `${item.albumArtist||""}:${item.album}` : item?.artist || item?.name || item?.title || item?.id || "music");
   let hash = 2166136261; for (const ch of seed) hash = Math.imul(hash ^ ch.charCodeAt(0),16777619);
@@ -762,6 +772,38 @@ immersiveProgress.addEventListener("pointerdown",()=>{state.seeking=true;});
 immersiveProgress.addEventListener("input",()=>{progressRange.value=immersiveProgress.value;previewSeek();});
 immersiveProgress.addEventListener("pointerup",()=>{if(state.seeking){progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});}});
 immersiveProgress.addEventListener("change",()=>{if(!state.seeking)state.seeking=true;progressRange.value=immersiveProgress.value;commitSeek().catch(()=>{});});
+let wheelSeekTimer=null;
+function handleSeekWheel(e) {
+  if(!state.duration||state.duration<=0)return;
+  e.preventDefault();
+  const step=5;
+  const delta=e.deltaY<0?step:-step;
+  const current=state.seekPreviewSeconds??state.position??0;
+  const target=clamp(current+delta,0,state.duration);
+  state.seeking=true;
+  progressRange.value=String(target);
+  if(immersiveProgress)immersiveProgress.value=String(target);
+  previewSeek();
+  clearTimeout(wheelSeekTimer);
+  wheelSeekTimer=setTimeout(()=>{commitSeek().catch(()=>{});},100);
+}
+progressRange.addEventListener("wheel",handleSeekWheel,{passive:false});
+$(".timeline")?.addEventListener("wheel",handleSeekWheel,{passive:false});
+immersiveProgress?.addEventListener("wheel",handleSeekWheel,{passive:false});
+
+function handleVolumeWheel(e) {
+  e.preventDefault();
+  const step=4;
+  const delta=e.deltaY<0?step:-step;
+  const current=Number(state.volume)||0;
+  const target=clamp(Math.round(current+delta),0,100);
+  if(state.muted&&delta>0)void toggleMute();
+  void setVolume(target);
+}
+$("#volumeRange")?.addEventListener("wheel",handleVolumeWheel,{passive:false});
+$(".volume-control")?.addEventListener("wheel",handleVolumeWheel,{passive:false});
+$("#audioVolume")?.addEventListener("wheel",handleVolumeWheel,{passive:false});
+
 $("#volumeRange").addEventListener("input",e=>setVolume(e.target.value)); $("#muteBtn").addEventListener("click",toggleMute);
 function setPanelOpen(open,persist=true){
   const next=!!open,changed=next!==state.panelOpen;state.panelOpen=next;applyLayoutPreferences();

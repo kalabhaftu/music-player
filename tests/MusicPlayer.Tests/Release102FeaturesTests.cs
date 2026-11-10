@@ -121,6 +121,45 @@ public sealed class Release102FeaturesTests : IDisposable
         Assert.True(session.IsUnchanged(audioFile, info.Length, info.LastWriteTimeUtc, Path.Combine(_root, "art")));
     }
 
+    [Fact]
+    public void Smart_autoplay_recommends_similar_genre_and_artist_tracks_excluding_queue()
+    {
+        var now = DateTime.UtcNow;
+        var trackHipHop1 = new Track(Path.Combine(_root, "hiphop1.mp3"), "HipHop 1", "Kendrick", "Album A", "Kendrick", "Hip-Hop", 2020, 1, TimeSpan.FromSeconds(180), 1000, now, now, Favorite: true, PlayCount: 50);
+        var trackHipHop2 = new Track(Path.Combine(_root, "hiphop2.mp3"), "HipHop 2", "J. Cole", "Album B", "J. Cole", "Hip-Hop", 2021, 2, TimeSpan.FromSeconds(200), 1000, now, now, Favorite: false, PlayCount: 20);
+        var trackRock = new Track(Path.Combine(_root, "rock.mp3"), "Rock Track", "Queen", "Album C", "Queen", "Rock", 1980, 1, TimeSpan.FromSeconds(210), 1000, now, now, Favorite: false, PlayCount: 2);
+        File.WriteAllBytes(trackHipHop1.Path, [1]);
+        File.WriteAllBytes(trackHipHop2.Path, [2]);
+        File.WriteAllBytes(trackRock.Path, [3]);
+
+        _store.UpsertTracks([trackHipHop1, trackHipHop2, trackRock]);
+
+        var recommendations = _store.GetSmartAutoplayTracks(trackHipHop1.Path, "Hip-Hop", "Kendrick", [trackHipHop1.Path], 5);
+        Assert.NotEmpty(recommendations);
+        Assert.DoesNotContain(trackHipHop1.Path, recommendations);
+        Assert.Contains(trackHipHop2.Path, recommendations);
+    }
+
+    [Fact]
+    public void AutoplaySimilar_setting_defaults_to_true_and_persists()
+    {
+        var settingsService = new PlayerSettingsService(_store);
+        var settings = settingsService.ProjectWebSettings("Dark", null, null);
+        var json = JsonSerializer.Serialize(settings);
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("autoplaySimilar").GetBoolean());
+
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            settings = new { autoplaySimilar = false }
+        }));
+        settingsService.PersistWebSettings(payload.RootElement);
+
+        var updated = settingsService.ProjectWebSettings("Dark", null, null);
+        using var updatedDoc = JsonDocument.Parse(JsonSerializer.Serialize(updated));
+        Assert.False(updatedDoc.RootElement.GetProperty("autoplaySimilar").GetBoolean());
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
