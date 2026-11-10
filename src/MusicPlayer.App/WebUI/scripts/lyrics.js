@@ -2,8 +2,11 @@ export function parseLyricsText(value) {
   const raw = String(value || "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const lines = [];
   const timestamp = /\[(\d+):(\d{1,2})(?:[.:](\d+))?\]/g;
+  const sectionTag = /^\[\s*(?:verse|chorus|bridge|intro|outro|hook|pre-chorus|post-chorus|interlude|solo|breakdown|drop|refrain|tag|part)\b[^\]]*\]\s*/i;
   let offsetMilliseconds = 0;
   for (const sourceLine of raw.split("\n")) {
+    const trimmedLine = sourceLine.trim();
+    if (sectionTag.test(trimmedLine) && !timestamp.test(trimmedLine)) continue;
     const offset = sourceLine.trim().match(/^\[offset:([+-]?\d+)\]$/i);
     if (offset) {
       const parsedOffset = Number(offset[1]);
@@ -21,7 +24,7 @@ export function parseLyricsText(value) {
       }
       const textStart = matches[end].index + matches[end][0].length;
       const textEnd = end + 1 < matches.length ? matches[end + 1].index : sourceLine.length;
-      const text = sourceLine.slice(textStart, textEnd).trim();
+      const text = sourceLine.slice(textStart, textEnd).replace(sectionTag, "").trim();
       if (text) {
         for (let index = start; index <= end; index++) {
           const match = matches[index];
@@ -36,7 +39,7 @@ export function parseLyricsText(value) {
   // LRC offsets apply to every line even when the metadata appears at the end.
   for (const line of lines) line.seconds += offsetMilliseconds / 1000;
   lines.sort((a, b) => a.seconds - b.seconds);
-  const plainText = lines.length ? "" : raw.split("\n").filter(line => !/^\[[a-z][a-z0-9_-]*:[^\]]*\]$/i.test(line.trim())).map(line => line.replace(timestamp, "").trim()).filter(Boolean).join("\n");
+  const plainText = lines.length ? "" : raw.split("\n").filter(line => !/^\[[a-z][a-z0-9_-]*:[^\]]*\]$/i.test(line.trim())).map(line => line.replace(timestamp, "").replace(sectionTag, "").trim()).filter(Boolean).join("\n");
   return { lines, plainText, offsetMilliseconds };
 
 }

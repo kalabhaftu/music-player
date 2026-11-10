@@ -115,7 +115,7 @@ function initLyricsScrollListeners() {
   const content = $("#content");
   if (content && typeof content.addEventListener === "function") {
     const onUserScroll = () => {
-      if (state.view === "Lyrics" && state.lyricLines?.length > 0) {
+      if (state.view === "Lyrics" && (state.lyricLines?.length > 0 || state.lyricText)) {
         userPausedLyricsSync = true;
         const btn = $("#resumeLyricsBtn");
         if (btn) btn.hidden = false;
@@ -166,14 +166,26 @@ function updateActiveLyric(){
   const canFollow=state.lyricLines.length>0&&!!trackId&&trackId===state.track?.id;
   let active=-1;
   if(canFollow)active=activeLyricIndex(state.lyricLines,currentPosition());
-  const canFollowMain=canFollow&&state.view==="Lyrics";
-  const canFollowImmersive=canFollow&&state.immersiveLyricsOpen&&!$("#immersivePlayer").hidden;
+  const canFollowUntimed = !state.lyricLines.length && !!state.lyricText && !!trackId && trackId === state.track?.id && state.duration > 0;
+  const canFollowMain = (canFollow || canFollowUntimed) && state.view === "Lyrics";
+  const canFollowImmersive = (canFollow || canFollowUntimed) && state.immersiveLyricsOpen && !$("#immersivePlayer").hidden;
   const roots=[
-    {element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn")},
-    {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn")}
+    {element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn"),isUntimed:canFollowUntimed},
+    {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn"),isUntimed:canFollowUntimed}
   ];
-  for(const {element,enabled,scroller,userPaused,btn} of roots){
+  for(const {element,enabled,scroller,userPaused,btn,isUntimed} of roots){
     if(!element)continue;
+    if(isUntimed && enabled && scroller) {
+      if(userPaused && btn) btn.hidden = false;
+      else if(!userPaused) {
+        if(btn) btn.hidden = true;
+        const progress = Math.max(0, Math.min(1, currentPosition() / (state.duration || 1)));
+        const effective = Math.max(0, Math.min(1, (progress - 0.04) / 0.88));
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+        if(maxScroll > 0) scroller.scrollTo({ top: effective * maxScroll, behavior: state.settings?.motionStyle === "Off" ? "auto" : "smooth" });
+      }
+      continue;
+    }
     const key=`${trackId||""}:${active}:${state.lyricsRevision||0}:${enabled}:${scroller?.clientWidth}:${scroller?.clientHeight}:${userPaused}`;
     if(element.dataset.activeLyricKey===key)continue;
     element.dataset.activeLyricKey=key;
@@ -219,10 +231,10 @@ function updatePanel() {
   const qualityRow=quality.length?`<div class="info-row"><span>Audio quality</span><b title="${esc(qualityText)}">${esc(qualityText)}</b></div>`:"";
   if(state.panel==="queue") {
     const start=state.queueIndex-(state.queueOffset||0);
-    const upcoming=state.queue.slice(start+1,start+4);
-    patchMarkup(content,`<div class="panel-meta">${current?`<div class="info-row"><span>Album</span><b title="${esc(current.album||"—")}">${esc(current.album||"—")}</b></div><div class="info-row"><span>Format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div>`:`<div class="empty-state">Track information appears here.</div>`}</div><div class="panel-label">Next in queue</div>${upcoming.length?upcoming.map((t,i)=>`<div class="queue-row ${t.fileUnavailable?"unavailable-track":""}" data-action="play-queue" data-index="${state.queueOffset+start+i+1}" data-context="track" data-context-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Play ${esc(t.title)}">${cover(t,"queue-thumb")}<div class="queue-copy"><b>${esc(t.title)}</b><span>${esc(t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist)}</span></div><span class="row-tools"><button class="ctrl" data-action="queue-remove" data-index="${state.queueOffset+start+i+1}" aria-label="Remove from queue">×</button></span></div>`).join(""):`<div class="empty-state">No upcoming tracks.</div>`}`);
+    const upcoming=state.queue.slice(start+1,start+9);
+    patchMarkup(content,`<div class="panel-meta">${current?`<div class="info-row"><span>Album</span>${current.album ? `<b class="clickable-link" data-open-type="album" data-open-name="${esc(current.album)}" title="Go to album ${esc(current.album)}" role="button" tabindex="0">${esc(current.album)}</b>` : `<b>—</b>`}</div><div class="info-row"><span>Format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div>`:`<div class="empty-state">Track information appears here.</div>`}</div><div class="panel-label">Next in queue</div>${upcoming.length?upcoming.map((t,i)=>`<div class="queue-row ${t.fileUnavailable?"unavailable-track":""}" data-action="play-queue" data-index="${state.queueOffset+start+i+1}" data-context="track" data-context-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Play ${esc(t.title)}">${cover(t,"queue-thumb")}<div class="queue-copy"><b>${esc(t.title)}</b><span>${esc(t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist)}</span></div><span class="row-tools"><button class="ctrl" data-action="queue-remove" data-index="${state.queueOffset+start+i+1}" aria-label="Remove from queue">×</button></span></div>`).join(""):`<div class="empty-state">No upcoming tracks.</div>`}`);
   }
-  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span><b>${esc(current.album||"—")}</b></div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b>${esc(current.format||"—")}</b></div>${qualityRow}</div><div class="toolbar"><button class="action" data-action="details" data-id="${esc(current.id)}">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
+  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span><b>${esc(current.album||"—")}</b></div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b>${esc(current.format||"—")}</b></div>${qualityRow}</div><div class="toolbar">${current.album ? `<button class="action" data-action="go-to-album" data-album="${esc(current.album)}" title="Open this track's album">Go to album</button>` : ""}<button class="action" data-action="details" data-id="${esc(current.id)}" title="Track details">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
   $$(".panel-tabs [data-panel]").forEach(b=>b.classList.toggle("active",b.dataset.panel===state.panel));
 }
 

@@ -43,6 +43,7 @@ internal sealed class TrayIconService : IDisposable
             RemoveWindowSubclass(_window, _procedure, (UIntPtr)0xB4A7); DestroyIcon(_icon);
             throw new Win32Exception(error, $"Windows could not register the tray icon (native error {error}, data size {data.cbSize}).");
         }
+        try { SetPreferredAppMode(PreferredAppMode.AllowDark); AllowDarkModeForWindow(_window, true); FlushMenuThemes(); } catch { }
         _registered = true;
         data.uTimeoutOrVersion = 4;
         Shell_NotifyIcon(NimSetVersion, ref data);
@@ -133,13 +134,14 @@ internal sealed class TrayIconService : IDisposable
         if (menu == IntPtr.Zero) { _restore(); return; }
         try
         {
-            if (!AppendMenu(menu, 0, OpenCommand, "Open Music Player") ||
+            try { SetPreferredAppMode(PreferredAppMode.AllowDark); AllowDarkModeForWindow(_window, true); FlushMenuThemes(); } catch { }
+            if (!AppendMenu(menu, 0, OpenCommand, "⏏  Open Music Player") ||
                 !AppendMenu(menu, MfSeparator, 0, string.Empty) ||
-                !AppendMenu(menu, 0, PreviousCommand, "Previous") ||
-                !AppendMenu(menu, 0, PlayPauseCommand, "Play / Pause") ||
-                !AppendMenu(menu, 0, NextCommand, "Next") ||
+                !AppendMenu(menu, 0, PreviousCommand, "⏮  Previous") ||
+                !AppendMenu(menu, 0, PlayPauseCommand, "⏯  Play / Pause") ||
+                !AppendMenu(menu, 0, NextCommand, "⏭  Next") ||
                 !AppendMenu(menu, MfSeparator, 0, string.Empty) ||
-                !AppendMenu(menu, 0, QuitCommand, "Quit"))
+                !AppendMenu(menu, 0, QuitCommand, "✕  Quit"))
             {
                 _restore();
                 return;
@@ -219,4 +221,8 @@ internal sealed class TrayIconService : IDisposable
     [DllImport("comctl32.dll", SetLastError = true)] private static extern bool SetWindowSubclass(IntPtr window, SubclassProcedure procedure, UIntPtr subclassId, UIntPtr referenceData);
     [DllImport("comctl32.dll", SetLastError = true)] private static extern bool RemoveWindowSubclass(IntPtr window, SubclassProcedure procedure, UIntPtr subclassId);
     [DllImport("comctl32.dll")] private static extern IntPtr DefSubclassProc(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
+    private enum PreferredAppMode { Default = 0, AllowDark = 1, ForceDark = 2, ForceLight = 3 }
+    [DllImport("uxtheme.dll", EntryPoint = "#135", SetLastError = true)] private static extern int SetPreferredAppMode(PreferredAppMode appMode);
+    [DllImport("uxtheme.dll", EntryPoint = "#136", SetLastError = true)] private static extern void FlushMenuThemes();
+    [DllImport("uxtheme.dll", EntryPoint = "#133", SetLastError = true)] private static extern bool AllowDarkModeForWindow(IntPtr hWnd, bool allow);
 }

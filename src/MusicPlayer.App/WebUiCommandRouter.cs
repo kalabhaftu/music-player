@@ -33,7 +33,7 @@ internal sealed class WebUiCommandRouter
             "importPlaylist", "addToPlaylist", "removePlaylistTrack");
         Register(folders,
             "addFolder", "removeRoot", "scanLibrary", "rebuildLibraryIndex", "toggleScanPause", "cancelScan", "showInFolder", "showFilePath");
-        Register(metadata, "saveLyrics", "searchLyrics", "saveTags", "restoreTags", "pickArtwork");
+        Register(metadata, "saveLyrics", "searchLyrics", "removeLyrics", "saveTags", "restoreTags", "pickArtwork");
         Register(settings,
             "setAudioDevice", "setCrossfade", "refreshAudioDevices", "setEqualizerPreset", "setEqualizerBand", "setEqualizerBands", "setExtensionEnabled",
             "saveEqualizerPreset", "updateSettings", "resetUiSettings", "addExclusion", "removeExclusion", "checkUpdates");

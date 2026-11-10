@@ -293,13 +293,47 @@ async function openDetails(id) {
   openModal("Track details",`${detailList(fields)}<h3>Additional standard tags</h3>${detailList(additional)}<h3>Custom tags</h3>${detailList(custom)}<h3>Recent tag backups</h3>${backups.length?`<ul>${backups.map(created=>`<li>${esc(created)}</li>`).join("")}</ul>`:`<p class="muted">No tag backups.</p>`}`);
 }
 
-async function editLyrics(initialText = null,trackId=state.lyricsTrack?.id||state.trackId||state.track?.id) { const d=await call("getLyrics",{id:trackId});const source=initialText!==null?"LRCLIB result (not saved)":({sidecar:"Sidecar file",embedded:"Embedded audio tags",none:"No saved lyrics"})[d.source]||"Unknown source";openModal("Edit lyrics",`<p>${esc(d.track?.title||"")} · ${esc(d.track?.artist||"")}</p><p class="lyric-source">Current lyrics: ${esc(source)}</p><div class="toolbar"><button class="action" id="stampLyric">Timestamp at current position</button><label>Timing offset (ms) <input class="field" id="lyricsOffset" type="number" value="${Number(d.offsetMilliseconds)||0}"></label><select class="select" id="lyricsMode"><option value="embed" selected>Embed in audio file</option><option value="sidecar">Save beside audio file</option></select></div><textarea class="textarea" id="lyricsEditor">${esc(initialText??d.raw??"")}</textarea>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-lyrics" data-track-id="${esc(d.track?.id||"")}">Save lyrics</button>`); $("#stampLyric").addEventListener("click",()=>{const editor=$("#lyricsEditor"),time=Math.max(0,state.position),m=Math.floor(time/60),s=(time%60).toFixed(2).padStart(5,"0"),stamp=`[${m}:${s}]`;const p=editor.selectionStart;editor.setRangeText(`${stamp}`,p,p,"end");editor.focus();}); }
+async function editLyrics(initialText = null,trackId=state.lyricsTrack?.id||state.trackId||state.track?.id) { const d=await call("getLyrics",{id:trackId});const source=initialText!==null?"LRCLIB result (not saved)":({sidecar:"Sidecar file",embedded:"Embedded audio tags",none:"No saved lyrics"})[d.source]||"Unknown source";openModal("Edit lyrics",`<p>${esc(d.track?.title||"")} · ${esc(d.track?.artist||"")}</p><p class="lyric-source">Current lyrics: ${esc(source)}</p><div class="lyric-edit-toolbar"><button class="action" id="stampLyric" title="Insert timestamp at current position">⏱ Stamp position</button><div class="field-inline"><label for="lyricsOffset">Offset (ms)</label><input class="field" id="lyricsOffset" type="number" value="${Number(d.offsetMilliseconds)||0}"></div><select class="select" id="lyricsMode" title="Where to save lyrics"><option value="embed" selected>Embed in audio file</option><option value="sidecar">Save beside audio file</option></select></div><textarea class="textarea" id="lyricsEditor" placeholder="Enter lyrics or paste [mm:ss.xx] timestamped LRC text">${esc(initialText??d.raw??"")}</textarea>`,`<button class="action danger" data-modal-command="remove-lyrics" data-track-id="${esc(d.track?.id||"")}" style="margin-right:auto;" title="Remove lyrics from audio file, sidecar, and library">Remove lyrics</button><button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-lyrics" data-track-id="${esc(d.track?.id||"")}">Save lyrics</button>`); $("#stampLyric").addEventListener("click",()=>{const editor=$("#lyricsEditor"),time=Math.max(0,state.position),m=Math.floor(time/60),s=(time%60).toFixed(2).padStart(5,"0"),stamp=`[${m}:${s}]`;const p=editor.selectionStart;editor.setRangeText(`${stamp}`,p,p,"end");editor.focus();}); }
 async function editTags(id) { const d=await call("getTags",{id}); const t=d.track; const fields=[["title","Title"],["artist","Artist"],["album","Album"],["albumArtist","Album artist"],["genre","Genre"],["year","Year"],["trackNumber","Track number"]]; const custom=Object.entries(d.customFields||{}).map(([key,value])=>`<label class="modal-field"><span>${esc(key)}</span><input class="field" data-custom-tag="${esc(key)}" value="${esc(value)}"></label>`).join("");const additional=Object.entries(d.additionalFields||{}).map(([key,value])=>`<label class="modal-field"><span>${esc(key.replaceAll("_"," "))}</span><input class="field" data-additional-tag="${esc(key)}" value="${esc(value)}"></label>`).join(""); openModal("Edit tags",`${fields.map(([key,label])=>`<label class="modal-field"><span>${label}</span><input class="field" data-tag="${key}" value="${esc(t[key]||"")}"></label>`).join("")}<div class="toolbar"><button class="action" id="chooseArtwork">Choose artwork…</button><span id="artworkPath"></span></div>${custom?`<details><summary>Additional format-specific fields</summary>${custom}</details>`:""}${additional?`<details><summary>Additional standard fields</summary>${additional}</details>`:""}<p>${esc(d.customFormat||"Audio tags")} · Saving creates a recoverable backup.</p>`,`<button class="action" data-modal-close>Cancel</button><button class="action primary" data-modal-command="save-tags" data-track-id="${esc(id)}">Save tags</button>`); $("#modalLayer").dataset.artworkToken="";$("#chooseArtwork").addEventListener("click",async()=>{const picked=await call("pickArtwork");if(picked?.token){$("#modalLayer").dataset.artworkToken=picked.token;$("#artworkPath").textContent=picked.name;}}); }
 
 async function action(name,el) {
   const id=el?.dataset.id||el?.dataset.trackId||""; const view=state.view;
   const trackContext={view,search:state.search,sort:state.sort,descending:state.descending,group:state.group,playlistId:state.playlist?.id};
   switch(name) {
+    case "go-to-album": {
+      const album = el?.dataset?.album || state.track?.album;
+      if (album) {
+        state.group = { column: "album", name: album, id: album };
+        await navigate("Album");
+      }
+      break;
+    }
+    case "apply-search": {
+      const term = el?.dataset?.search || "";
+      if (term) {
+        const searchInput = $("#globalSearch");
+        if (searchInput) searchInput.value = term;
+        await navigate("Search", false, term);
+      }
+      break;
+    }
+    case "clear-recent-searches": {
+      try { localStorage.removeItem("musicplayer_recent_searches"); } catch {}
+      await renderView();
+      break;
+    }
+    case "remove-recent-search": {
+      const term = el?.dataset?.search || "";
+      if (term) {
+        try {
+          const existing = JSON.parse(localStorage.getItem("musicplayer_recent_searches") || "[]");
+          const filtered = existing.filter(item => item.toLowerCase() !== term.toLowerCase());
+          localStorage.setItem("musicplayer_recent_searches", JSON.stringify(filtered));
+        } catch {}
+        await renderView();
+      }
+      break;
+    }
     case "play": case "play-track": await call("playTrack",{id,...trackContext}); await refreshCurrent(); break;
     case "play-view": await call("playView",{view:state.view,group:state.group}); await refreshCurrent(); break;
     case "shuffle-view": await call("shuffleView",{view:state.view,group:state.group}); await refreshCurrent(); break;
@@ -466,7 +500,8 @@ document.addEventListener("click",async e=>{
     else if(kind==="rename-playlist"){await call("renamePlaylist",{playlistId:state.playlist.id,name:$("#playlistName").value});state.playlist.name=$("#playlistName").value;closeModal();await renderView();}
     else if(kind==="add-to-playlist"){await call("addToPlaylist",{playlistId:$("#playlistChoice").value,trackId:modalCmd.dataset.trackId});closeModal();toast("Added to playlist.");}
     else if(kind==="set-rating"){await call("setRating",{id:modalCmd.dataset.trackId,rating:Number($("#ratingValue").value)});closeModal();await renderView();}
-    else if(kind==="save-lyrics"){const trackId=modalCmd.dataset.trackId;modalCmd.disabled=true;try{const result=await call("saveLyrics",{id:trackId,text:$("#lyricsEditor").value,mode:$("#lyricsMode").value,offsetMilliseconds:Number($("#lyricsOffset").value)||0});automaticLyrics.forget(trackId);lyricsSearch.forget(trackId);await loadLyricsForTrack(trackId,false,true);closeModal();toast(result?.storage==="sidecar-fallback"?"The audio file couldn’t be updated, so lyrics were saved beside it.":result?.storage==="sidecar"?"Lyrics saved beside the audio file.":"Lyrics embedded in the audio file.");await renderView();}catch(error){modalCmd.disabled=false;toast(error?.message||"Could not save lyrics. Check file permissions and try saving beside the audio file.");}}
+    else if(kind==="remove-lyrics"){const trackId=modalCmd.dataset.trackId;modalCmd.disabled=true;try{await call("removeLyrics",{id:trackId});automaticLyrics.forget(trackId);lyricsSearch.forget(trackId);await loadLyricsForTrack(trackId,false,true);closeModal();toast("Lyrics removed from file and library.");await renderView();}catch(error){modalCmd.disabled=false;toast(error?.message||"Could not remove lyrics.");}}
+      else if(kind==="save-lyrics"){const trackId=modalCmd.dataset.trackId;modalCmd.disabled=true;try{const result=await call("saveLyrics",{id:trackId,text:$("#lyricsEditor").value,mode:$("#lyricsMode").value,offsetMilliseconds:Number($("#lyricsOffset").value)||0});automaticLyrics.forget(trackId);lyricsSearch.forget(trackId);await loadLyricsForTrack(trackId,false,true);closeModal();toast(result?.storage==="sidecar-fallback"?"The audio file couldn’t be updated, so lyrics were saved beside it.":result?.storage==="sidecar"?"Lyrics saved beside the audio file.":"Lyrics embedded in the audio file.");await renderView();}catch(error){modalCmd.disabled=false;toast(error?.message||"Could not save lyrics. Check file permissions and try saving beside the audio file.");}}
     else if(kind==="save-tags"){const tags={};$$('[data-tag]').forEach(el=>tags[el.dataset.tag]=el.value);tags.customFields={};$$('[data-custom-tag]').forEach(el=>tags.customFields[el.dataset.customTag]=el.value);tags.additionalFields={};$$('[data-additional-tag]').forEach(el=>tags.additionalFields[el.dataset.additionalTag]=el.value);await call("saveTags",{id:modalCmd.dataset.trackId,tags,artworkToken:$("#modalLayer").dataset.artworkToken||""});closeModal();toast("Tags saved with a backup.");await renderView();}
     else if(kind==="save-eq"){await flushEqualizer();await call("saveEqualizerPreset",{name:$("#presetName").value});closeModal();await refreshAudioControls();}
     else if(kind==="reset-ui-settings"){const groups=$$('[data-reset-category]:checked').map(input=>input.dataset.resetCategory);if(!groups.length){closeModal();return;}await call("resetUiSettings",{groups});const bootstrap=await call("getBootstrap");state.settings={...(bootstrap.settings||{}),resolvedTheme:bootstrap.resolvedTheme||"Dark"};state.panel=bootstrap.panel||"queue";closeModal();setTheme(state.settings);applyLayoutPreferences();setPanelOpen(bootstrap.panelOpen??state.settings.rightPanelOpen??(window.innerWidth>1180),false);updatePanel();toast("Selected UI settings restored.");await renderView();}
@@ -640,12 +675,28 @@ $("#sidebarToggleBtn").addEventListener("click",async()=>{
 });
 $("#topMenu").addEventListener("click",()=>{$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");});
 document.addEventListener("click",e=>{if(!e.target.closest(".top-menu-wrap")){$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");}});
-async function setImmersiveMode(enabled){
+let immersiveIsFullscreen = false;
+async function setImmersiveMode(enabled, fullscreen = false){
   const layer=$("#immersivePlayer");
-  if(enabled&&!state.track){toast("Choose a track before opening the full-screen player.");return;}
+  if(enabled&&!state.track){toast("Choose a track before opening the now playing player.");return;}
   if(!enabled)await closeImmersiveDrawer();
-  try{await call("setImmersiveMode",{enabled});layer.hidden=!enabled;document.documentElement.classList.toggle("immersive-active",enabled);if(enabled){updatePlayer();revealImmersiveExit();if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);}}
-  catch{if(enabled){layer.hidden=true;document.documentElement.classList.remove("immersive-active");}}
+  try{
+    if(enabled && fullscreen) {
+      await call("setImmersiveMode",{enabled:true});
+      immersiveIsFullscreen = true;
+    } else if(!enabled && immersiveIsFullscreen) {
+      await call("setImmersiveMode",{enabled:false});
+      immersiveIsFullscreen = false;
+    } else if(enabled && !fullscreen && immersiveIsFullscreen) {
+      await call("setImmersiveMode",{enabled:false});
+      immersiveIsFullscreen = false;
+    }
+    layer.hidden=!enabled;
+    document.documentElement.classList.toggle("immersive-active",enabled);
+    document.documentElement.classList.toggle("immersive-in-window",enabled && !fullscreen);
+    if(enabled){updatePlayer();revealImmersiveExit();if(state.track)void loadLyricsForTrack(state.track.id,!!state.settings.autoLoadLyrics);}
+  }
+  catch{if(enabled){layer.hidden=true;document.documentElement.classList.remove("immersive-active");document.documentElement.classList.remove("immersive-in-window");}}
 }
 function setImmersiveLyricsOpen(open){
   state.immersiveLyricsOpen=!!open;
@@ -682,8 +733,10 @@ async function openImmersiveDrawer(view){
 $("#immersiveDrawerClose").addEventListener("click",()=>closeImmersiveDrawer());
 function revealImmersiveExit(){const layer=$("#immersivePlayer");layer.classList.add("controls-visible");clearTimeout(immersiveExitTimer);immersiveExitTimer=setTimeout(()=>layer.classList.remove("controls-visible"),2400);}
 $("#playBtn").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();}); $("#prevBtn").addEventListener("click",async()=>{await call("previous");await refreshCurrent();}); $("#nextBtn").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
-$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true));
+$("#nowCover")?.addEventListener("click",()=>setImmersiveMode(true,false));
+$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,false));
 $("#immersiveExit").addEventListener("click",()=>setImmersiveMode(false));
+$("#immersiveFullscreenToggle")?.addEventListener("click",()=>setImmersiveMode(true,!immersiveIsFullscreen));
 $("#immersivePlayer").addEventListener("pointermove",revealImmersiveExit);
 $("#immersiveLyricsToggle").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(!state.immersiveLyricsOpen);});
 $("#immersiveLyricsClose").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(false);});

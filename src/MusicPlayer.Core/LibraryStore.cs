@@ -570,7 +570,8 @@ public sealed partial class LibraryStore
         var groupPredicate = groupColumn switch
         {
             "album" => "($group IS NULL OR album=$group)", "artist" => "($group IS NULL OR artist=$group)",
-            "genre" => "($group IS NULL OR genre=$group)", "folder" => "($folderPrefix IS NULL OR tracks.path LIKE $folderPrefix ESCAPE '\\')",
+            "genre" => "($group IS NULL OR genre=$group)",
+            "folder" => OperatingSystem.IsWindows() ? "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix COLLATE NOCASE)" : "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix)",
             null => "1=1", _ => throw new ArgumentOutOfRangeException(nameof(groupColumn))
         };
         var searchTerms = SplitSearchTerms(search);
@@ -587,9 +588,7 @@ public sealed partial class LibraryStore
         string? folderPrefix = null;
         if (groupColumn == "folder" && !string.IsNullOrWhiteSpace(groupValue))
         {
-            var folder = Path.GetFullPath(groupValue);
-            var prefix = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
-            folderPrefix = EscapeLike(prefix) + "%";
+            folderPrefix = Path.TrimEndingDirectorySeparator(Path.GetFullPath(groupValue));
         }
         return new(where, fullOrderBy, searchTerms, ftsPhrase, groupParameter,
             folderPrefix is null ? DBNull.Value : folderPrefix, videoPatterns);
@@ -1050,7 +1049,7 @@ public sealed partial class LibraryStore
         while (reader.Read()) yield return reader.GetString(0);
     }
 
-    private void UpdateTrack(string path, string column, int value)
+    public void UpdateTrack(string path, string column, int value)
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -1352,6 +1351,7 @@ public sealed partial class LibraryStore
         connection.Open();
         var visibility = _hidden;
         connection.CreateFunction<string, bool>("musicplayer_visible", path => !visibility.Contains(path), isDeterministic: true);
+        connection.CreateFunction<string, string>("musicplayer_directory", path => Path.GetDirectoryName(path) ?? string.Empty, isDeterministic: true);
         return connection;
     }
 

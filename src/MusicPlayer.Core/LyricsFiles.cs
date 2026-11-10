@@ -94,6 +94,19 @@ public static class LyricsFiles
         return media.Tag.Lyrics ?? string.Empty;
     }
 
+    public static void DeleteSidecar(string trackPath)
+    {
+        var destination = SidecarPath(trackPath);
+        try
+        {
+            if (System.IO.File.Exists(destination)) System.IO.File.Delete(destination);
+            var txtSidecar = Path.ChangeExtension(trackPath, ".txt");
+            if (System.IO.File.Exists(txtSidecar)) System.IO.File.Delete(txtSidecar);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        { LocalAppLog.Shared.Warning("lyrics-delete", $"Could not delete lyrics sidecar for '{trackPath}'.", ex); }
+    }
+
     public static void SaveSidecar(string trackPath, string lyrics)
     {
         var destination = SidecarPath(trackPath);

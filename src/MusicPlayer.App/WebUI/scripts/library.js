@@ -82,7 +82,7 @@ function songTable(tracks, start=0) {
 function card(item,type="album") {
   const clean=value=>{const text=String(value??"").trim();return text&&!/^(?:undefined|null)$/i.test(text)?text:"";};
   const name=clean(item.name)||clean(item.title)||titleOf(item);
-  const id=esc(clean(item.id)||name); const key=esc(name);
+  const id=esc(clean(item.id)||clean(item.path)||name); const key=esc(name);
   if(type==="track") return `<article class="card ${item.fileUnavailable?"unavailable-track":""}" tabindex="0" data-action="play" data-id="${id}">${cover(item)}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(item.fileUnavailable?"File unavailable":subOf(item))}</div><button class="play-fab" data-action="play" data-id="${id}" title="Play">${svg("play")}</button></article>`;
   const playAction=type==="playlist"?"play-playlist-card":"play-group";
   const countVal = item.trackCount || item.count;
@@ -235,12 +235,29 @@ async function renderHome() {
   return html;
 }
 
+const RECENT_SEARCHES_KEY = "musicplayer_recent_searches";
+function getRecentSearches() {
+  try { return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || "[]"); } catch { return []; }
+}
+function saveRecentSearch(q) {
+  const term = String(q || "").trim();
+  if (!term || term.length < 2) return;
+  const list = getRecentSearches().filter(item => item.toLowerCase() !== term.toLowerCase());
+  list.unshift(term);
+  try { localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, 8))); } catch {}
+}
+
 async function renderSearch() {
   const requestRevision=++searchRevision,requestId=nextSearchRequestId();
   const query=state.search.trim(),filter=state.filter;let html=viewHeader("Search",query?`Results in your local library for “${query}”`:"Find songs, artists, albums, and playlists.");
   await call("beginSearch",{requestId},false);
   if(requestRevision!==searchRevision||query!==state.search.trim()||filter!==state.filter||state.view!=="Search")return null;
-  if(!query) return html+`<div class="empty-state"><b>Search your library</b>Type in the single search field above to get started.</div>`;
+  if(!query) {
+    const recent = getRecentSearches();
+    const recentMarkup = recent.length ? `<section class="section recent-searches"><div class="section-head"><h2>Recent searches</h2><button class="action" data-action="clear-recent-searches" title="Clear all recent searches">Clear all</button></div><div class="recent-chips">${recent.map(term => `<span class="chip-wrap"><button class="chip recent-chip" data-action="apply-search" data-search="${esc(term)}" title="Search for ${esc(term)}"><span data-icon="search"></span><span>${esc(term)}</span></button><button class="chip-remove" data-action="remove-recent-search" data-search="${esc(term)}" title="Remove search">×</button></span>`).join("")}</div></section>` : "";
+    return html + recentMarkup + `<div class="empty-state"><b>Search your library</b>Type in the search field above to find songs, albums, and artists.</div>`;
+  }
+  saveRecentSearch(query);
   if(state.searchQuery!==query){state.searchQuery=query;state.searchPages={songs:0,albums:0,artists:0,playlists:0};state.searchResults={};}
   const definitions={songs:{filter:"song",label:"Songs",kind:"track",pageSize:40},albums:{filter:"album",label:"Albums",kind:"album",pageSize:24},artists:{filter:"artist",label:"Artists",kind:"artist",pageSize:24},playlists:{filter:"playlist",label:"Playlists",kind:"playlist",pageSize:20}};
   const selected=filter==="all"?Object.keys(definitions):[{song:"songs",album:"albums",artist:"artists",playlist:"playlists"}[filter]].filter(Boolean);
@@ -338,7 +355,9 @@ async function renderGroupDetail(append=false) {
   if(append)return songTable(pageTracks,previousCount)+(state.nextOffset<state.total&&pageTracks.length?`<button class="action load-more" data-action="load-more">Load more tracks</button>`:"");
   const albumSection=albums.length?`<section class="section"><div class="section-head"><h2>Albums</h2></div><div class="card-grid" id="artistAlbumsGrid">${albums.map(item=>card(item,"album")).join("")}</div>${state.artistAlbumsHaveMore?`<button class="action load-more" data-action="load-artist-albums">More albums</button>`:""}</section>`:"";
   const tracksMore=state.nextOffset<state.total&&pageTracks.length?`<button class="action load-more" data-action="load-more">Load more tracks</button>`:"";
-  return `<div class="detail-hero">${cover({...sample,name:group.name,album:group.column==="album"?group.name:sample.album,artist:group.column==="artist"?group.name:sample.artist},group.column==="artist"?"round":"")}<div><div class="eyebrow">${esc(group.column)}</div><h1>${esc(group.name)}</h1><p>${Number(state.total).toLocaleString()} tracks${sample.year?` · ${sample.year}`:""}</p><div class="toolbar"><button class="action primary" data-action="play-view">Play</button><button class="action" data-action="shuffle-view">Shuffle</button></div></div></div>${albumSection}<section class="section"><div class="section-head"><h2>${tracksTitle}</h2></div>${songTable(state.items)}${tracksMore}</section>`;
+  const groupTitle = group.column === "folder" ? (group.name.split(/[\\/]/).filter(Boolean).pop() || group.name) : group.name;
+    const groupSubtitle = group.column === "folder" ? `${esc(group.name)} · ${Number(state.total).toLocaleString()} tracks` : `${Number(state.total).toLocaleString()} tracks${sample.year?` · ${sample.year}`:""}`;
+    return `<div class="detail-hero">${cover({...sample,name:group.name,album:group.column==="album"?group.name:sample.album,artist:group.column==="artist"?group.name:sample.artist},group.column==="artist"?"round":"")}<div><div class="eyebrow">${esc(group.column)}</div><h1>${esc(groupTitle)}</h1><p title="${esc(group.name)}">${groupSubtitle}</p><div class="toolbar"><button class="action primary" data-action="play-view" title="Play all tracks">Play</button><button class="action" data-action="shuffle-view" title="Shuffle all tracks">Shuffle</button></div></div></div>${albumSection}<section class="section"><div class="section-head"><h2>${tracksTitle}</h2></div>${songTable(state.items)}${tracksMore}</section>`;
 }
 
 async function renderQueue(append=false,background=false) {

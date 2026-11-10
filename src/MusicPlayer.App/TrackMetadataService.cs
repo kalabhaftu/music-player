@@ -44,6 +44,18 @@ internal sealed class TrackMetadataService
         return "sidecar";
     }
 
+    public async Task RemoveLyricsAsync(string trackPath, CancellationToken cancellationToken = default)
+    {
+        LyricsFiles.DeleteSidecar(trackPath);
+        try
+        {
+            await _tagEditor.SaveAsync(trackPath, new TagEdit(Lyrics: string.Empty), cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException
+            or TagLib.CorruptFileException or TagLib.UnsupportedFormatException or NotSupportedException)
+        { LocalAppLog.Shared.Warning("lyrics-remove", $"Could not clear embedded lyrics in '{trackPath}'.", ex); }
+    }
+
     public Task<IReadOnlyList<LyricsSearchResult>> SearchLyricsAsync(string title, string artist,
         CancellationToken cancellationToken = default) =>
         LyricsFiles.SearchLrclibAsync(title, artist, cancellationToken);

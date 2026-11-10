@@ -308,6 +308,7 @@ internal sealed class LibraryQueryService
         var size = Math.Clamp(Int(payload, "pageSize", 50), 1, 100);
         var folders = allFolders.Skip(offset).Take(size).Select(path => new
         {
+            id = path,
             path,
             name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
             trackCount = _store.CountTracks(groupColumn: "folder", groupValue: path)
@@ -401,7 +402,7 @@ internal sealed class LibraryQueryService
     public string SetGroupContext(string type, string value)
     {
         var column = GroupColumnFromType(type);
-        var view = column switch { "album" => "Album", "artist" => "Artist", _ => "Genre" };
+        var view = column switch { "album" => "Album", "artist" => "Artist", "folder" => "Folder", _ => "Genre" };
         _context = new(view, "", column, value, null);
         PersistContext();
         return column;

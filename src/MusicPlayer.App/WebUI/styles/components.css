@@ -267,6 +267,12 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
   background: var(--row-hover) !important;
 }
 
+.lyrics-resume-btn:not(.immersive-lyrics-resume) {
+  position: absolute;
+  bottom: 24px;
+  right: 28px;
+  z-index: 25;
+}
 .lyrics-resume-btn {
   position: fixed;
   bottom: 110px;
@@ -416,3 +422,55 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
 [data-theme="light"] .timeline input[type="range"], [data-theme="light"] .player-right input[type="range"] { --range-fill-color:var(--range-fill); --range-track-color:var(--range-track); }
 [data-theme="light"] .timeline input[type="range"]::-webkit-slider-thumb,[data-theme="light"] .player-right input[type="range"]::-webkit-slider-thumb,[data-theme="light"] .timeline input[type="range"]::-moz-range-thumb,[data-theme="light"] .player-right input[type="range"]::-moz-range-thumb { background:var(--text); }
 [data-theme="light"] .queue-row:hover,[data-theme="light"] .queue-row.playing { background:var(--surface-hover); }
+
+
+/* Modern Smart Playlist Cards (Item 2) */
+.smart-playlist-card .smart-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.smart-hero-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  opacity: .95;
+}
+.smart-hero-icon svg { width: 36px; height: 36px; filter: drop-shadow(0 2px 8px rgba(0,0,0,.35)); }
+.smart-grad-fire .smart-cover { background: linear-gradient(135deg, #ff5e36, #f32759 60%, #890b50); }
+.smart-grad-purple .smart-cover { background: linear-gradient(135deg, #8b5cf6, #6366f1 60%, #1e1b4b); }
+.smart-grad-teal .smart-cover { background: linear-gradient(135deg, #10b981, #06b6d4 60%, #134e4a); }
+.smart-grad-blue .smart-cover { background: linear-gradient(135deg, #3b82f6, #1d4ed8 60%, #0f172a); }
+
+/* Clickable link in metadata */
+.clickable-link { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color .15s ease, color .15s ease; }
+.clickable-link:hover { text-decoration-color: var(--accent); color: var(--accent); }
+
+/* Lyric Search Modal Enhancements */
+.lyric-search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.lyric-search-bar .field { flex: 1; }
+.lyric-search-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; }
+.lyric-result-info { display: flex; flex-direction: column; min-width: 0; }
+.badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; letter-spacing: .02em; white-space: nowrap; }
+.badge-timed { background: rgba(var(--accent-rgb), .2); color: var(--accent); border: 1px solid rgba(var(--accent-rgb), .35); }
+.badge-untimed { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+
+/* Lyric Edit Toolbar */
+.lyric-edit-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.lyric-edit-toolbar .field-inline { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.lyric-edit-toolbar .field-inline input { width: 80px; }
+
+/* Recent searches chips (Item 15) */
+.recent-searches { margin-bottom: 16px; }
+.recent-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-wrap { display: inline-flex; align-items: center; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; transition: border-color .15s ease; }
+.chip-wrap:hover { border-color: var(--accent); }
+.recent-chip { background: transparent; border: 0; color: var(--text); padding: 5px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.chip-remove { background: transparent; border: 0; color: var(--muted); padding: 5px 8px 5px 2px; font-size: 12px; cursor: pointer; }
+.chip-remove:hover { color: var(--text); }

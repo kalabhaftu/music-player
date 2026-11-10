@@ -13,6 +13,7 @@ public sealed class LibraryScanSession : IDisposable
     private readonly List<string> _pendingSeen = new(SeenBatchSize);
     private readonly List<(string Path, ScanExcludedPathKind? Kind)> _pendingProtected = new(SeenBatchSize);
     private readonly HashSet<string> _pendingSet;
+    private readonly Dictionary<string, (long Size, DateTime ModifiedUtc, long HasLyrics, string? ArtworkPath)> _cachedTrackState;
     private readonly SqliteCommand _stateCommand;
     private readonly SqliteCommand _excludeCommand;
     private readonly SqliteCommand _defaultExcludeCommand;
@@ -95,13 +96,43 @@ public sealed class LibraryScanSession : IDisposable
         _userIgnoredCommand.Parameters.Add("$path", SqliteType.Text);
         _userIgnoredCommand.Parameters.Add("$prefix", SqliteType.Text);
         _userIgnoredCommand.Prepare();
+
+        _cachedTrackState = new Dictionary<string, (long, DateTime, long, string?)>(_pathComparer);
+        try
+        {
+            using var load = _connection.CreateCommand();
+            load.CommandText = "SELECT path, file_size, modified_utc, has_lyrics, artwork_path FROM tracks";
+            using var reader = load.ExecuteReader();
+            while (reader.Read())
+            {
+                var p = reader.GetString(0);
+                var size = reader.GetInt64(1);
+                var modStr = reader.GetString(2);
+                var hasLyrics = reader.GetInt64(3);
+                var art = reader.IsDBNull(4) ? null : reader.GetString(4);
+                if (DateTime.TryParse(modStr, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var mod))
+                    _cachedTrackState[p] = (size, mod, hasLyrics, art);
+            }
+        }
+        catch { }
     }
 
     public bool IsUnchanged(string path, long length, DateTime modifiedUtc, string artworkCache)
     {
         ThrowIfDisposed();
+        var fullPath = Path.GetFullPath(path);
+        var cacheRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(artworkCache)) + Path.DirectorySeparatorChar;
+        var pathComparer = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        if (_cachedTrackState.TryGetValue(fullPath, out var cached))
+        {
+            if (cached.Size != length || cached.ModifiedUtc != modifiedUtc || cached.HasLyrics < 0) return false;
+            if (cached.ArtworkPath is null) return true;
+            return cached.ArtworkPath.StartsWith(cacheRoot, pathComparer) && File.Exists(cached.ArtworkPath);
+        }
+
         var parameter = _stateCommand.Parameters["$path"];
-        parameter.Value = Path.GetFullPath(path);
+        parameter.Value = fullPath;
         using var reader = _stateCommand.ExecuteReader();
         if (!reader.Read()) return false;
         if (reader.GetInt64(0) != length ||
@@ -110,8 +141,6 @@ public sealed class LibraryScanSession : IDisposable
 
         if (reader.IsDBNull(3)) return true;
         var artworkPath = reader.GetString(3);
-        var cacheRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(artworkCache)) + Path.DirectorySeparatorChar;
-        var pathComparer = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         return artworkPath.StartsWith(cacheRoot, pathComparer) && File.Exists(artworkPath);
     }
 
