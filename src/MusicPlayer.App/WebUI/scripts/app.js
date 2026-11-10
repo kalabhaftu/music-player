@@ -574,7 +574,7 @@ document.addEventListener("click",async e=>{
   if(lyricLine){e.preventDefault();try{await seekToLyricLine(lyricLine);}catch(error){toast(error.message||"Could not seek to that lyric line.");}return;}
   const queueRow = target?.closest(".queue-table tr[data-queue-index]");
   if (queueRow && !target.closest("button,a,input,[data-action],[data-queue-drag]")) { e.preventDefault(); await action("play-queue", { dataset: { index: queueRow.dataset.queueIndex } }); return; }
-  const nav=e.target.closest("[data-view]"); if(nav){ e.preventDefault(); if(nav.dataset.view==="Audio"&&state.view==="Audio")await toggleAudioView();else await navigate(nav.dataset.view||"Home"); return; }
+  const nav=e.target.closest("[data-view]"); if(nav && !e.target.closest("[data-action]")){ e.preventDefault(); if(nav.dataset.view==="Audio"&&state.view==="Audio")await toggleAudioView();else await navigate(nav.dataset.view||"Home"); return; }
   const menu=e.target.closest("[data-menu-action]"); if(menu){ await handleMenu(menu.dataset.menuAction,$("#contextMenu").dataset.id); return; }
   const filter=e.target.closest("[data-filter]"); if(filter){ state.filter=filter.dataset.filter; await renderView(); return; }
   const open=e.target.closest("[data-open-type]"); if(open && !e.target.closest("[data-action]")){ const type=open.dataset.openType; if(type==="playlist"){state.playlist={id:open.dataset.openId,name:open.dataset.openName};await navigate("Playlist");} else {state.group={column:type,name:open.dataset.openName,id:open.dataset.openId};await navigate(type==="album"?"Album":type==="artist"?"Artist":type==="folder"?"Folder":"Genre");} return; }
