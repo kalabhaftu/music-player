@@ -39,7 +39,7 @@ internal sealed class PlayerSettingsService(LibraryStore store)
             transparentWindow = On("transparent-window"), windowTransparency = Value("window-transparency", "0"),
             motionStyle = Value("motion-style", "Subtle"),
             autoplaySimilar = Value("autoplay-similar", "true") != "false", hideDuplicates = Value("hide-exact-duplicates", "true") != "false", autoOpenPanel = Value("auto-open-side-panel", "true") != "false",
-            autoLoadLyrics = On("auto-load-lyrics"), seekFromLyrics = On("seek-from-lyrics", true),
+            autoLoadLyrics = Value("auto-load-lyrics", "true") != "false", seekFromLyrics = On("seek-from-lyrics", true),
             showArtwork = Value("show-list-artwork", "true") != "false", showArtist = Value("show-list-artist", "true") != "false",
             showAlbum = Value("show-list-album", "true") != "false", showAdded = Value("show-list-added", "true") != "false",
             showYear = On("show-list-year"), showDuration = Value("show-list-duration", "true") != "false",

@@ -77,6 +77,7 @@ public sealed partial class MainWindow : Window
             var titleBar = appWindow.TitleBar;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+            if (_immersiveMode || _isFullscreen) return;
             var artworkSurface = _store.GetSetting("accent-mode") == "Artwork" && _webArtworkTitleBarColor is { };
             var dark = artworkSurface || ShellRoot.RequestedTheme == ElementTheme.Dark ||
                 (ShellRoot.RequestedTheme == ElementTheme.Default && ShellRoot.ActualTheme == ElementTheme.Dark);
@@ -366,8 +367,55 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _immersiveMode;
+    private bool _isFullscreen;
+    private bool _wasMaximizedBeforeFullscreen;
 
-    private void SetImmersiveMode(bool enabled)
+    private const int SwMaximize = 3;
+    [DllImport("user32.dll", EntryPoint = "ShowWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(nint hwnd, int command);
+
+    [DllImport("user32.dll", EntryPoint = "IsZoomed")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsZoomed(nint hwnd);
+
+    public void SetFullscreen(bool enabled)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            if (enabled)
+            {
+                if (appWindow.Presenter.Kind != Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    _wasMaximizedBeforeFullscreen = IsZoomed(hwnd);
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+                    _isFullscreen = true;
+                }
+            }
+            else
+            {
+                if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                    if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                    _isFullscreen = false;
+                    ApplyNativeWindowChrome();
+                }
+            }
+            _webBridge?.SendEvent("fullscreenChanged", new { fullscreen = _isFullscreen });
+        }
+        catch (Exception ex)
+        {
+            LocalAppLog.Shared.Warning("fullscreen", "Failed to update fullscreen presenter.", ex);
+        }
+    }
+
+    public void ToggleFullscreen() => SetFullscreen(!_isFullscreen);
+
+    private void SetImmersiveMode(bool enabled, bool fullscreen = false)
     {
         _immersiveMode = enabled;
         try
@@ -375,26 +423,58 @@ public sealed partial class MainWindow : Window
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-            if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+            if (enabled)
             {
-                var titleBar = appWindow.TitleBar;
-                titleBar.ExtendsContentIntoTitleBar = enabled;
-                if (enabled)
+                if (fullscreen)
                 {
-                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
-                    titleBar.ButtonBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-                    titleBar.ButtonInactiveBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-                    titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(40, 255, 255, 255);
-                    titleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(60, 255, 255, 255);
-                    titleBar.ButtonForegroundColor = Windows.UI.Color.FromArgb(200, 255, 255, 255);
-                    titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(80, 255, 255, 255);
+                    if (appWindow.Presenter.Kind != Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                    {
+                        _wasMaximizedBeforeFullscreen = IsZoomed(hwnd);
+                        appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+                        _isFullscreen = true;
+                    }
                 }
                 else
                 {
-                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
-                    ApplyNativeWindowChrome();
+                    if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                    {
+                        appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                        if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                        _isFullscreen = false;
+                    }
+                    if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                    {
+                        presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
+                    }
+                    if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                    {
+                        var titleBar = appWindow.TitleBar;
+                        titleBar.ExtendsContentIntoTitleBar = true;
+                        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
+                    }
                 }
             }
+            else
+            {
+                if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                    if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                    _isFullscreen = false;
+                }
+                if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                {
+                    presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: true);
+                }
+                if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                {
+                    var titleBar = appWindow.TitleBar;
+                    titleBar.ExtendsContentIntoTitleBar = false;
+                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+                }
+                ApplyNativeWindowChrome();
+            }
+            _webBridge?.SendEvent("immersiveChanged", new { enabled, fullscreen = _isFullscreen });
         }
         catch (Exception ex)
         {

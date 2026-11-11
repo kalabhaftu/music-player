@@ -339,14 +339,17 @@ async function renderFolders(append=false) {
 async function renderPlaylists() {
   const revision=renderRevision;const data=await call("getPlaylists");if(revision!==renderRevision)return null; const lists=data.playlists||[];
   const smart=[
-    {view:"Most Played",desc:"Songs played most often"},
-    {view:"With Lyrics",desc:"Songs with available lyrics"},
-    {view:"Recently Played",desc:"Your recent listening history"}
+    {view:"Most Played",icon:"trending",desc:"Songs played most often",grad:"smart-grad-fire"},
+    {view:"With Lyrics",icon:"lyrics",desc:"Songs with available lyrics",grad:"smart-grad-purple"},
+    {view:"Recently Played",icon:"clock",desc:"Your recent listening history",grad:"smart-grad-teal"}
   ];
-  if(data.videosEnabled)smart.push({view:"Videos",desc:"Video files only"});
+  if(data.videosEnabled)smart.push({view:"Videos",icon:"film",desc:"Video files only",grad:"smart-grad-blue"});
   const smartCards=smart.map(s=>`
-    <article class="card smart-playlist-card" tabindex="0" data-view="${esc(s.view)}">
-      <div class="card-cover">${cover({name:s.view,title:s.view})}<button class="play-fab" data-action="play-view" data-view="${esc(s.view)}" title="Play ${esc(s.view)}">${svg("play")}</button></div>
+    <article class="card smart-playlist-card ${s.grad}" tabindex="0" data-view="${esc(s.view)}">
+      <div class="cover smart-cover">
+        <div class="smart-hero-icon">${svg(s.icon)}</div>
+        <button class="play-fab" data-action="play-view" data-view="${esc(s.view)}" title="Play ${esc(s.view)}">${svg("play")}</button>
+      </div>
       <div class="card-title">${esc(s.view)}</div>
       <div class="card-sub">${esc(s.desc)}</div>
     </article>`).join("");
@@ -416,7 +419,7 @@ async function renderLyrics() {
   if(!state.lyricsTrack) return viewHeader("Lyrics","Choose a song to view lyrics.")+`<div class="empty-state"><b>No track selected</b>Lyrics appear here when a track is playing.</div>`;
   const lyrics=state.lyricLines.length?`<div class="lyrics-lines" id="lyricsLines">${renderLyricLines(state.lyricLines,esc,state.settings.seekFromLyrics!==false&&state.track?.id===lyricsTrackId)}</div>`:state.lyricText?`<p class="lyric-source">Untimed lyrics · automatic following requires timestamps.</p><div class="lyrics-plain">${esc(state.lyricText)}</div>`:`<div class="empty-state"><b>${state.lyricsLoadingTrackId===lyricsTrackId?"Finding lyrics…":"No lyrics found"}</b>${esc(state.lyricsAutoError||"Lyrics saved in the audio file or beside it load automatically. You can search LRCLIB manually.")}</div>`;
   const source=({sidecar:"Sidecar file",embedded:"Embedded in audio tags",lrclib:"LRCLIB (online)",none:"Not saved"})[data.source]||"Source unavailable";
-  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyrics-view-wrap"><div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}<button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics" title="Jump to current lyrics">${svg("sync")}<span>Jump to current</span></button></div>`;
+  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyrics-view-wrap"><div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}<button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics" title="Jump to current lyrics">${svg("sync")}</button></div>`;
 }
 
 async function renderAudio() {

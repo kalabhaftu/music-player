@@ -60,6 +60,7 @@ internal sealed class WebViewBridge(WebView2 view, WebUiCommandRouter commandRou
     }
 
     public bool IsReady => _core is not null;
+    public Action<bool>? FullscreenRequested { get; set; }
 
     public async Task InitializeAsync(string artworkFolder, string assetsFolder, string userDataFolder)
     {
@@ -89,6 +90,7 @@ internal sealed class WebViewBridge(WebView2 view, WebUiCommandRouter commandRou
         _core.NavigationStarting += NavigationStarting;
         _core.NavigationCompleted += NavigationCompleted;
         _core.NewWindowRequested += (_, args) => args.Handled = true;
+        _core.ContainsFullScreenElementChanged += (sender, _) => FullscreenRequested?.Invoke(sender.ContainsFullScreenElement);
         _core.WebMessageReceived += MessageReceived;
         _core.Navigate($"https://{UiHost}/index.html");
     }

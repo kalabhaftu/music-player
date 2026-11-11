@@ -292,24 +292,29 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
 .lyrics-resume-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 999px;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 50%;
   border: 1px solid rgba(var(--accent-rgb), 0.5);
   background: var(--surface-float, #181c19);
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+.lyrics-resume-btn svg {
+  width: 18px;
+  height: 18px;
 }
 .lyrics-resume-btn:not(.immersive-lyrics-resume) {
   position: sticky;
   bottom: 24px;
   z-index: 25;
   display: flex;
-  width: max-content;
   margin: 14px 28px 2px auto;
 }
 #abBtn, .controls #abBtn, .player #abBtn {
@@ -477,7 +482,31 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
 [data-theme="light"] .queue-row:hover,[data-theme="light"] .queue-row.playing { background:var(--surface-hover); }
 
 
-/* Smart playlist cards intentionally share the standard playlist card treatment. */
+/* Modern Smart Playlist Cards */
+.smart-playlist-card .smart-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+}
+.smart-hero-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  opacity: .95;
+}
+.smart-hero-icon svg { width: 36px; height: 36px; filter: drop-shadow(0 2px 8px rgba(0,0,0,.35)); }
+.smart-grad-fire .smart-cover { background: linear-gradient(135deg, #ff5e36, #f32759 60%, #890b50); }
+.smart-grad-purple .smart-cover { background: linear-gradient(135deg, #8b5cf6, #6366f1 60%, #1e1b4b); }
+.smart-grad-teal .smart-cover { background: linear-gradient(135deg, #10b981, #06b6d4 60%, #134e4a); }
+.smart-grad-blue .smart-cover { background: linear-gradient(135deg, #3b82f6, #1d4ed8 60%, #0f172a); }
 
 /* Clickable link in metadata */
 .clickable-link { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color .15s ease, color .15s ease; }

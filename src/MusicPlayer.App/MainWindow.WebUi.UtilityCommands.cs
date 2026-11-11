@@ -59,7 +59,15 @@ public sealed partial class MainWindow
             case "restoreWindowAfterQueue":
                 RestoreWindowAfterQueue(); return null;
             case "setImmersiveMode":
-                SetImmersiveMode(payload.TryGetProperty("enabled", out var immersive) && immersive.ValueKind == JsonValueKind.True);
+                SetImmersiveMode(
+                    payload.TryGetProperty("enabled", out var immersive) && immersive.ValueKind == JsonValueKind.True,
+                    payload.TryGetProperty("fullscreen", out var fs) && fs.ValueKind == JsonValueKind.True);
+                return null;
+            case "setFullscreen":
+                SetFullscreen(payload.TryGetProperty("fullscreen", out var full) && full.ValueKind == JsonValueKind.True);
+                return null;
+            case "toggleFullscreen":
+                ToggleFullscreen();
                 return null;
             case "openDefaultApps":
                 await DefaultAppsService.OpenAsync();
