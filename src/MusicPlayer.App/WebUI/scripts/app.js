@@ -914,26 +914,9 @@ $("#immersiveDrawerClose").addEventListener("click",()=>closeImmersiveDrawer());
 function revealImmersiveExit(){const layer=$("#immersivePlayer");layer.classList.add("controls-visible");clearTimeout(immersiveExitTimer);immersiveExitTimer=setTimeout(()=>layer.classList.remove("controls-visible"),2400);}
 $("#playBtn").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();}); $("#prevBtn").addEventListener("click",async()=>{await call("previous");await refreshCurrent();}); $("#nextBtn").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
 $("#nowCover")?.addEventListener("click",()=>setImmersiveMode(true,false));
-$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,false));
+$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,true));
 $("#immersiveExit").addEventListener("click",()=>setImmersiveMode(false));
 $("#immersiveFullscreenToggle")?.addEventListener("click",()=>setImmersiveMode(true,!immersiveIsFullscreen));
-document.addEventListener("pointerdown",event=>{
-  if(event.button!==0)return;
-  const target=event.target;
-  if(target.closest("button, input, select, textarea, a, .ctrl, [role='slider'], [data-action], .resize-handle"))return;
-  if(!$("#immersivePlayer").hidden&&!immersiveIsFullscreen){
-    if(target.closest(".immersive-lyrics, .immersive-controls, .immersive-shortcuts, .immersive-timeline, .immersive-drawer, .immersive-exit, .immersive-fullscreen-btn"))return;
-    if(target.closest("#immersivePlayer")){
-      void call("dragWindow",{},false);
-      return;
-    }
-  }
-  if($("#immersivePlayer").hidden){
-    if(target.closest(".topbar, .top-spacer, .brand")&&!target.closest("button, input, [data-action], .search-box")){
-      void call("dragWindow",{},false);
-    }
-  }
-});
 $("#immersivePlayer").addEventListener("pointermove",revealImmersiveExit);
 $("#immersiveLyricsToggle").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(!state.immersiveLyricsOpen);});
 $("#immersiveLyricsClose").addEventListener("click",event=>{event.preventDefault();event.stopPropagation();setImmersiveLyricsOpen(false);});

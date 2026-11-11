@@ -77,7 +77,7 @@ public sealed partial class MainWindow : Window
             var titleBar = appWindow.TitleBar;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             if (!AppWindowTitleBar.IsCustomizationSupported()) return;
-            if (_immersiveMode || _isFullscreen || IsZoomed(hwnd)) return;
+            if (_immersiveMode || _isFullscreen) return;
             var artworkSurface = _store.GetSetting("accent-mode") == "Artwork" && _webArtworkTitleBarColor is { };
             var dark = artworkSurface || ShellRoot.RequestedTheme == ElementTheme.Dark ||
                 (ShellRoot.RequestedTheme == ElementTheme.Default && ShellRoot.ActualTheme == ElementTheme.Dark);
@@ -379,86 +379,6 @@ public sealed partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsZoomed(nint hwnd);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ReleaseCapture();
-
-    private const uint WM_NCLBUTTONDOWN = 0x00A1;
-    private const nint HTCAPTION = 2;
-
-    public void DragWindow()
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        ReleaseCapture();
-        SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-    }
-
-    private void HookWindowLifecycleEvents()
-    {
-        try
-        {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-            appWindow.Changed += (_, args) =>
-            {
-                if (args.DidPresenterChange || args.DidSizeChange)
-                {
-                    DispatcherQueue.TryEnqueue(UpdateTitleBarState);
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            LocalAppLog.Shared.Warning("window-lifecycle", "Could not hook window lifecycle events.", ex);
-        }
-    }
-
-    private void UpdateTitleBarState()
-    {
-        try
-        {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-            if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
-            {
-                _isFullscreen = true;
-                _webBridge?.SendEvent("fullscreenChanged", new { fullscreen = true });
-                return;
-            }
-
-            _isFullscreen = false;
-            _webBridge?.SendEvent("fullscreenChanged", new { fullscreen = false });
-
-            if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
-            {
-                var isMaximized = presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized || IsZoomed(hwnd);
-                var shouldHideTitleBar = _immersiveMode || isMaximized;
-
-                presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: !shouldHideTitleBar);
-
-                if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
-                {
-                    var titleBar = appWindow.TitleBar;
-                    titleBar.ExtendsContentIntoTitleBar = shouldHideTitleBar;
-                    titleBar.PreferredHeightOption = shouldHideTitleBar
-                        ? Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed
-                        : Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
-                }
-
-                if (!shouldHideTitleBar)
-                {
-                    ApplyNativeWindowChrome();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LocalAppLog.Shared.Warning("titlebar", "Failed to update title bar state.", ex);
-        }
-    }
-
     public void SetFullscreen(bool enabled)
     {
         try
@@ -482,9 +402,10 @@ public sealed partial class MainWindow : Window
                     appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
                     if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
                     _isFullscreen = false;
+                    ApplyNativeWindowChrome();
                 }
             }
-            UpdateTitleBarState();
+            _webBridge?.SendEvent("fullscreenChanged", new { fullscreen = _isFullscreen });
         }
         catch (Exception ex)
         {
@@ -521,6 +442,16 @@ public sealed partial class MainWindow : Window
                         if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
                         _isFullscreen = false;
                     }
+                    if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                    {
+                        presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
+                    }
+                    if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                    {
+                        var titleBar = appWindow.TitleBar;
+                        titleBar.ExtendsContentIntoTitleBar = true;
+                        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
+                    }
                 }
             }
             else
@@ -531,8 +462,18 @@ public sealed partial class MainWindow : Window
                     if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
                     _isFullscreen = false;
                 }
+                if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                {
+                    presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: true);
+                }
+                if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                {
+                    var titleBar = appWindow.TitleBar;
+                    titleBar.ExtendsContentIntoTitleBar = false;
+                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+                }
+                ApplyNativeWindowChrome();
             }
-            UpdateTitleBarState();
             _webBridge?.SendEvent("immersiveChanged", new { enabled, fullscreen = _isFullscreen });
         }
         catch (Exception ex)

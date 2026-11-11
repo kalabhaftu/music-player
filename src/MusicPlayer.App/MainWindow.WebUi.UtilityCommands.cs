@@ -69,9 +69,6 @@ public sealed partial class MainWindow
             case "toggleFullscreen":
                 ToggleFullscreen();
                 return null;
-            case "dragWindow":
-                DragWindow();
-                return null;
             case "openDefaultApps":
                 await DefaultAppsService.OpenAsync();
                 return null;
