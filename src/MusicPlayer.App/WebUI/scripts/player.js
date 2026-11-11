@@ -320,7 +320,7 @@ async function toggleMute(){if(state.muted){await setVolume(state.lastVolume||75
     else if(!active&&progressTimer!==null){clearInterval(progressTimer);progressTimer=null;}
   }
   document.addEventListener("visibilitychange",()=>{syncProgressTimer();if(!document.hidden)void refreshCurrent();});
-  window.addEventListener("resize",()=>{panelRenderKey="";updatePanel();});
+  if(typeof window!=="undefined")window.addEventListener("resize",()=>{panelRenderKey="";updatePanel();});
   $("#panelToggleBtn")?.addEventListener("click",()=>{panelRenderKey="";setTimeout(updatePanel,0);});
   initLyricsScrollListeners();
   return {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute,resetLyricsSync};
