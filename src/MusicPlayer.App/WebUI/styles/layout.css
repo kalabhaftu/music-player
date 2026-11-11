@@ -69,8 +69,10 @@
 .panel-toggle { display:none; }
 .resize-handle { position:absolute; z-index:15; top:0; bottom:var(--player-h); width:8px; touch-action:none; user-select:none; cursor:col-resize !important; background:transparent; }
 .resize-handle:hover,.resize-handle:focus-visible,[data-resizing="true"] .resize-handle { background:rgba(var(--accent-rgb),.35); cursor:col-resize !important; }
+html[data-resizing="true"],html[data-resizing="true"] * { cursor:col-resize !important; user-select:none !important; }
+html[data-resizing="columns"],html[data-resizing="columns"] * { cursor:col-resize !important; user-select:none !important; }
 .resize-sidebar { left:var(--sidebar); transform:translateX(-50%); }
-.resize-panel { right:var(--right); transform:translateX(0); width:6px; }
+.resize-panel { right:calc(var(--right) - 8px); transform:none; width:8px; }
 .app.panel-closed .resize-panel { display:none; }
 .app.sidebar-collapsed { --sidebar:0px; }
 .app.sidebar-collapsed .sidebar { padding:0; visibility:hidden; }
@@ -106,7 +108,7 @@
   .player-right { display:flex; }
   .player-right [data-view="Lyrics"],.player-right [data-view="Audio"] { display:none; }
   .player-right input { width:64px; }
-  .card-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .folder-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .settings-grid { grid-template-columns:1fr; }
 }
@@ -124,11 +126,14 @@
   .controls .ctrl { width:27px; height:27px; flex-basis:27px; }
   .controls .play-main { width:32px; height:32px; flex-basis:32px; }
   .timeline { width:100%; }
-  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .folder-grid { grid-template-columns:1fr; }
   .detail-hero { grid-template-columns:110px minmax(0,1fr); gap:14px; padding:14px; }
   .detail-cover { width:110px; }
   .detail-copy h1 { font-size:28px; }
+}
+@media (max-width:540px) {
+  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 [data-theme="light"] .app { background:var(--bg); }
@@ -173,10 +178,11 @@
 .immersive-art-backdrop { position:absolute; z-index:-2; inset:-8%; overflow:hidden; background:var(--bg); }
 .immersive-art-backdrop img { width:100%; height:100%; object-fit:cover; filter:blur(20px) brightness(.72) saturate(1.25); transform:scale(1.18); transition:opacity .45s ease; }
 .immersive-art-backdrop::after { content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb),.18) 0%, transparent 65%), linear-gradient(180deg,rgba(0,0,0,.22),rgba(0,0,0,.58)); }
-.immersive-topbar { position:absolute; z-index:3; top:0; left:0; right:0; height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; color:rgba(255,255,255,.65); font-size:10px; letter-spacing:1.7px; opacity:0; pointer-events:none; transition:opacity .25s ease; }
-.immersive-player.controls-visible .immersive-topbar, .immersive-topbar:hover, .immersive-topbar:focus-within { opacity:1; pointer-events:auto; }
+.immersive-topbar { position:absolute; z-index:3; top:0; left:0; right:0; height:64px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 28px; color:rgba(255,255,255,.65); font-size:10px; letter-spacing:1.7px; opacity:0; pointer-events:none; transition:opacity .25s ease; -webkit-app-region:drag; }
+.immersive-topbar #immersiveTopTitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.immersive-topbar:hover, .immersive-topbar:focus-within, .immersive-player.controls-visible .immersive-topbar { opacity:1; pointer-events:auto; }
 .immersive-player:not(.controls-visible) { cursor:none; }
-.immersive-exit { display:flex; align-items:center; gap:10px; padding:10px 13px; border:0; border-radius:999px; background:rgba(0,0,0,.32); color:#fff; transition:background .18s ease; font-size:12px; }
+.immersive-exit { display:flex; align-items:center; gap:10px; padding:10px 13px; border:0; border-radius:999px; background:rgba(0,0,0,.32); color:#fff; transition:background .18s ease; font-size:12px; -webkit-app-region:no-drag; }
 .immersive-exit svg { width:16px; height:16px; }
 .immersive-exit:hover { background:rgba(0,0,0,.55); }
 .immersive-content { width:min(100%,1440px); height:100%; min-height:0; margin:auto; padding:clamp(58px,7vh,82px) clamp(22px,4vw,64px) clamp(16px,3vh,26px); display:flex; flex-direction:column; justify-content:center; gap:clamp(10px,1.6vh,18px); overflow-y:auto; scrollbar-width:none; }
@@ -206,8 +212,7 @@
 .immersive-art>.cover { width:100%; height:100%; border-radius:clamp(14px,2.1vw,28px); box-shadow:0 26px 84px rgba(0,0,0,.36); }
 .immersive-meta { display:flex; min-width:0; width:100%; max-width:100%; align-items:center; justify-content:space-between; gap:12px; margin:12px auto 0; box-sizing:border-box; }
 .immersive-meta>div { min-width:0; flex:1 1 0; overflow:hidden; }
-.immersive-meta h1 { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:0; color:#fff; font-size:clamp(19px,2.4vw,28px); line-height:1.2; letter-spacing:-.5px; }
-.immersive-meta h1:hover { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.immersive-meta h1 { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow-wrap:anywhere; margin:0; color:#fff; font-size:clamp(19px,2.4vw,28px); line-height:1.2; letter-spacing:-.5px; }
 .immersive-meta p { overflow:hidden; margin:5px 0 0; color:rgba(255,255,255,.72); font-size:clamp(12px,1.2vw,14px); white-space:nowrap; text-overflow:ellipsis; }
 .immersive-meta .heart { width:40px; height:40px; flex:0 0 40px; color:rgba(255,255,255,.72); align-self:center; }
 .immersive-meta .heart.on { color:var(--accent); }
@@ -315,9 +320,9 @@
 }
 
 
-/* In-window immersive player (Item 9) */
+/* In-window immersive player: fills the app window without taking over the OS display. */
 html.immersive-in-window #immersivePlayer {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 50;
   border-radius: 0;

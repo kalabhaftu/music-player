@@ -84,7 +84,7 @@ public sealed partial class MainWindow : Window
                     if (roots.Count == 0) roots = LibraryScanner.DefaultRoots().ToList();
                 }
 
-                var preCount = roots.Count; var exclusions = _libraryLocations.GetScanExclusions(); roots = NormalizeRootSet(roots.Concat(_store.DiscoverUnconfiguredMusicRoots(roots, exclusions))).ToList(); _store.PurgeTracksUnderExcludedDirectories(exclusions); _libraryQueries.SetExcludedDirectories(exclusions);
+                var preCount = roots.Count; var exclusions = _libraryLocations.GetScanExclusions(); roots = NormalizeRootSet(roots.Concat(_store.DiscoverUnconfiguredMusicRoots(roots, exclusions))).ToList(); _store.PurgeTracksUnderExcludedDirectories(exclusions); _store.PurgeTracksInDefaultExcludedDirectories(); _libraryQueries.SetExcludedDirectories(exclusions);
                 if (!rootsWereConfigured || previousScope != LibraryRootScopeVersion || roots.Count != preCount)
                 {
                     _store.SetSetting("library-roots", JsonSerializer.Serialize(roots));
@@ -95,13 +95,21 @@ public sealed partial class MainWindow : Window
                 try { libraryTracks = _store.GetLibraryStats().TotalTracks; }
                 catch (SqliteException ex) when (LibraryStore.IsDatabaseCorruption(ex))
                 { LocalAppLog.Shared.Error("database", "Could not read the index count before the startup scan; the scan will rebuild the damaged index if needed.", ex); }
-                LocalAppLog.Shared.Info("scanner", $"Startup scan prepared: scope=selected-music-folders, configuredRoots={roots.Count}, rootsPreviouslyConfigured={rootsWereConfigured}, indexedTracks={libraryTracks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}, roots=[{string.Join(", ", roots.Select(DescribeRoot))}].");
+                DateTimeOffset? lastScan = null;
+                if (DateTimeOffset.TryParse(_store.GetSetting("library-last-scan-utc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var scannedUtc))
+                    lastScan = scannedUtc;
+                LocalAppLog.Shared.Info("scanner", $"Startup scan prepared: scope=selected-music-folders, configuredRoots={roots.Count}, rootsPreviouslyConfigured={rootsWereConfigured}, indexedTracks={libraryTracks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}, lastScanUtc={lastScan?.ToString("O", CultureInfo.InvariantCulture) ?? "never"}, roots=[{string.Join(", ", roots.Select(DescribeRoot))}].");
                 _libraryFileWatcher.SetRoots(roots, _libraryLocations.GetScanExclusions(), _libraryLocations.GetEnabledExtensions());
-                return (Roots: roots.ToArray(), IndexedTracks: libraryTracks ?? 0);
+                return (Roots: roots.ToArray(), IndexedTracks: libraryTracks ?? 0, LastScanUtc: lastScan);
             });
             if (_windowClosed) return;
-            if (prepared.Roots.Length > 0) StartScan(prepared.Roots);
-            else _ = ReconcileIndexedLibraryAtStartupAsync();
+            if (prepared.Roots.Length == 0) { _ = ReconcileIndexedLibraryAtStartupAsync(); return; }
+            // A warm library startup only reconciles availability. A full walk is deferred
+            // until the index is new or the last successful scan is half a day old.
+            var recentlyScanned = prepared.IndexedTracks > 0 && prepared.LastScanUtc is { } lastScanUtc
+                && DateTimeOffset.UtcNow - lastScanUtc < TimeSpan.FromHours(12);
+            if (recentlyScanned) _ = ReconcileIndexedLibraryAtStartupAsync();
+            else StartScan(prepared.Roots);
         }
         catch (Exception ex) { LocalAppLog.Shared.Warning("scanner", "Startup library checks could not be prepared; manual scanning remains available.", ex); }
     }
@@ -124,6 +132,7 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            await Task.Run(() => _store.ReconcileMissingTracks());
             var result = await Task.Run(() => _trackAvailability.ReconcileIndexedTracks());
             if (_windowClosed) return;
             DispatcherQueue.TryEnqueue(() =>
@@ -283,6 +292,7 @@ public sealed partial class MainWindow : Window
                         message += $" · {incompletePaths.Count:N0} folders could not be checked; their indexed tracks were kept";
                     if (reconciliation.RemovedPaths.Count > 0)
                         LocalAppLog.Shared.Info("library-availability", $"Reconciled {reconciliation.RemovedPaths.Count:N0} confirmed missing indexed track(s); retained {reconciliation.UnavailableCount:N0} unreachable track(s).");
+                    _store.SetSetting("library-last-scan-utc", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
                     SetScanOutcome("complete", message);
                 }
                 PublishScanState();

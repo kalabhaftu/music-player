@@ -321,6 +321,42 @@ public sealed partial class MainWindow : Window
 
     private void PublishQueueStateIfChanged() => PublishQueueState();
 
+    private List<string> FilterAvailablePaths(IEnumerable<string> paths)
+    {
+        var list = new List<string>();
+        var missing = new List<string>();
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            if (File.Exists(path))
+            {
+                list.Add(path);
+            }
+            else
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(path);
+                    if ((!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) ||
+                        (Path.GetPathRoot(path) is { } root && Directory.Exists(root)))
+                    {
+                        missing.Add(path);
+                    }
+                }
+                catch {}
+            }
+        }
+        if (missing.Count > 0)
+        {
+            Task.Run(() =>
+            {
+                _store.PurgeDeletedTracks(missing);
+                _libraryQueries.ForgetDeletedPaths(missing);
+            });
+        }
+        return list;
+    }
+
     private IReadOnlyList<string> GetCurrentQueuePaths()
     {
         return _libraryQueries.CurrentTrackPaths();
@@ -375,7 +411,7 @@ public sealed partial class MainWindow : Window
     private bool TryAutoplaySimilar()
     {
         if (_playback.CurrentTrack is not { } currentTrack) return false;
-        var recommendations = _store.GetSmartAutoplayTracks(currentTrack.Path, currentTrack.Genre, currentTrack.Artist, _playbackQueue.Entries, 10);
+        var recommendations = FilterAvailablePaths(_store.GetSmartAutoplayTracks(currentTrack.Path, currentTrack.Genre, currentTrack.Artist, _playbackQueue.Entries, 10));
         if (recommendations.Count == 0) return false;
 
         _playbackQueue.Append(recommendations, currentTrack.Path);
@@ -727,7 +763,15 @@ public sealed partial class MainWindow : Window
     private void RestoreSession(bool loadMedia = true)
     {
         var session = _store.LoadSession(); if (session is null) return;
-        var current = session.TrackPath is { } savedTrackPath ? _store.GetTrack(savedTrackPath) : null;
+        var validQueue = FilterAvailablePaths(session.Queue);
+        if (validQueue.Count != session.Queue.Count)
+        {
+            var validIndex = session.QueueIndex >= 0 && session.QueueIndex < session.Queue.Count
+                ? validQueue.IndexOf(session.Queue[session.QueueIndex])
+                : -1;
+            session = session with { Queue = validQueue.ToList(), QueueIndex = validIndex };
+        }
+        var current = session.TrackPath is { } savedTrackPath && File.Exists(savedTrackPath) ? _store.GetTrack(savedTrackPath) : null;
         _playbackQueue.Restore(session, current?.Path);
         if (current is not null && loadMedia)
         {

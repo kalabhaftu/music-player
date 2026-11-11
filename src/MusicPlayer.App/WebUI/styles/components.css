@@ -19,23 +19,26 @@ input[type="range"] { accent-color:var(--accent); }
 .section { margin-top:24px; }.section-head { display:flex; align-items:end; justify-content:space-between; gap:10px; margin-bottom:13px; }
 .section-head h2 { margin:0; font-size:19px; letter-spacing:-.65px; }.section-head button { border:0; background:none; color:var(--muted); font-size:11px; font-weight:700; }
 .section-head button:hover { color:var(--text); }
-.card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:clamp(10px,calc(var(--browse-width,280px)*.05),24px); }
+.card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:clamp(10px,calc(var(--browse-width,280px)*.05),20px); }
 .card { position:relative; min-width:0; padding:10px; border-radius:8px; background:var(--surface-raised); cursor:pointer; transition:background .14s ease; }
 .card:hover { background:var(--surface-hover); }
 .cover { position:relative; width:100%; aspect-ratio:1; overflow:hidden; border-radius:6px; background:linear-gradient(145deg,#182219,#090b09); box-shadow:0 14px 28px rgba(0,0,0,.25); }
 .cover.round { border-radius:50%; }.cover::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.28)); }.cover>img { position:absolute; inset:0; z-index:0; width:100%; height:100%; object-fit:cover; }.cover-art { position:absolute; inset:0; z-index:1; display:grid; place-items:center; color:rgba(255,255,255,.88); font-size:clamp(16px,2vw,26px); font-weight:900; letter-spacing:-1px; text-shadow:0 2px 16px rgba(0,0,0,.4); }
-.cover.c1 { background:linear-gradient(145deg,#1e1b2e 0%,#312a4f 50%,#4a3d70 100%); }
-.cover.c2 { background:linear-gradient(145deg,#16222f 0%,#1d3647 50%,#2b546b 100%); }
-.cover.c3 { background:linear-gradient(145deg,#2b1718 0%,#462225 50%,#683236 100%); }
-.cover.c4 { background:linear-gradient(145deg,#13241b 0%,#1d3b2b 50%,#2f5a43 100%); }
-.cover.c5 { background:linear-gradient(145deg,#2a1e12 0%,#46311b 50%,#6f4e29 100%); }
-.cover.c6 { background:linear-gradient(145deg,#141a24 0%,#1f2d3f 50%,#334866 100%); }
+.cover.c1 { background:linear-gradient(150deg,#1b1d26 0%,#2a2f3f 58%,#3b4358 100%); }
+.cover.c2 { background:linear-gradient(150deg,#162124 0%,#213337 58%,#30494e 100%); }
+.cover.c3 { background:linear-gradient(150deg,#251b1d 0%,#38272b 58%,#4e373c 100%); }
+.cover.c4 { background:linear-gradient(150deg,#172019 0%,#243328 58%,#364a3b 100%); }
+.cover.c5 { background:linear-gradient(150deg,#231f18 0%,#353025 58%,#4b4432 100%); }
+.cover.c6 { background:linear-gradient(150deg,#1b1b20 0%,#2a2a32 58%,#3d3d48 100%); }
 .cover.c7 { background:linear-gradient(145deg,#1d1d21 0%,#2e2f36 50%,#484954 100%); }
 .cover.c8 { background:linear-gradient(145deg,#251726 0%,#3e2140 50%,#5f3263 100%); }
 .cover.c9 { background:linear-gradient(145deg,#112324 0%,#1b393b 50%,#29595d 100%); }
 .cover.c10 { background:linear-gradient(145deg,#272116 0%,#403623 50%,#665536 100%); }
-.play-fab { position:absolute; right:8px; bottom:8px; z-index:3; width:32px; height:32px; opacity:0; transform:translateY(4px); border:0; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent); color:var(--accent-ink,#101210); box-shadow:0 6px 16px rgba(0,0,0,.34); transition:opacity .15s ease,transform .15s ease; }
-.card:hover .play-fab,.card:focus-within .play-fab { opacity:1; transform:none; }.play-fab svg { width:14px; height:14px; margin-left:2px; }
+.card-cover { position:relative; min-width:0; }
+.play-fab { position:absolute; right:10px; bottom:10px; z-index:3; width:38px; height:38px; opacity:0; transform:translateY(5px) scale(.96); border:0; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent); color:var(--accent-ink,#101210); box-shadow:0 8px 20px rgba(0,0,0,.38); transition:opacity .15s ease,transform .15s ease,background .15s ease; }
+.card:hover .play-fab,.card:focus-within .play-fab,.card:focus-visible .play-fab { opacity:1; transform:none; }
+.play-fab:hover { background:color-mix(in srgb,var(--accent) 88%,#fff); }
+.play-fab svg { width:16px; height:16px; margin-left:2px; }
 .card-title { overflow:hidden; margin-top:10px; color:var(--text); font-size:13px; font-weight:750; white-space:nowrap; text-overflow:ellipsis; }.card-sub { overflow:hidden; margin-top:4px; color:var(--muted); font-size:11px; white-space:nowrap; text-overflow:ellipsis; }
 .mini-row-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.mini-row { min-width:0; height:58px; display:flex; align-items:center; gap:10px; padding:6px; border-radius:6px; background:var(--surface-raised); cursor:pointer; transition:background .12s; }.mini-row:hover { background:var(--surface-hover); }.mini-cover { width:48px; height:48px; flex:0 0 48px; border-radius:5px; }.mini-meta { min-width:0; flex:1; }.mini-meta b,.mini-meta span { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }.mini-meta b { font-size:12px; }.mini-meta span { margin-top:3px; color:var(--muted); font-size:10px; }
 .table-wrap { overflow:auto; border:0; border-radius:0; background:transparent; }.song-table { width:100%; border-collapse:collapse; table-layout:fixed; }.song-table th { height:37px; padding:0 12px; border-bottom:1px solid var(--line); color:var(--muted-2); font-size:10px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.8px; }.song-table th button { border:0; background:none; color:inherit; font-size:inherit; text-transform:inherit; letter-spacing:inherit; }.song-table td { height:58px; padding:0 12px; border-bottom:1px solid var(--line); color:var(--text-subtle); font-size:12px; }.song-table tr:last-child td { border:0; }.song-table tbody tr { cursor:pointer; transition:background .13s; }.song-table tbody tr:hover { background:var(--row-hover); }.song-table .index { width:44px; color:var(--muted-2); text-align:center; }.song-table .time { width:64px; color:var(--muted); text-align:right; }.song-table .album-col { width:25%; }.song-table .added-col { width:100px; }.song-table .year-col { width:70px; }.song-table:not(.show-added) .added-col,.song-table:not(.show-years) .year-col { display:none; }.song-cell { min-width:0; display:flex; align-items:center; gap:10px; }.song-thumb { width:38px; height:38px; flex:0 0 38px; border-radius:8px; }.song-info { min-width:0; flex:1; }.song-info b,.song-info span { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }.song-info b { color:var(--text-strong); font-size:12px; font-weight:650; }.song-info span { margin-top:3px; color:var(--muted); font-size:10px; }.row-actions { display:flex; gap:2px; opacity:0; }.song-table tr:hover .row-actions,.song-table tr:focus-within .row-actions { opacity:1; }.heart { color:var(--muted-2); }.heart.on { color:var(--accent); }
@@ -302,10 +305,12 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
   transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
 }
 .lyrics-resume-btn:not(.immersive-lyrics-resume) {
-  position: absolute;
+  position: sticky;
   bottom: 24px;
-  right: 28px;
   z-index: 25;
+  display: flex;
+  width: max-content;
+  margin: 14px 28px 2px auto;
 }
 #abBtn, .controls #abBtn, .player #abBtn {
   width: auto !important;
@@ -472,29 +477,7 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
 [data-theme="light"] .queue-row:hover,[data-theme="light"] .queue-row.playing { background:var(--surface-hover); }
 
 
-/* Modern Smart Playlist Cards (Item 2) */
-.smart-playlist-card .smart-cover {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-}
-.smart-hero-icon {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  opacity: .95;
-}
-.smart-hero-icon svg { width: 36px; height: 36px; filter: drop-shadow(0 2px 8px rgba(0,0,0,.35)); }
-.smart-grad-fire .smart-cover { background: linear-gradient(135deg, #ff5e36, #f32759 60%, #890b50); }
-.smart-grad-purple .smart-cover { background: linear-gradient(135deg, #8b5cf6, #6366f1 60%, #1e1b4b); }
-.smart-grad-teal .smart-cover { background: linear-gradient(135deg, #10b981, #06b6d4 60%, #134e4a); }
-.smart-grad-blue .smart-cover { background: linear-gradient(135deg, #3b82f6, #1d4ed8 60%, #0f172a); }
+/* Smart playlist cards intentionally share the standard playlist card treatment. */
 
 /* Clickable link in metadata */
 .clickable-link { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color .15s ease, color .15s ease; }
@@ -507,12 +490,27 @@ input[type="range"]:focus, input[type="range"]:focus-visible,
 .lyric-result-info { display: flex; flex-direction: column; min-width: 0; }
 .badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; letter-spacing: .02em; white-space: nowrap; }
 .badge-timed { background: rgba(var(--accent-rgb), .2); color: var(--accent); border: 1px solid rgba(var(--accent-rgb), .35); }
-.badge-untimed { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+.badge-untimed,.badge-plain { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
 
 /* Lyric Edit Toolbar */
-.lyric-edit-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-.lyric-edit-toolbar .field-inline { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.lyric-edit-toolbar .field-inline input { width: 80px; }
+.lyric-edit-toolbar { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.lyric-edit-toolbar > .action, .lyric-edit-toolbar > .select { height: 31px; flex: 0 0 auto; }
+.lyric-edit-toolbar .field-inline { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 10px; font-weight: 650; color: var(--text); }
+.lyric-edit-toolbar .field-inline input { width: 88px; height: 31px; }
+.modal:has(#lyricsEditor) { width: min(680px, 94vw); }
+.modal-body:has(#lyricsEditor) { display: flex; flex-direction: column; }
+#lyricsEditor {
+  flex: 1 1 auto;
+  min-height: 320px;
+  margin-top: 2px;
+  font-family: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: left;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
 
 /* Recent searches chips (Item 15) */
 .recent-searches { margin-bottom: 16px; }

@@ -554,6 +554,7 @@ public sealed partial class LibraryStore
                 try { full = Path.GetFullPath(path); }
                 catch { full = path; }
                 if (excludes.Contains(full)) continue;
+                if (!File.Exists(path)) continue;
                 result.Add(path);
                 if (result.Count >= limit) break;
             }
@@ -562,12 +563,12 @@ public sealed partial class LibraryStore
         if (result.Count == 0)
         {
             using var fallbackCommand = connection.CreateCommand();
-            fallbackCommand.CommandText = "SELECT path FROM tracks ORDER BY random() LIMIT 20";
+            fallbackCommand.CommandText = "SELECT path FROM tracks WHERE musicplayer_visible(path) ORDER BY random() LIMIT 50";
             using var fbReader = fallbackCommand.ExecuteReader();
             while (fbReader.Read())
             {
                 var path = fbReader.GetString(0);
-                if (!string.Equals(path, currentTrackPath, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(path, currentTrackPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
                 {
                     result.Add(path);
                     if (result.Count >= limit) break;
@@ -647,7 +648,7 @@ public sealed partial class LibraryStore
         };
         var groupPredicate = groupColumn switch
         {
-            "album" => "($group IS NULL OR album=$group)", "artist" => "($group IS NULL OR artist=$group)",
+            "album" => "($group IS NULL OR album=$group)", "artist" => "($group IS NULL OR artist=$group OR artist LIKE ($group || ';%') OR artist LIKE ('%; ' || $group || ';%') OR artist LIKE ('%; ' || $group) OR artist LIKE ($group || ' feat%') OR artist LIKE ($group || ' ft%'))",
             "genre" => "($group IS NULL OR genre=$group)",
             "folder" => OperatingSystem.IsWindows() ? "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix COLLATE NOCASE)" : "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix)",
             null => "1=1", _ => throw new ArgumentOutOfRangeException(nameof(groupColumn))
@@ -784,12 +785,12 @@ public sealed partial class LibraryStore
         foreach (var rawRoot in roots)
         {
             var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rawRoot));
-            var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
             using var command = connection.CreateCommand();
+            // Root cards count songs filed directly in the root. Subfolders are separate folder cards.
             command.CommandText = OperatingSystem.IsWindows()
-                ? "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\' COLLATE NOCASE"
-                : "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\'";
-            Add(command, "$pattern", EscapeLike(prefix) + "%");
+                ? "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND musicplayer_directory(path) = $root COLLATE NOCASE"
+                : "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND musicplayer_directory(path) = $root";
+            Add(command, "$root", root);
             counts[rawRoot] = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
         return counts;

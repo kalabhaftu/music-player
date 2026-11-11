@@ -263,6 +263,40 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
 
     public static bool IsDefaultExcludedDirectory(string path) => IsDefaultIgnoredDirectory(path);
 
+    /// <summary>Checks whether any folder between the file and its drive root is a hidden cache, build, or package manager directory.</summary>
+    public static bool IsUnderDefaultExcludedDirectory(string filePath)
+    {
+        try
+        {
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            while (!string.IsNullOrEmpty(directory))
+            {
+                var parent = Path.GetDirectoryName(directory);
+                if (string.IsNullOrEmpty(parent) || string.Equals(parent, directory, comparison)) break;
+                var name = Path.GetFileName(directory);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    if (name.StartsWith('.') && !name.StartsWith("..")) return true;
+                    if (name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("steamapps", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("Package Cache", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("Temporary Internet Files", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("INetCache", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("__pycache__", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                directory = Path.TrimEndingDirectorySeparator(parent);
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+        {
+        }
+        return false;
+    }
+
     private static bool PathsEqual(string left, string right) => string.Equals(
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),

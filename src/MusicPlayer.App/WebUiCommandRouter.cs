@@ -23,7 +23,8 @@ internal sealed class WebUiCommandRouter
         Register(data,
             "getBootstrap", "uiReady", "getAbout", "getReleaseHistory", "getHome", "beginSearch", "search", "getTracks", "getGroups", "getFolders", "getArtistAlbums",
             "getPlaylists", "getPlaylistTracks", "getQueue", "getCurrentTrack", "getLyrics", "getAudioSettings",
-            "getSettings", "getDuplicates", "getDuplicateFiles", "getTrackDetails", "getTags", "getExclusions", "setView");
+            "getSettings", "getDuplicates", "getDuplicateFiles", "getTrackDetails", "getTags", "getExclusions", "setView",
+            "saveRecentSearch", "getRecentSearches");
         Register(playback,
             "playTrack", "playView", "shuffleView", "playGroup", "playPause", "previous", "next", "toggleShuffle",
             "cycleRepeat", "toggleAbRepeat", "seek", "setVolume", "toggleFavorite", "setRating", "playNext",

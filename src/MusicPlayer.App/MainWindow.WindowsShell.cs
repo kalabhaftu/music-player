@@ -366,33 +366,41 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _immersiveMode;
-    private bool _immersiveWasMaximized;
 
     private void SetImmersiveMode(bool enabled)
     {
-        if (_immersiveMode == enabled) return;
-        var hwnd = WindowNative.GetWindowHandle(this);
-        var appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(hwnd));
-        if (enabled)
+        _immersiveMode = enabled;
+        try
         {
-            _immersiveWasMaximized = IsZoomed(hwnd);
-            appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-            _immersiveMode = true;
-            return;
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+            {
+                var titleBar = appWindow.TitleBar;
+                titleBar.ExtendsContentIntoTitleBar = enabled;
+                if (enabled)
+                {
+                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
+                    titleBar.ButtonBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+                    titleBar.ButtonInactiveBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+                    titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(40, 255, 255, 255);
+                    titleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(60, 255, 255, 255);
+                    titleBar.ButtonForegroundColor = Windows.UI.Color.FromArgb(200, 255, 255, 255);
+                    titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(80, 255, 255, 255);
+                }
+                else
+                {
+                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+                    ApplyNativeWindowChrome();
+                }
+            }
         }
-
-        appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-        if (_immersiveWasMaximized) ShowWindow(hwnd, SwMaximize);
-        _immersiveMode = false;
+        catch (Exception ex)
+        {
+            LocalAppLog.Shared.Warning("immersive", "Failed to update native window title bar for immersive mode.", ex);
+        }
     }
-
-    private const int SwMaximize = 3;
-    [DllImport("user32.dll", EntryPoint = "ShowWindow")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint hwnd, int command);
-
-    [DllImport("user32.dll", EntryPoint = "IsZoomed")]
-    private static extern bool IsZoomed(nint hwnd);
 
     private void SystemControls_ButtonPressed(SystemMediaTransportControls sender, SystemMediaTransportControlsButtonPressedEventArgs args)
     {
@@ -451,7 +459,8 @@ public sealed partial class MainWindow : Window
                     () => DispatcherQueue.TryEnqueue(() => TogglePlayback(StartPlaybackFromCurrentLibraryView)),
                     () => DispatcherQueue.TryEnqueue(PlayPreviousTrack),
                     () => DispatcherQueue.TryEnqueue(PlayNextTrack),
-                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer));
+                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer),
+                    () => (_playback.CurrentTrack?.Title ?? string.Empty, _playback.CurrentTrack?.Artist ?? string.Empty, _playback.IsPlaying));
             }
             else { _tray?.Dispose(); _tray = null; }
         }

@@ -1,7 +1,10 @@
 function rootIconName(name, path) {
-  const s = ((name || '') + ' ' + (path || '')).toLowerCase();
-  if (s.includes('music')) return 'music';
+  const label = String(name || '').toLowerCase();
+  const s = `${label} ${String(path || '').toLowerCase()}`;
+  if (/\bdownloads?\b/.test(label)) return 'download';
+  if (/\bmusic\b/.test(label)) return 'music';
   if (s.includes('download')) return 'download';
+  if (s.includes('music')) return 'music';
   if (s.includes('drive') || /^[a-z]:\\?$/i.test(path || '')) return 'disc';
   return 'folder';
 }
@@ -90,7 +93,7 @@ function card(item,type="album") {
   const clean=value=>{const text=String(value??"").trim();return text&&!/^(?:undefined|null)$/i.test(text)?text:"";};
   const name=clean(item.name)||clean(item.title)||titleOf(item);
   const id=esc(clean(item.id)||clean(item.path)||name); const key=esc(name);
-  if(type==="track") return `<article class="card ${item.fileUnavailable?"unavailable-track":""}" tabindex="0" data-action="play" data-id="${id}">${cover(item)}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(item.fileUnavailable?"File unavailable":subOf(item))}</div><button class="play-fab" data-action="play" data-id="${id}" title="Play">${svg("play")}</button></article>`;
+  if(type==="track") return `<article class="card ${item.fileUnavailable?"unavailable-track":""}" tabindex="0" data-action="play" data-id="${id}"><div class="card-cover">${cover(item)}<button class="play-fab" data-action="play" data-id="${id}" title="Play">${svg("play")}</button></div><div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(item.fileUnavailable?"File unavailable":subOf(item))}</div></article>`;
   const playAction=type==="playlist"?"play-playlist-card":"play-group";
   const countVal = item.trackCount || item.count;
   const countLabel = countVal ? `${countVal} ${countVal === 1 ? "song" : "songs"}` : "";
@@ -103,7 +106,7 @@ function card(item,type="album") {
   } else {
     sub=subOf(item)||countLabel;
   }
-  return `<article class="card" tabindex="0" data-open-type="${type}" data-open-id="${id}" data-open-name="${type==="folder"?id:key}">${cover(item,type==="artist"?"round":"")}<div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(sub)}</div><button class="play-fab" data-action="${playAction}" data-type="${type}" data-id="${id}" title="Play">${svg("play")}</button></article>`;
+  return `<article class="card" tabindex="0" data-open-type="${type}" data-open-id="${id}" data-open-name="${type==="folder"?id:key}"><div class="card-cover">${cover(item,type==="artist"?"round":"")}<button class="play-fab" data-action="${playAction}" data-type="${type}" data-id="${id}" title="Play">${svg("play")}</button></div><div class="card-title">${esc(titleOf(item))}</div><div class="card-sub">${esc(sub)}</div></article>`;
 }
 function cardGrid(items,type="album") {
   if(items?.length) return `<div class="card-grid">${items.map(item=>card(item,type)).join("")}</div>`;
@@ -252,7 +255,9 @@ function saveRecentSearch(q) {
   if (!term || term.length < 2) return;
   const list = getRecentSearches().filter(item => item.toLowerCase() !== term.toLowerCase());
   list.unshift(term);
-  try { localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, 8))); } catch {}
+  const trimmed = list.slice(0, 10);
+  try { localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(trimmed)); } catch {}
+  void call("saveRecentSearch", { term }, false);
 }
 
 async function renderSearch() {
@@ -334,19 +339,16 @@ async function renderFolders(append=false) {
 async function renderPlaylists() {
   const revision=renderRevision;const data=await call("getPlaylists");if(revision!==renderRevision)return null; const lists=data.playlists||[];
   const smart=[
-    {view:"Most Played",icon:"trending",desc:"Songs played most often",grad:"smart-grad-fire"},
-    {view:"With Lyrics",icon:"lyrics",desc:"Songs with available lyrics",grad:"smart-grad-purple"},
-    {view:"Recently Played",icon:"clock",desc:"Your recent listening history",grad:"smart-grad-teal"}
+    {view:"Most Played",desc:"Songs played most often"},
+    {view:"With Lyrics",desc:"Songs with available lyrics"},
+    {view:"Recently Played",desc:"Your recent listening history"}
   ];
-  if(data.videosEnabled)smart.push({view:"Videos",icon:"film",desc:"Video files only",grad:"smart-grad-blue"});
+  if(data.videosEnabled)smart.push({view:"Videos",desc:"Video files only"});
   const smartCards=smart.map(s=>`
-    <article class="card smart-playlist-card ${s.grad}" tabindex="0" data-view="${esc(s.view)}">
-      <div class="cover smart-cover">
-        <div class="smart-hero-icon">${svg(s.icon)}</div>
-      </div>
+    <article class="card smart-playlist-card" tabindex="0" data-view="${esc(s.view)}">
+      <div class="card-cover">${cover({name:s.view,title:s.view})}<button class="play-fab" data-action="play-view" data-view="${esc(s.view)}" title="Play ${esc(s.view)}">${svg("play")}</button></div>
       <div class="card-title">${esc(s.view)}</div>
       <div class="card-sub">${esc(s.desc)}</div>
-      <button class="play-fab" data-action="play-view" data-view="${esc(s.view)}" title="Play ${esc(s.view)}">${svg("play")}</button>
     </article>`).join("");
   return viewHeader("Playlists","Your playlists are stored on this PC.",`<button class="action" data-action="import-playlist">Import M3U / M3U8</button><button class="action primary" data-action="new-playlist">＋ New playlist</button>`)+`<section class="section smart-playlists"><div class="section-head"><h2>Smart playlists</h2></div><div class="card-grid">${smartCards}</div></section><section class="section"><div class="section-head"><h2>Your playlists</h2></div>${cardGrid(lists,"playlist")}</section>`;
 }
@@ -414,7 +416,7 @@ async function renderLyrics() {
   if(!state.lyricsTrack) return viewHeader("Lyrics","Choose a song to view lyrics.")+`<div class="empty-state"><b>No track selected</b>Lyrics appear here when a track is playing.</div>`;
   const lyrics=state.lyricLines.length?`<div class="lyrics-lines" id="lyricsLines">${renderLyricLines(state.lyricLines,esc,state.settings.seekFromLyrics!==false&&state.track?.id===lyricsTrackId)}</div>`:state.lyricText?`<p class="lyric-source">Untimed lyrics · automatic following requires timestamps.</p><div class="lyrics-plain">${esc(state.lyricText)}</div>`:`<div class="empty-state"><b>${state.lyricsLoadingTrackId===lyricsTrackId?"Finding lyrics…":"No lyrics found"}</b>${esc(state.lyricsAutoError||"Lyrics saved in the audio file or beside it load automatically. You can search LRCLIB manually.")}</div>`;
   const source=({sidecar:"Sidecar file",embedded:"Embedded in audio tags",lrclib:"LRCLIB (online)",none:"Not saved"})[data.source]||"Source unavailable";
-  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyrics-view-wrap"><div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}</div>`;
+  return viewHeader("Lyrics",`${state.lyricsTrack.title} · ${state.lyricsTrack.artist}`,toolbar(`<button class="action" data-action="edit-lyrics">Edit lyrics</button><button class="action" data-action="search-lyrics" title="Search LRCLIB online for lyrics matching this track">Find lyrics</button>`))+`<div class="lyrics-view-wrap"><div class="lyric-source">Lyrics source · ${esc(source)}${state.settings.seekFromLyrics===false?" · Tap-to-seek is off":state.track?.id===lyricsTrackId?" · Select a timed line to seek":" · Play this track to seek from a lyric line"}</div>${lyrics}<button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics" title="Jump to current lyrics">${svg("sync")}<span>Jump to current</span></button></div>`;
 }
 
 async function renderAudio() {
@@ -478,5 +480,5 @@ async function openDuplicateFiles(id,offset=0) {
   openModal("Duplicate locations",`${body}${pages>1?`<p class="muted">Page ${page+1} of ${pages} · ${Number(total).toLocaleString()} files</p>`:""}`,actions);
 }
 
-  return {invalidateCache,capturePage,cacheSize:()=>pages.size,trackRow,songTable,card,cardGrid,section,viewHeader,toolbar,navigate,renderView,loadMore,loadArtistAlbums,renderHome,renderSearch,viewFilter,renderTracksView,renderGroupsView,renderFolders,renderPlaylists,renderPlaylistDetail,renderGroupDetail,renderQueue,renderNowPlaying,renderLyrics,renderAudio,renderSettings,navigationSettingsMarkup,renderDuplicates,openDuplicateFiles};
+  return {invalidateCache,capturePage,cacheSize:()=>pages.size,trackRow,songTable,card,cardGrid,section,viewHeader,toolbar,navigate,renderView,loadMore,loadArtistAlbums,renderHome,renderSearch,saveRecentSearch,getRecentSearches,viewFilter,renderTracksView,renderGroupsView,renderFolders,renderPlaylists,renderPlaylistDetail,renderGroupDetail,renderQueue,renderNowPlaying,renderLyrics,renderAudio,renderSettings,navigationSettingsMarkup,renderDuplicates,openDuplicateFiles};
 }

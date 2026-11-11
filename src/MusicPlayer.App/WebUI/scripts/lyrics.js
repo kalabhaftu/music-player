@@ -7,13 +7,14 @@ export function parseLyricsText(value) {
   let offsetMilliseconds = 0;
   for (const sourceLine of raw.split("\n")) {
     const trimmedLine = sourceLine.trim();
-    if (sectionTag.test(trimmedLine) && !timestamp.test(trimmedLine)) continue;
+    if (sectionTag.test(trimmedLine) && !/\[\d+:\d{1,2}(?:[.:]\d+)?\]/.test(trimmedLine)) continue;
     const offset = sourceLine.trim().match(/^\[offset:([+-]?\d+)\]$/i);
     if (offset) {
       const parsedOffset = Number(offset[1]);
       if (Number.isFinite(parsedOffset)) offsetMilliseconds = parsedOffset;
       continue;
     }
+    timestamp.lastIndex = 0;
     const matches = [...sourceLine.matchAll(timestamp)];
     if (!matches.length) continue;
     for (let start = 0; start < matches.length;) {

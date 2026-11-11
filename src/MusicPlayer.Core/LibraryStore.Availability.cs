@@ -61,6 +61,32 @@ public sealed partial class LibraryStore
         return pathsToPurge.Count;
     }
 
+    /// <summary>Removes rows that were indexed by older builds under cache, build, or hidden
+    /// application folders. New scans never enter those folders, so stale rows would otherwise
+    /// remain in library counts and search results forever.</summary>
+    public int PurgeTracksInDefaultExcludedDirectories()
+    {
+        var pathsToPurge = new List<string>();
+        lock (_sessionGate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT path FROM tracks";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var trackPath = reader.GetString(0);
+                if (LibraryScanner.IsUnderDefaultExcludedDirectory(trackPath)) pathsToPurge.Add(trackPath);
+            }
+        }
+
+        if (pathsToPurge.Count == 0) return 0;
+        PurgeDeletedTracks(pathsToPurge);
+        InvalidateFingerprintState();
+        _log.Info("library-store", $"Purged {pathsToPurge.Count} stale tracks indexed under excluded cache or application folders.");
+        return pathsToPurge.Count;
+    }
+
     /// <summary>
     /// Scans indexed tracks for active folders on accessible storage that are not covered by any
     /// configured library root or exclusion, adopting them so their files are continuously tracked.
@@ -114,6 +140,50 @@ public sealed partial class LibraryStore
             }
         }
         return candidateFolders.ToArray();
+    }
+
+    /// <summary>
+    /// Checks indexed tracks against disk. When a file is missing from an accessible drive or folder,
+    /// it is purged immediately so missing tracks do not appear in queries or playback.
+    /// </summary>
+    public IReadOnlyList<string> ReconcileMissingTracks()
+    {
+        var pathsToPurge = new List<string>();
+        lock (_sessionGate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT path FROM tracks";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var trackPath = reader.GetString(0);
+                if (string.IsNullOrWhiteSpace(trackPath)) continue;
+                if (!File.Exists(trackPath))
+                {
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(trackPath);
+                        if ((!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) ||
+                            (Path.GetPathRoot(trackPath) is { } root && Directory.Exists(root)))
+                        {
+                            pathsToPurge.Add(trackPath);
+                        }
+                    }
+                    catch
+                    {
+                        // Inaccessible path syntax or permission restriction; skip
+                    }
+                }
+            }
+        }
+
+        if (pathsToPurge.Count > 0)
+        {
+            PurgeDeletedTracks(pathsToPurge);
+            _log.Info("library-store", $"Reconciled {pathsToPurge.Count} missing tracks deleted from disk.");
+        }
+        return pathsToPurge;
     }
 
     /// <summary>Confirmed filesystem deletions remove user references as well as index rows.

@@ -24,10 +24,10 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
         store.InvalidateExactFingerprintSnapshot();
         using var scan = store.BeginScan(scanRoots);
         var ignored = ignoredDirectories.Select(Path.GetFullPath).ToArray();
-        var excludedPurged = 0;
+        var excludedPurged = store.PurgeTracksInDefaultExcludedDirectories();
         if (ignored.Length > 0)
         {
-            excludedPurged = store.PurgeTracksUnderExcludedDirectories(ignored);
+            excludedPurged += store.PurgeTracksUnderExcludedDirectories(ignored);
         }
         var indexed = 0;
         var skipped = 0;
