@@ -64,8 +64,13 @@ public sealed partial class MainWindow : Window
         _store.TracksPurged += OnTracksPurged;
         if (_store.GetSetting("accent-mode") is null) _store.SetSetting("accent-mode", "Artwork");
         InitializeComponent();
-        ShellRoot.Loaded += (_, _) => _shellReady.TrySetResult();
+        ShellRoot.Loaded += (_, _) =>
+        {
+            _shellReady.TrySetResult();
+            UpdateTitleBarState();
+        };
         ShellRoot.ActualThemeChanged += (_, _) => ApplyNativeWindowChrome();
+        HookWindowLifecycleEvents();
         _libraryQueries = new(_store, _appData);
         _libraryQueries.RestoreContext(_store.GetSetting("last-view-context"));
         _playbackCommands = new(_playbackQueue, _playback, _store.GetTrack, GetCurrentQueuePaths);
