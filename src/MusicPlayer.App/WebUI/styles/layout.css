@@ -37,7 +37,7 @@
 .storage-bar { height:5px; overflow:hidden; border-radius:99px; background:var(--surface-control); }
 .storage-bar i { display:block; width:0; height:100%; border-radius:99px; background:var(--accent); transition:width .3s; }
 
-.main { grid-column:2; grid-row:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:var(--main-surface); }
+.main { position:relative; grid-column:2; grid-row:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:var(--main-surface); }
 .topbar { height:var(--titlebar-h); min-height:var(--titlebar-h); display:flex; align-items:center; gap:9px; padding:0 16px; background:var(--sidebar-surface); border-bottom:1px solid var(--line); z-index:2; }
 .top-menu-wrap { position:relative; z-index:6; }
 .top-menu-toggle { font-size:18px; }
@@ -67,10 +67,12 @@
 .scan-strip button { padding:3px 7px; border:0; background:transparent; color:var(--text); font-size:10px; }
 .scan-dot { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
 .panel-toggle { display:none; }
-.resize-handle { position:absolute; z-index:10; top:0; bottom:var(--player-h); width:13px; margin-left:-6px; touch-action:none; user-select:none; cursor:col-resize !important; background:transparent; }
-.resize-handle:hover,.resize-handle:focus-visible,[data-resizing="true"] .resize-handle { background:rgba(var(--accent-rgb),.24); cursor:col-resize !important; }
-.resize-sidebar { left:var(--sidebar); }
-.resize-panel { right:var(--right); }
+.resize-handle { position:absolute; z-index:15; top:0; bottom:var(--player-h); width:8px; touch-action:none; user-select:none; cursor:col-resize !important; background:transparent; }
+.resize-handle:hover,.resize-handle:focus-visible,[data-resizing="true"] .resize-handle { background:rgba(var(--accent-rgb),.35); cursor:col-resize !important; }
+html[data-resizing="true"],html[data-resizing="true"] * { cursor:col-resize !important; user-select:none !important; }
+html[data-resizing="columns"],html[data-resizing="columns"] * { cursor:col-resize !important; user-select:none !important; }
+.resize-sidebar { left:var(--sidebar); transform:translateX(-50%); }
+.resize-panel { right:calc(var(--right) - 8px); transform:none; width:8px; }
 .app.panel-closed .resize-panel { display:none; }
 .app.sidebar-collapsed { --sidebar:0px; }
 .app.sidebar-collapsed .sidebar { padding:0; visibility:hidden; }
@@ -106,7 +108,7 @@
   .player-right { display:flex; }
   .player-right [data-view="Lyrics"],.player-right [data-view="Audio"] { display:none; }
   .player-right input { width:64px; }
-  .card-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .folder-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .settings-grid { grid-template-columns:1fr; }
 }
@@ -124,11 +126,14 @@
   .controls .ctrl { width:27px; height:27px; flex-basis:27px; }
   .controls .play-main { width:32px; height:32px; flex-basis:32px; }
   .timeline { width:100%; }
-  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .folder-grid { grid-template-columns:1fr; }
   .detail-hero { grid-template-columns:110px minmax(0,1fr); gap:14px; padding:14px; }
   .detail-cover { width:110px; }
   .detail-copy h1 { font-size:28px; }
+}
+@media (max-width:540px) {
+  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 [data-theme="light"] .app { background:var(--bg); }
@@ -171,19 +176,21 @@
 .immersive-player[hidden] { display:none; }
 .immersive-player { position:fixed; z-index:100; inset:0; display:flex; flex-direction:column; overflow:hidden; color:#f7f7f4; background:#10110f; isolation:isolate; }
 .immersive-art-backdrop { position:absolute; z-index:-2; inset:-8%; overflow:hidden; background:var(--bg); }
-.immersive-art-backdrop img { width:100%; height:100%; object-fit:cover; filter:blur(72px) brightness(.47) saturate(.78); transform:scale(1.12); transition:opacity .3s ease; }
-.immersive-art-backdrop::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.32),rgba(0,0,0,.42) 48%,rgba(0,0,0,.64)); }
-.immersive-topbar { position:absolute; z-index:3; top:0; left:0; right:0; height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; color:rgba(255,255,255,.65); font-size:10px; letter-spacing:1.7px; }
-.immersive-exit { display:flex; align-items:center; gap:10px; padding:10px 13px; border:0; border-radius:999px; background:rgba(0,0,0,.32); color:#fff; opacity:0; pointer-events:none; transform:translateY(-5px); transition:opacity .18s ease,transform .18s ease,background .18s ease; font-size:12px; }
+.immersive-art-backdrop img { width:100%; height:100%; object-fit:cover; filter:blur(20px) brightness(.72) saturate(1.25); transform:scale(1.18); transition:opacity .45s ease; }
+.immersive-art-backdrop::after { content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb),.18) 0%, transparent 65%), linear-gradient(180deg,rgba(0,0,0,.22),rgba(0,0,0,.58)); }
+.immersive-topbar { position:absolute; z-index:3; top:0; left:0; right:0; height:64px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 28px; color:rgba(255,255,255,.65); font-size:10px; letter-spacing:1.7px; opacity:0; pointer-events:none; transition:opacity .25s ease; -webkit-app-region:drag; }
+.immersive-topbar #immersiveTopTitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.immersive-topbar:hover, .immersive-topbar:focus-within, .immersive-player.controls-visible .immersive-topbar { opacity:1; pointer-events:auto; }
+.immersive-player:not(.controls-visible) { cursor:none; }
+.immersive-exit { display:flex; align-items:center; gap:10px; padding:10px 13px; border:0; border-radius:999px; background:rgba(0,0,0,.32); color:#fff; transition:background .18s ease; font-size:12px; -webkit-app-region:no-drag; }
 .immersive-exit svg { width:16px; height:16px; }
 .immersive-exit:hover { background:rgba(0,0,0,.55); }
-.immersive-player.controls-visible .immersive-exit { opacity:1; pointer-events:auto; transform:none; }
 .immersive-content { width:min(100%,1440px); height:100%; min-height:0; margin:auto; padding:clamp(58px,7vh,82px) clamp(22px,4vw,64px) clamp(16px,3vh,26px); display:flex; flex-direction:column; justify-content:center; gap:clamp(10px,1.6vh,18px); overflow-y:auto; scrollbar-width:none; }
 .immersive-content::-webkit-scrollbar { display:none; }
 .immersive-stage { width:100%; min-height:0; flex:1 1 auto; display:grid; grid-template-columns:minmax(0,1fr) 0fr; align-items:center; justify-content:center; gap:0; overflow:hidden; transition:grid-template-columns .38s cubic-bezier(.2,.75,.25,1),gap .38s cubic-bezier(.2,.75,.25,1); }
-.immersive-art-column { width:min(100%,780px); min-width:0; max-height:100%; margin:0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(10px,1.6vh,18px); transition:width .38s cubic-bezier(.2,.75,.25,1),transform .38s cubic-bezier(.2,.75,.25,1); }
+.immersive-art-column { width:min(48vh,68vw,640px); max-width:100%; min-width:0; max-height:100%; margin:0 auto; display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:clamp(10px,1.6vh,18px); transition:width .38s cubic-bezier(.2,.75,.25,1); }
 .immersive-player.lyrics-open .immersive-stage { grid-template-columns:minmax(0,1fr) minmax(240px,.92fr); gap:clamp(14px,2.5vw,38px); }
-.immersive-player.lyrics-open .immersive-art-column { width:100%; transform:none; }
+.immersive-player.lyrics-open .immersive-art-column { width:min(43vh,37vw,480px); max-width:100%; transform:none; }
 .immersive-lyrics { width:100%; min-width:0; height:min(70vh,720px); max-height:100%; display:flex; flex-direction:column; overflow:hidden; border:0; border-radius:0; background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; box-shadow:none; visibility:hidden; opacity:0; transform:translateX(18px); pointer-events:none; transition:visibility 0s linear .38s,opacity .28s ease,transform .38s cubic-bezier(.2,.75,.25,1); }
 .immersive-player.lyrics-open .immersive-lyrics { visibility:visible; opacity:1; transform:none; pointer-events:auto; transition:visibility 0s,opacity .28s ease,transform .38s cubic-bezier(.2,.75,.25,1); }
 .immersive-lyrics>header { min-height:40px; flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:5px 2px 8px; border:0; }
@@ -200,14 +207,14 @@
 .immersive-lyrics-close { width:36px; height:36px; flex:0 0 36px; color:rgba(255,255,255,.8); background:rgba(255,255,255,.08); }
 .immersive-lyrics-close:hover { color:#fff; background:rgba(255,255,255,.16); }
 .immersive-lyrics .lyric-line { font-size:clamp(18px,1.8vw,24px); font-weight:650; }
-.immersive-art { width:min(48vh,68vw,640px); max-height:min(48vh,calc(100dvh - 420px)); min-height:0; flex:0 1 auto; aspect-ratio:1; align-self:center; transition:width .38s cubic-bezier(.2,.75,.25,1),max-height .38s cubic-bezier(.2,.75,.25,1); }
-.immersive-player.lyrics-open .immersive-art { width:min(43vh,37vw,500px); max-height:min(43vh,calc(100dvh - 430px)); }
+.immersive-art { width:min(44vh,60vw,440px); max-width:100%; aspect-ratio:1; min-height:100px; min-width:100px; flex:0 1 auto; align-self:center; transition:width .38s cubic-bezier(.2,.75,.25,1); }
+.immersive-player.lyrics-open .immersive-art { width:min(38vh,34vw,380px); max-width:100%; aspect-ratio:1; min-height:90px; min-width:90px; }
 .immersive-art>.cover { width:100%; height:100%; border-radius:clamp(14px,2.1vw,28px); box-shadow:0 26px 84px rgba(0,0,0,.36); }
-.immersive-meta { display:flex; min-width:0; flex:0 1 auto; align-items:center; justify-content:space-between; gap:18px; margin:0 2px; }
-.immersive-meta>div { min-width:0; flex:1; }
-.immersive-meta h1 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; margin:0; overflow:hidden; overflow-wrap:anywhere; color:#fff; font-size:clamp(23px,3vw,36px); line-height:1.08; letter-spacing:-.75px; }
-.immersive-meta p { overflow:hidden; margin:8px 0 0; color:rgba(255,255,255,.72); font-size:clamp(14px,1.5vw,18px); white-space:nowrap; text-overflow:ellipsis; }
-.immersive-meta .heart { width:44px; height:44px; flex-basis:44px; color:rgba(255,255,255,.72); }
+.immersive-meta { display:flex; min-width:0; width:100%; max-width:100%; align-items:center; justify-content:space-between; gap:12px; margin:12px auto 0; box-sizing:border-box; }
+.immersive-meta>div { min-width:0; flex:1 1 0; overflow:hidden; }
+.immersive-meta h1 { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow-wrap:anywhere; margin:0; color:#fff; font-size:clamp(19px,2.4vw,28px); line-height:1.2; letter-spacing:-.5px; }
+.immersive-meta p { overflow:hidden; margin:5px 0 0; color:rgba(255,255,255,.72); font-size:clamp(12px,1.2vw,14px); white-space:nowrap; text-overflow:ellipsis; }
+.immersive-meta .heart { width:40px; height:40px; flex:0 0 40px; color:rgba(255,255,255,.72); align-self:center; }
 .immersive-meta .heart.on { color:var(--accent); }
 .immersive-timeline { width:100%; flex:0 0 auto; }
 .immersive-time-labels { display:flex; justify-content:space-between; margin-bottom:7px; color:rgba(255,255,255,.68); font-size:12px; }
@@ -221,9 +228,9 @@
 .immersive-shortcuts .ctrl { width:44px; height:44px; flex-basis:44px; color:rgba(255,255,255,.7); }
 .immersive-shortcuts .immersive-lyrics-toggle[aria-expanded="true"] { color:#fff; background:rgba(255,255,255,.14); }
 .immersive-shortcuts svg { width:22px; height:22px; }
-@media (max-height:800px) { .immersive-content { gap:10px; padding-top:48px; padding-bottom:12px; }.immersive-art { width:min(39vh,54vw,500px); max-height:min(39vh,calc(100dvh - 385px)); }.immersive-player.lyrics-open .immersive-art { width:min(35vh,34vw,420px); max-height:min(35vh,calc(100dvh - 390px)); }.immersive-controls .immersive-play { width:62px; height:62px; flex-basis:62px; } }
-@media (max-height:650px) { .immersive-art { width:min(34vh,50vw,380px); max-height:min(34vh,calc(100dvh - 350px)); }.immersive-meta h1 { font-size:clamp(20px,4vh,28px); }.immersive-meta p { margin-top:4px; }.immersive-shortcuts { gap:18px; }.immersive-shortcuts .ctrl { width:36px; height:36px; flex-basis:36px; } }
-@media (max-width:800px) { .immersive-player.lyrics-open .immersive-stage { display:flex; flex-direction:column; gap:12px; overflow:auto; padding:4px 0 12px; }.immersive-player.lyrics-open .immersive-art-column { flex:0 0 auto; }.immersive-player.lyrics-open .immersive-art { width:min(34vh,66vw,390px); max-height:min(34vh,calc(100dvh - 460px)); }.immersive-player.lyrics-open .immersive-lyrics { width:100%; min-height:180px; height:30vh; flex:0 0 30vh; }.immersive-content { justify-content:flex-start; }.immersive-player.lyrics-open .immersive-meta h1 { font-size:clamp(18px,4vw,26px); } }
+@media (max-height:800px) { .immersive-content { gap:10px; padding-top:48px; padding-bottom:12px; }.immersive-art { width:min(38vh,52vw,400px); }.immersive-player.lyrics-open .immersive-art { width:min(34vh,32vw,340px); }.immersive-controls .immersive-play { width:62px; height:62px; flex-basis:62px; } }
+@media (max-height:650px) { .immersive-art { width:min(32vh,46vw,300px); }.immersive-meta h1 { font-size:clamp(18px,3.8vh,24px); }.immersive-meta p { margin-top:3px; }.immersive-shortcuts { gap:18px; }.immersive-shortcuts .ctrl { width:36px; height:36px; flex-basis:36px; } }
+@media (max-width:800px) { .immersive-player.lyrics-open .immersive-stage { display:flex; flex-direction:column; gap:12px; overflow:auto; padding:4px 0 12px; }.immersive-player.lyrics-open .immersive-art-column { flex:0 0 auto; }.immersive-player.lyrics-open .immersive-art { width:min(28vh,54vw,280px); }.immersive-player.lyrics-open .immersive-lyrics { width:100%; min-height:180px; height:30vh; flex:0 0 30vh; }.immersive-content { justify-content:flex-start; }.immersive-player.lyrics-open .immersive-meta h1 { font-size:clamp(18px,4vw,26px); } }
 @media (max-width:600px) { .immersive-topbar { padding:0 16px; }.immersive-content { padding-left:22px; padding-right:22px; }.immersive-art { width:min(48vh,80vw,520px); }.immersive-meta h1 { font-size:24px; } }
 @keyframes route-arrive { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
 @keyframes track-arrive { from { opacity:.55; transform:translateY(7px) scale(.985); } to { opacity:1; transform:none; } }
@@ -310,4 +317,13 @@
   position:absolute; z-index:9; inset:0 0 var(--player-h) auto; width:var(--right);
   max-width:calc(100% - var(--sidebar) - 12px); padding:16px 12px 8px;
   display:flex !important; border-radius:16px 0 0 16px; box-shadow:-16px 0 40px rgba(0,0,0,.32);
+}
+
+
+/* In-window immersive player: fills the app window without taking over the OS display. */
+html.immersive-in-window #immersivePlayer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  border-radius: 0;
 }

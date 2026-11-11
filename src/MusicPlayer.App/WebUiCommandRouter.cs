@@ -23,7 +23,8 @@ internal sealed class WebUiCommandRouter
         Register(data,
             "getBootstrap", "uiReady", "getAbout", "getReleaseHistory", "getHome", "beginSearch", "search", "getTracks", "getGroups", "getFolders", "getArtistAlbums",
             "getPlaylists", "getPlaylistTracks", "getQueue", "getCurrentTrack", "getLyrics", "getAudioSettings",
-            "getSettings", "getDuplicates", "getDuplicateFiles", "getTrackDetails", "getTags", "getExclusions", "setView");
+            "getSettings", "getDuplicates", "getDuplicateFiles", "getTrackDetails", "getTags", "getExclusions", "setView",
+            "saveRecentSearch", "getRecentSearches");
         Register(playback,
             "playTrack", "playView", "shuffleView", "playGroup", "playPause", "previous", "next", "toggleShuffle",
             "cycleRepeat", "toggleAbRepeat", "seek", "setVolume", "toggleFavorite", "setRating", "playNext",
@@ -33,11 +34,11 @@ internal sealed class WebUiCommandRouter
             "importPlaylist", "addToPlaylist", "removePlaylistTrack");
         Register(folders,
             "addFolder", "removeRoot", "scanLibrary", "rebuildLibraryIndex", "toggleScanPause", "cancelScan", "showInFolder", "showFilePath");
-        Register(metadata, "saveLyrics", "searchLyrics", "saveTags", "restoreTags", "pickArtwork");
+        Register(metadata, "saveLyrics", "searchLyrics", "removeLyrics", "saveTags", "restoreTags", "pickArtwork");
         Register(settings,
             "setAudioDevice", "setCrossfade", "refreshAudioDevices", "setEqualizerPreset", "setEqualizerBand", "setEqualizerBands", "setExtensionEnabled",
             "saveEqualizerPreset", "updateSettings", "resetUiSettings", "addExclusion", "removeExclusion", "checkUpdates");
-        Register(utilities, "openLogs", "exportLogs", "openRelease", "openLegalFile", "setPanelMode", "setImmersiveMode", "expandWindowForQueue", "restoreWindowAfterQueue", "openDefaultApps", "copyTrackPath", "reportFrontendError");
+        Register(utilities, "openLogs", "exportLogs", "openRelease", "openLegalFile", "setPanelMode", "setImmersiveMode", "setFullscreen", "toggleFullscreen", "expandWindowForQueue", "restoreWindowAfterQueue", "openDefaultApps", "copyTrackPath", "reportFrontendError");
     }
 
     public bool CanRoute(string name) => _routes.ContainsKey(name);

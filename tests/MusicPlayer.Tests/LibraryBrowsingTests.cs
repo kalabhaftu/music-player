@@ -101,6 +101,28 @@ public sealed class LibraryBrowsingTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Folder_view_displays_tracks_for_both_root_and_subfolders()
+    {
+        var subDir = Path.Combine(_root, "SubFolder");
+        Directory.CreateDirectory(subDir);
+        var rootTrack = Track("root-song", "RootAlbum");
+        var subPath = Path.Combine(subDir, "sub-song.flac");
+        File.WriteAllBytes(subPath, [1, 2, 3, 4]);
+        var subTrack = new Track(subPath, "sub-song", "Artist", "SubAlbum", "Artist", "Genre", 0, 1, TimeSpan.FromSeconds(3), 4, File.GetLastWriteTimeUtc(subPath), DateTime.UtcNow);
+        _store.UpsertTracks([rootTrack, subTrack]);
+
+        // Query root folder
+        using var rootReq = JsonDocument.Parse(JsonSerializer.Serialize(new { view = "Folder", groupColumn = "folder", groupValue = _root }));
+        var rootPage = JsonSerializer.SerializeToElement(_queries.TrackPage(rootReq.RootElement));
+        Assert.Equal(1, rootPage.GetProperty("totalCount").GetInt32());
+
+        // Query sub folder
+        using var subReq = JsonDocument.Parse(JsonSerializer.Serialize(new { view = "Folder", groupColumn = "folder", groupValue = subDir }));
+        var subPage = JsonSerializer.SerializeToElement(_queries.TrackPage(subReq.RootElement));
+        Assert.Equal(1, subPage.GetProperty("totalCount").GetInt32());
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

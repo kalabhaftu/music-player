@@ -42,6 +42,7 @@ public static class LyricsFiles
     public static LyricsReadResult Read(string trackPath)
     {
         var sidecar = SidecarPath(trackPath);
+        string? untimedSidecar = null;
         string? malformedSidecar = null;
         try
         {
@@ -50,8 +51,9 @@ public static class LyricsFiles
                 var text = System.IO.File.ReadAllText(sidecar, Encoding.UTF8);
                 if (Lyrics.HasUsableContent(text))
                 {
-                    if (!Lyrics.IsMalformedTimedText(text)) return new(text, "sidecar");
-                    malformedSidecar = text;
+                    if (Lyrics.IsMalformedTimedText(text)) malformedSidecar = text;
+                    else if (Lyrics.Parse(text).Lines.Count > 0) return new(text, "sidecar");
+                    else untimedSidecar = text;
                 }
             }
         }
@@ -61,10 +63,16 @@ public static class LyricsFiles
         {
             using var media = AudioTags.Open(trackPath);
             var embedded = ReadEmbeddedLyrics(media);
-            if (Lyrics.HasUsableContent(embedded)) return new(embedded, "embedded");
+            if (Lyrics.HasUsableContent(embedded))
+            {
+                // Timed lyrics always win over an untimed sidecar so playback can follow along.
+                if (Lyrics.Parse(embedded).Lines.Count > 0) return new(embedded, "embedded");
+                if (untimedSidecar is null) return new(embedded, "embedded");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TagLib.CorruptFileException or TagLib.UnsupportedFormatException or NotSupportedException or ArgumentException or System.Security.SecurityException)
         { LocalAppLog.Shared.Warning("lyrics-reader", $"Could not read embedded lyrics in '{trackPath}'.", ex); }
+        if (untimedSidecar is not null) return new(untimedSidecar, "sidecar");
         if (malformedSidecar is not null) return new(malformedSidecar, "sidecar");
         return new(string.Empty, "none");
     }
@@ -92,6 +100,19 @@ public static class LyricsFiles
         }
 
         return media.Tag.Lyrics ?? string.Empty;
+    }
+
+    public static void DeleteSidecar(string trackPath)
+    {
+        var destination = SidecarPath(trackPath);
+        try
+        {
+            if (System.IO.File.Exists(destination)) System.IO.File.Delete(destination);
+            var txtSidecar = Path.ChangeExtension(trackPath, ".txt");
+            if (System.IO.File.Exists(txtSidecar)) System.IO.File.Delete(txtSidecar);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        { LocalAppLog.Shared.Warning("lyrics-delete", $"Could not delete lyrics sidecar for '{trackPath}'.", ex); }
     }
 
     public static void SaveSidecar(string trackPath, string lyrics)

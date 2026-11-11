@@ -11,7 +11,8 @@ public sealed partial class MainWindow
         switch (name)
         {
             case "saveLyrics": return await SaveLyricsAsync(payload);
-            case "searchLyrics": return await SearchLyricsAsync(ResolveRequestedLyricsTrack(payload));
+            case "searchLyrics": return await SearchLyricsAsync(payload);
+            case "removeLyrics": return await RemoveLyricsAsync(payload);
             case "saveTags": await SaveTagsAsync(payload); return null;
             case "restoreTags": await RestoreTagsAsync(payload); return null;
             case "pickArtwork": return await PickArtworkAsync();
@@ -29,18 +30,35 @@ public sealed partial class MainWindow
         return new { storage };
     }
 
-    private async Task<object> SearchLyricsAsync(Track? track)
+    private async Task<object> SearchLyricsAsync(JsonElement payload)
     {
-        if (track is null) return new { results = Array.Empty<object>() };
+        var track = ResolveRequestedLyricsTrack(payload);
+        var title = String(payload, "title");
+        var artist = String(payload, "artist");
+        if (string.IsNullOrWhiteSpace(title) && track is not null) title = track.Title;
+        if (string.IsNullOrWhiteSpace(artist) && track is not null) artist = track.Artist;
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(artist))
+            return new { results = Array.Empty<object>() };
         try
         {
-            var results = await _trackMetadata.SearchLyricsAsync(track.Title, track.Artist);
+            var results = await _trackMetadata.SearchLyricsAsync(title, artist);
             return new { results };
         }
         catch (LyricsRateLimitException ex)
         {
             return new { results = Array.Empty<object>(), rateLimited = true, retryAfterMilliseconds = Math.Ceiling(ex.RetryAfter.TotalMilliseconds) };
         }
+    }
+
+    private async Task<object> RemoveLyricsAsync(JsonElement payload)
+    {
+        var track = ResolveRequestedLyricsTrack(payload) ?? throw new InvalidOperationException("Choose a track before removing lyrics.");
+        EnsureMetadataTargetAvailable(track);
+        await _trackMetadata.RemoveLyricsAsync(track.Path);
+        _store.UpdateTrack(track.Path, "has_lyrics", 0);
+        await RefreshEditedTrackAsync(track.Path);
+        PublishLibraryChanged();
+        return new { success = true };
     }
 
     private async Task SaveTagsAsync(JsonElement payload)

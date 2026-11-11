@@ -56,7 +56,7 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
         ".git", ".hg", ".svn", ".vs", ".idea", ".vscode",
         "node_modules", "bin", "obj", "build", "dist", "target", "packages", "TestResults",
         "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", ".venv",
-        ".cache", ".npm", ".nuget", ".gradle", "Temp", "tmp", "Caches", "CrashDumps",
+        ".cache", ".npm", ".bun", ".cargo", ".rustup", ".pnpm", ".yarn", ".docker", ".conda", ".gemini", ".antigravity", ".local", ".config", ".dotnet", ".nuget", ".gradle", ".obsidian", ".trash", ".subversion", ".metadata", "Temp", "tmp", "Caches", "CrashDumps",
         "INetCache", "Temporary Internet Files", "MicrosoftEdgeBackups", "Package Cache",
         "Games", "GameLibrary", "GamesLibrary", "SteamLibrary", "steamapps", "XboxGames", "Epic Games"
     };
@@ -235,7 +235,9 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
     private static bool IsDefaultIgnoredDirectory(string path)
     {
         var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-        if (name.StartsWith('.')) return true;
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (name.StartsWith("..")) return false;
+        if (name.StartsWith('.') && !name.StartsWith("..")) return true;
         if (name.Equals("AppData", StringComparison.OrdinalIgnoreCase)) return true;
         if (GeneratedOrApplicationFolders.Contains(name))
         {
@@ -260,6 +262,40 @@ public sealed class LibraryScanner(LocalAppLog? log = null)
     }
 
     public static bool IsDefaultExcludedDirectory(string path) => IsDefaultIgnoredDirectory(path);
+
+    /// <summary>Checks whether any folder between the file and its drive root is a hidden cache, build, or package manager directory.</summary>
+    public static bool IsUnderDefaultExcludedDirectory(string filePath)
+    {
+        try
+        {
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            while (!string.IsNullOrEmpty(directory))
+            {
+                var parent = Path.GetDirectoryName(directory);
+                if (string.IsNullOrEmpty(parent) || string.Equals(parent, directory, comparison)) break;
+                var name = Path.GetFileName(directory);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    if (name.StartsWith('.') && !name.StartsWith("..")) return true;
+                    if (name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("steamapps", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("Package Cache", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("Temporary Internet Files", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("INetCache", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("__pycache__", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                directory = Path.TrimEndingDirectorySeparator(parent);
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+        {
+        }
+        return false;
+    }
 
     private static bool PathsEqual(string left, string right) => string.Equals(
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),

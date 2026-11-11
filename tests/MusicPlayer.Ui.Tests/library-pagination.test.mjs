@@ -162,7 +162,7 @@ test("failed artist album loading can retry without skipping albums",async()=>{
 for(const [filter,key,size] of [["song","songs",40],["album","albums",24],["artist","artists",24],["playlist","playlists",20]])test(`search ${key}: shrinking results recovers a valid page with working pagination`,async()=>{
   const offsets=[];
   const f=fixture("Search",async(name,payload)=>{
-    if(name==="beginSearch")return {};
+    if(name==="beginSearch"||name==="saveRecentSearch")return {};
     offsets.push(payload.offset);return {items:(filter==="song"?tracks(size+1):groups(size+1)).slice(payload.offset,payload.offset+payload.pageSize),totalCount:size+1};
   },{search:"Song",searchQuery:"Song",filter,searchPages:{[key]:5},searchResults:{}});
   await f.views.renderView();

@@ -2,6 +2,16 @@
 
 Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming. C# namespaces are implementation details.
 
+## [1.0.4]
+
+- Preload lyrics automatically for upcoming queued tracks to ensure smooth lyric transitions without loading pauses.
+- Restore smart playlist cards (Most Played, With Lyrics, Recently Played, Videos) with distinctive hero icons and rich gradients.
+- Replace the lyrics "Jump to current" banner with a compact circular button featuring native hover tooltips.
+- Add manual search capabilities with prefilled track title and artist in the "Find lyrics" dialog and eliminate duplicate modal scrollbars.
+- Retain the native Windows titlebar in windowed mode for smooth moving, dragging, and snapping while preserving full-screen immersive playback.
+- Prevent album artwork thumbnail collapse when resizing to compact window heights in immersive view.
+- Fix artist page album playback to cleanly queue artist tracks.
+
 ## [1.0.3]
 
 - Eliminate recursive startup disk scanning when the library is already indexed, allowing instant app startup from SQLite.

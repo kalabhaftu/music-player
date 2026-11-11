@@ -30,6 +30,8 @@ internal sealed class LibraryQueryService
     private readonly object _rootAvailabilityGate = new();
     private readonly object _folderCacheGate = new();
     private readonly object _searchGate = new();
+    private static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private readonly HashSet<string> _excludedDirectories = new(PathComparer);
     private IReadOnlyList<string>? _folderCache;
     private SearchBatch? _activeSearch;
     private long _latestSearchRequestId;
@@ -50,6 +52,10 @@ internal sealed class LibraryQueryService
         _store = store;
         _store.UseCachedFingerprints = true;
         _artworkDirectory = Path.GetFullPath(Path.Combine(appDataDirectory, "Artwork"));
+        var savedExclusions = ReadJsonSetting("ignored-directories", Array.Empty<string>());
+        foreach (var item in savedExclusions.Where(p => !string.IsNullOrWhiteSpace(p)))
+            _excludedDirectories.Add(NormalizeRootPath(item));
+        RefreshBrowsingAvailability();
     }
 
     public string CurrentView => _context.View;
@@ -302,6 +308,7 @@ internal sealed class LibraryQueryService
         var size = Math.Clamp(Int(payload, "pageSize", 50), 1, 100);
         var folders = allFolders.Skip(offset).Take(size).Select(path => new
         {
+            id = path,
             path,
             name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
             trackCount = _store.CountTracks(groupColumn: "folder", groupValue: path)
@@ -395,7 +402,7 @@ internal sealed class LibraryQueryService
     public string SetGroupContext(string type, string value)
     {
         var column = GroupColumnFromType(type);
-        var view = column switch { "album" => "Album", "artist" => "Artist", _ => "Genre" };
+        var view = column switch { "album" => "Album", "artist" => "Artist", "folder" => "Folder", _ => "Genre" };
         _context = new(view, "", column, value, null);
         PersistContext();
         return column;
@@ -444,6 +451,11 @@ internal sealed class LibraryQueryService
             descending = true;
         }
         else if (_context.View == "Most Played")
+        {
+            sort = TrackSort.PlayCount;
+            descending = true;
+        }
+        else if (_context.View == "Artist" || string.Equals(_context.GroupColumn, "artist", StringComparison.OrdinalIgnoreCase))
         {
             sort = TrackSort.PlayCount;
             descending = true;
@@ -507,11 +519,22 @@ internal sealed class LibraryQueryService
         RefreshBrowsingAvailability();
     }
 
+    public void SetExcludedDirectories(IEnumerable<string> exclusions)
+    {
+        var normalized = exclusions.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizeRootPath).ToArray();
+        lock (_rootAvailabilityGate)
+        {
+            _excludedDirectories.Clear();
+            foreach (var item in normalized) _excludedDirectories.Add(item);
+        }
+        RefreshBrowsingAvailability();
+    }
+
     private void RefreshBrowsingAvailability()
     {
         // Always acquire these locks in the same order.
         lock (_availabilityGate) lock (_rootAvailabilityGate)
-            _store.SetBrowsingAvailability(_unavailableRootPaths, _unavailableTrackPaths);
+            _store.SetBrowsingAvailability(_unavailableRootPaths.Concat(_excludedDirectories), _unavailableTrackPaths);
         InvalidateFolders();
     }
 

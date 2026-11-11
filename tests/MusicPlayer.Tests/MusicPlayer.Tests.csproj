@@ -16,5 +16,6 @@
     <Compile Include="../../src/MusicPlayer.App/LibraryQueryService.cs" Link="LibraryQueryService.cs" />
     <Compile Include="../../src/MusicPlayer.App/TrackAvailabilityService.cs" Link="TrackAvailabilityService.cs" />
     <Compile Include="../../src/MusicPlayer.App/LibraryLocationService.cs" Link="LibraryLocationService.cs" />
+    <Compile Include="../../src/MusicPlayer.App/PlayerSettingsService.cs" Link="PlayerSettingsService.cs" />
   </ItemGroup>
 </Project>

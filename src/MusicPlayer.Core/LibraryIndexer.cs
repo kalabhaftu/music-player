@@ -24,6 +24,11 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
         store.InvalidateExactFingerprintSnapshot();
         using var scan = store.BeginScan(scanRoots);
         var ignored = ignoredDirectories.Select(Path.GetFullPath).ToArray();
+        var excludedPurged = store.PurgeTracksInDefaultExcludedDirectories();
+        if (ignored.Length > 0)
+        {
+            excludedPurged += store.PurgeTracksUnderExcludedDirectories(ignored);
+        }
         var indexed = 0;
         var skipped = 0;
         var filesFound = 0;
@@ -130,16 +135,16 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
         FlushPending();
         // Explicit rebuilds also repair already-indexed files that no longer sit under
         // today's configured roots. Normal scans cheaply revisit only broken artwork.
-        var repaired = await RefreshIndexedFilesAsync(forceRefresh, scanRoots, control).ConfigureAwait(false);
+        var repaired = await RefreshIndexedFilesAsync(forceRefresh, scanRoots, ignored, control).ConfigureAwait(false);
         indexed += repaired;
-        var removed = scan.Complete();
+        var removed = scan.Complete() + excludedPurged;
         if (removed > 0) store.InvalidateExactFingerprintSnapshot();
         if (indexed > 0 || removed > 0 || forceRefresh) store.PruneUnreferencedArtwork(artworkCache);
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         return new(indexed, skipped, removed, unavailableRoots.Distinct(comparer).ToArray(), incompletePaths.Distinct(comparer).ToArray(), filesFound);
     }
 
-    private async Task<int> RefreshIndexedFilesAsync(bool forceRefresh, IReadOnlyList<string> scanRoots, ScanControl control)
+    private async Task<int> RefreshIndexedFilesAsync(bool forceRefresh, IReadOnlyList<string> scanRoots, IReadOnlyList<string> ignoredDirectories, ScanControl control)
     {
         const int pageSize = 400;
         var changed = 0;
@@ -176,6 +181,7 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
                 var page = store.GetTracksPage(sort: TrackSort.Path, offset: offset, pageSize: pageSize);
                 foreach (var track in page)
                 {
+                    if (ignoredDirectories.Any(ign => IsWithinRoot(ign, track.Path))) continue;
                     if (scanRoots.Any(root => IsWithinRoot(root, track.Path))) continue;
                     await RefreshOneAsync(track).ConfigureAwait(false);
                 }
@@ -196,6 +202,7 @@ public sealed class LibraryIndexer(LibraryStore store, string artworkCache, Loca
                         sort: TrackSort.Path, offset: offset, pageSize: pageSize);
                     foreach (var track in page)
                     {
+                        if (ignoredDirectories.Any(ign => IsWithinRoot(ign, track.Path))) continue;
                         if (string.IsNullOrWhiteSpace(track.ArtworkPath) || File.Exists(track.ArtworkPath)) continue;
                         await RefreshOneAsync(track).ConfigureAwait(false);
                     }

@@ -30,6 +30,23 @@ public sealed class ScannerGameExclusionTests : IDisposable
         Assert.DoesNotContain(discovered, path => PathsEqual(path, gameAudio) || PathsEqual(path, steamAudio));
     }
 
+    [Fact]
+    public async Task Default_scan_skips_dot_folders_such_as_bun_and_npm_on_all_platforms()
+    {
+        var bunAudio = CreateFile(Path.Combine(_root, "Users", "Person", ".bun", "install", "cache", "pkg", "audio.mp3"));
+        var npmAudio = CreateFile(Path.Combine(_root, "Users", "Person", ".npm", "cache", "audio.mp3"));
+        var normalAudio = CreateFile(Path.Combine(_root, "Users", "Person", "Music", "song.mp3"));
+        var discovered = new List<string>();
+
+        using var control = new ScanControl();
+        await NewScanner().ScanAsync(
+            [_root], [], control,
+            (path, _) => { discovered.Add(Path.GetFullPath(path)); return ValueTask.CompletedTask; });
+
+        Assert.Contains(Path.GetFullPath(normalAudio), discovered);
+        Assert.DoesNotContain(discovered, path => PathsEqual(path, bunAudio) || PathsEqual(path, npmAudio));
+    }
+
     [Theory]
     [InlineData("Games")]
     [InlineData("SteamLibrary")]

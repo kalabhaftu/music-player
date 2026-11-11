@@ -12,7 +12,7 @@ public sealed record IndexedFileState(long Length, DateTime ModifiedUtc);
 
 public sealed partial class LibraryStore
 {
-    private const int SchemaVersion = 10;
+    private const int SchemaVersion = 11;
     private readonly string _databasePath;
     private readonly string _connectionString;
     private readonly LocalAppLog _log;
@@ -501,6 +501,85 @@ public sealed partial class LibraryStore
         return paths;
     }
 
+    /// <summary>
+    /// Dynamically selects smart algorithmic track recommendations based on genre, artist,
+    /// favorites, play count, and randomized jitter, excluding currently queued or played paths.
+    /// </summary>
+    public IReadOnlyList<string> GetSmartAutoplayTracks(string currentTrackPath, string? genre, string? artist, IEnumerable<string>? excludePaths = null, int limit = 10)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        var excludes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(currentTrackPath))
+        {
+            try { excludes.Add(Path.GetFullPath(currentTrackPath)); }
+            catch { excludes.Add(currentTrackPath); }
+        }
+        if (excludePaths is not null)
+        {
+            foreach (var p in excludePaths)
+            {
+                if (!string.IsNullOrWhiteSpace(p))
+                {
+                    try { excludes.Add(Path.GetFullPath(p)); }
+                    catch { excludes.Add(p); }
+                }
+            }
+        }
+
+        command.CommandText = """
+            SELECT path, genre, artist, favorite, play_count
+            FROM tracks
+            WHERE duration_ms >= 15000
+            ORDER BY (
+                (CASE WHEN $genre != '' AND genre = $genre COLLATE NOCASE THEN 4.5 ELSE 0.0 END) +
+                (CASE WHEN $artist != '' AND artist = $artist COLLATE NOCASE THEN 3.0 ELSE 0.0 END) +
+                (CASE WHEN favorite = 1 THEN 2.0 ELSE 0.0 END) +
+                MIN(play_count * 0.4, 3.0) +
+                (abs(random()) % 300) / 100.0
+            ) DESC
+            LIMIT 150
+            """;
+        Add(command, "$genre", genre ?? string.Empty);
+        Add(command, "$artist", artist ?? string.Empty);
+
+        var result = new List<string>(limit);
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var path = reader.GetString(0);
+                string full;
+                try { full = Path.GetFullPath(path); }
+                catch { full = path; }
+                if (excludes.Contains(full)) continue;
+                if (!File.Exists(path)) continue;
+                result.Add(path);
+                if (result.Count >= limit) break;
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            using var fallbackCommand = connection.CreateCommand();
+            fallbackCommand.CommandText = "SELECT path FROM tracks WHERE musicplayer_visible(path) ORDER BY random() LIMIT 50";
+            using var fbReader = fallbackCommand.ExecuteReader();
+            while (fbReader.Read())
+            {
+                var path = fbReader.GetString(0);
+                if (!string.Equals(path, currentTrackPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+                {
+                    result.Add(path);
+                    if (result.Count >= limit) break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+
     private (IReadOnlyList<Track> Tracks, int Count) QueryTracks(string? search, TrackSort sort, bool descending, string? filter,
         string? groupColumn, string? groupValue, int? offset, int pageSize, bool countOnly, bool hideExactDuplicates = false,
         CancellationToken cancellationToken = default, bool fingerprintsAlreadyCurrent = false)
@@ -569,8 +648,9 @@ public sealed partial class LibraryStore
         };
         var groupPredicate = groupColumn switch
         {
-            "album" => "($group IS NULL OR album=$group)", "artist" => "($group IS NULL OR artist=$group)",
-            "genre" => "($group IS NULL OR genre=$group)", "folder" => "($folderPrefix IS NULL OR tracks.path LIKE $folderPrefix ESCAPE '\\')",
+            "album" => "($group IS NULL OR album=$group)", "artist" => "($group IS NULL OR artist=$group OR artist LIKE ($group || ';%') OR artist LIKE ('%; ' || $group || ';%') OR artist LIKE ('%; ' || $group) OR artist LIKE ($group || ' feat%') OR artist LIKE ($group || ' ft%'))",
+            "genre" => "($group IS NULL OR genre=$group)",
+            "folder" => OperatingSystem.IsWindows() ? "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix COLLATE NOCASE)" : "($folderPrefix IS NULL OR musicplayer_directory(tracks.path) = $folderPrefix)",
             null => "1=1", _ => throw new ArgumentOutOfRangeException(nameof(groupColumn))
         };
         var searchTerms = SplitSearchTerms(search);
@@ -587,9 +667,7 @@ public sealed partial class LibraryStore
         string? folderPrefix = null;
         if (groupColumn == "folder" && !string.IsNullOrWhiteSpace(groupValue))
         {
-            var folder = Path.GetFullPath(groupValue);
-            var prefix = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
-            folderPrefix = EscapeLike(prefix) + "%";
+            folderPrefix = Path.TrimEndingDirectorySeparator(Path.GetFullPath(groupValue));
         }
         return new(where, fullOrderBy, searchTerms, ftsPhrase, groupParameter,
             folderPrefix is null ? DBNull.Value : folderPrefix, videoPatterns);
@@ -707,12 +785,12 @@ public sealed partial class LibraryStore
         foreach (var rawRoot in roots)
         {
             var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rawRoot));
-            var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
             using var command = connection.CreateCommand();
+            // Root cards count songs filed directly in the root. Subfolders are separate folder cards.
             command.CommandText = OperatingSystem.IsWindows()
-                ? "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\' COLLATE NOCASE"
-                : "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND path LIKE $pattern ESCAPE '\\'";
-            Add(command, "$pattern", EscapeLike(prefix) + "%");
+                ? "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND musicplayer_directory(path) = $root COLLATE NOCASE"
+                : "SELECT COUNT(*) FROM tracks WHERE musicplayer_visible(path) AND musicplayer_directory(path) = $root";
+            Add(command, "$root", root);
             counts[rawRoot] = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
         return counts;
@@ -1050,7 +1128,7 @@ public sealed partial class LibraryStore
         while (reader.Read()) yield return reader.GetString(0);
     }
 
-    private void UpdateTrack(string path, string column, int value)
+    public void UpdateTrack(string path, string column, int value)
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -1314,6 +1392,7 @@ public sealed partial class LibraryStore
                   PRIMARY KEY(run_id,root_path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_seen(run_id INTEGER NOT NULL, path TEXT NOT NULL, PRIMARY KEY(run_id,path),
                   FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS scan_user_ignored(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path),
                   FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
                 CREATE TABLE IF NOT EXISTS scan_default_excluded(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL,
@@ -1326,6 +1405,22 @@ public sealed partial class LibraryStore
                 """;
             migrate.ExecuteNonQuery();
             transaction.Commit();
+
+            version = 10;
+        }
+        if (version == 10)
+        {
+            using var transaction = connection.BeginTransaction();
+            using var migrate = connection.CreateCommand();
+            migrate.Transaction = transaction;
+            migrate.CommandText = """
+                CREATE TABLE IF NOT EXISTS scan_user_ignored(run_id INTEGER NOT NULL, path TEXT NOT NULL, prefix TEXT NOT NULL, PRIMARY KEY(run_id,path), FOREIGN KEY(run_id) REFERENCES scan_runs(id) ON DELETE CASCADE);
+                PRAGMA user_version=11;
+
+
+                """;
+            migrate.ExecuteNonQuery();
+            transaction.Commit();
         }
     }
 
@@ -1335,6 +1430,19 @@ public sealed partial class LibraryStore
         connection.Open();
         var visibility = _hidden;
         connection.CreateFunction<string, bool>("musicplayer_visible", path => !visibility.Contains(path), isDeterministic: true);
+        connection.CreateFunction<string, string>("musicplayer_directory", path =>
+        {
+            if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                return dir is null ? string.Empty : Path.TrimEndingDirectorySeparator(dir);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }, isDeterministic: true);
         return connection;
     }
 

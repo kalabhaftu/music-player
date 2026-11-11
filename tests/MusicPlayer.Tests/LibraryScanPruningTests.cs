@@ -59,7 +59,7 @@ public sealed class LibraryScanPruningTests : IDisposable
     }
 
     [Fact]
-    public async Task User_ignored_path_preserves_previously_indexed_tracks()
+    public async Task User_ignored_path_prunes_previously_indexed_tracks()
     {
         var root = Directory.CreateDirectory(Path.Combine(_root, "IgnoredRoot")).FullName;
         var ignored = Directory.CreateDirectory(Path.Combine(root, "PersonalArchive")).FullName;
@@ -68,8 +68,8 @@ public sealed class LibraryScanPruningTests : IDisposable
 
         var result = await Scan([root], [ignored]);
 
-        Assert.Equal(0, result.Removed);
-        Assert.NotNull(_store.GetTrack(trackPath));
+        Assert.Equal(1, result.Removed);
+        Assert.Null(_store.GetTrack(trackPath));
     }
 
     [Fact]

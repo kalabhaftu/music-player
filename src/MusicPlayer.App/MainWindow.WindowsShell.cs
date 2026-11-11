@@ -77,6 +77,7 @@ public sealed partial class MainWindow : Window
             var titleBar = appWindow.TitleBar;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+            if (_isFullscreen) return;
             var artworkSurface = _store.GetSetting("accent-mode") == "Artwork" && _webArtworkTitleBarColor is { };
             var dark = artworkSurface || ShellRoot.RequestedTheme == ElementTheme.Dark ||
                 (ShellRoot.RequestedTheme == ElementTheme.Default && ShellRoot.ActualTheme == ElementTheme.Dark);
@@ -366,25 +367,8 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _immersiveMode;
-    private bool _immersiveWasMaximized;
-
-    private void SetImmersiveMode(bool enabled)
-    {
-        if (_immersiveMode == enabled) return;
-        var hwnd = WindowNative.GetWindowHandle(this);
-        var appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(hwnd));
-        if (enabled)
-        {
-            _immersiveWasMaximized = IsZoomed(hwnd);
-            appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-            _immersiveMode = true;
-            return;
-        }
-
-        appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-        if (_immersiveWasMaximized) ShowWindow(hwnd, SwMaximize);
-        _immersiveMode = false;
-    }
+    private bool _isFullscreen;
+    private bool _wasMaximizedBeforeFullscreen;
 
     private const int SwMaximize = 3;
     [DllImport("user32.dll", EntryPoint = "ShowWindow")]
@@ -392,7 +376,112 @@ public sealed partial class MainWindow : Window
     private static extern bool ShowWindow(nint hwnd, int command);
 
     [DllImport("user32.dll", EntryPoint = "IsZoomed")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsZoomed(nint hwnd);
+
+    public void SetFullscreen(bool enabled)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            if (enabled)
+            {
+                if (appWindow.Presenter.Kind != Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    _wasMaximizedBeforeFullscreen = IsZoomed(hwnd);
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+                    _isFullscreen = true;
+                }
+            }
+            else
+            {
+                if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                    if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                    _isFullscreen = false;
+                    ApplyNativeWindowChrome();
+                }
+            }
+            _webBridge?.SendEvent("fullscreenChanged", new { fullscreen = _isFullscreen });
+        }
+        catch (Exception ex)
+        {
+            LocalAppLog.Shared.Warning("fullscreen", "Failed to update fullscreen presenter.", ex);
+        }
+    }
+
+    public void ToggleFullscreen() => SetFullscreen(!_isFullscreen);
+
+    private void SetImmersiveMode(bool enabled, bool fullscreen = false)
+    {
+        _immersiveMode = enabled;
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            if (enabled)
+            {
+                if (fullscreen)
+                {
+                    if (appWindow.Presenter.Kind != Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                    {
+                        _wasMaximizedBeforeFullscreen = IsZoomed(hwnd);
+                        appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+                        _isFullscreen = true;
+                    }
+                }
+                else
+                {
+                    if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                    {
+                        appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                        if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                        _isFullscreen = false;
+                    }
+                    if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                    {
+                        presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: true);
+                    }
+                    if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                    {
+                        var titleBar = appWindow.TitleBar;
+                        titleBar.ExtendsContentIntoTitleBar = false;
+                        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+                    }
+                    ApplyNativeWindowChrome();
+                }
+            }
+            else
+            {
+                if (appWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                {
+                    appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped);
+                    if (_wasMaximizedBeforeFullscreen) ShowWindow(hwnd, SwMaximize);
+                    _isFullscreen = false;
+                }
+                if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+                {
+                    presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: true);
+                }
+                if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                {
+                    var titleBar = appWindow.TitleBar;
+                    titleBar.ExtendsContentIntoTitleBar = false;
+                    titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+                }
+                ApplyNativeWindowChrome();
+            }
+            _webBridge?.SendEvent("immersiveChanged", new { enabled, fullscreen = _isFullscreen });
+        }
+        catch (Exception ex)
+        {
+            LocalAppLog.Shared.Warning("immersive", "Failed to update native window title bar for immersive mode.", ex);
+        }
+    }
 
     private void SystemControls_ButtonPressed(SystemMediaTransportControls sender, SystemMediaTransportControlsButtonPressedEventArgs args)
     {
@@ -451,7 +540,8 @@ public sealed partial class MainWindow : Window
                     () => DispatcherQueue.TryEnqueue(() => TogglePlayback(StartPlaybackFromCurrentLibraryView)),
                     () => DispatcherQueue.TryEnqueue(PlayPreviousTrack),
                     () => DispatcherQueue.TryEnqueue(PlayNextTrack),
-                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer));
+                    () => DispatcherQueue.TryEnqueue(ExitMusicPlayer),
+                    () => (_playback.CurrentTrack?.Title ?? string.Empty, _playback.CurrentTrack?.Artist ?? string.Empty, _playback.IsPlaying));
             }
             else { _tray?.Dispose(); _tray = null; }
         }

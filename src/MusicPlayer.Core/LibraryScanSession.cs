@@ -13,10 +13,12 @@ public sealed class LibraryScanSession : IDisposable
     private readonly List<string> _pendingSeen = new(SeenBatchSize);
     private readonly List<(string Path, ScanExcludedPathKind? Kind)> _pendingProtected = new(SeenBatchSize);
     private readonly HashSet<string> _pendingSet;
+    private readonly Dictionary<string, (long Size, DateTime ModifiedUtc, long HasLyrics, string? ArtworkPath)> _cachedTrackState;
     private readonly SqliteCommand _stateCommand;
     private readonly SqliteCommand _excludeCommand;
     private readonly SqliteCommand _defaultExcludeCommand;
     private readonly SqliteCommand _incompleteCommand;
+    private readonly SqliteCommand _userIgnoredCommand;
     private bool _completed;
     private bool _disposed;
 
@@ -33,6 +35,7 @@ public sealed class LibraryScanSession : IDisposable
             cleanup.CommandText = """
                 DELETE FROM scan_seen WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
                 DELETE FROM scan_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
+                DELETE FROM scan_user_ignored WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
                 DELETE FROM scan_default_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
                 DELETE FROM scan_incomplete_paths WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
                 DELETE FROM scan_roots WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < $stale);
@@ -87,13 +90,49 @@ public sealed class LibraryScanSession : IDisposable
         _incompleteCommand.Parameters.Add("$path", SqliteType.Text);
         _incompleteCommand.Parameters.Add("$prefix", SqliteType.Text);
         _incompleteCommand.Prepare();
+        _userIgnoredCommand = _connection.CreateCommand();
+        _userIgnoredCommand.CommandText = "INSERT OR IGNORE INTO scan_user_ignored(run_id,path,prefix) VALUES($run,$path,$prefix)";
+        _userIgnoredCommand.Parameters.Add("$run", SqliteType.Integer).Value = _runId;
+        _userIgnoredCommand.Parameters.Add("$path", SqliteType.Text);
+        _userIgnoredCommand.Parameters.Add("$prefix", SqliteType.Text);
+        _userIgnoredCommand.Prepare();
+
+        _cachedTrackState = new Dictionary<string, (long, DateTime, long, string?)>(_pathComparer);
+        try
+        {
+            using var load = _connection.CreateCommand();
+            load.CommandText = "SELECT path, file_size, modified_utc, has_lyrics, artwork_path FROM tracks";
+            using var reader = load.ExecuteReader();
+            while (reader.Read())
+            {
+                var p = reader.GetString(0);
+                var size = reader.GetInt64(1);
+                var modStr = reader.GetString(2);
+                var hasLyrics = reader.GetInt64(3);
+                var art = reader.IsDBNull(4) ? null : reader.GetString(4);
+                if (DateTime.TryParse(modStr, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var mod))
+                    _cachedTrackState[p] = (size, mod, hasLyrics, art);
+            }
+        }
+        catch { }
     }
 
     public bool IsUnchanged(string path, long length, DateTime modifiedUtc, string artworkCache)
     {
         ThrowIfDisposed();
+        var fullPath = Path.GetFullPath(path);
+        var cacheRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(artworkCache)) + Path.DirectorySeparatorChar;
+        var pathComparer = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        if (_cachedTrackState.TryGetValue(fullPath, out var cached))
+        {
+            if (cached.Size != length || cached.ModifiedUtc != modifiedUtc || cached.HasLyrics < 0) return false;
+            if (cached.ArtworkPath is null) return true;
+            return cached.ArtworkPath.StartsWith(cacheRoot, pathComparer) && File.Exists(cached.ArtworkPath);
+        }
+
         var parameter = _stateCommand.Parameters["$path"];
-        parameter.Value = Path.GetFullPath(path);
+        parameter.Value = fullPath;
         using var reader = _stateCommand.ExecuteReader();
         if (!reader.Read()) return false;
         if (reader.GetInt64(0) != length ||
@@ -102,8 +141,6 @@ public sealed class LibraryScanSession : IDisposable
 
         if (reader.IsDBNull(3)) return true;
         var artworkPath = reader.GetString(3);
-        var cacheRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(artworkCache)) + Path.DirectorySeparatorChar;
-        var pathComparer = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         return artworkPath.StartsWith(cacheRoot, pathComparer) && File.Exists(artworkPath);
     }
 
@@ -135,7 +172,7 @@ public sealed class LibraryScanSession : IDisposable
     }
 
     /// <summary>Legacy exclusions are conservatively retained until a user removes them.</summary>
-    public void MarkExcludedPath(string path) => MarkExcludedPath(path, ScanExcludedPathKind.UserIgnored);
+    public void MarkExcludedPath(string path) => MarkExcludedPath(path, ScanExcludedPathKind.ReparsePoint);
 
     public void MarkExcludedPath(string path, ScanExcludedPathKind kind)
     {
@@ -192,12 +229,31 @@ public sealed class LibraryScanSession : IDisposable
         remove.Parameters.AddWithValue("$run", _runId);
         var removed = remove.ExecuteNonQuery();
 
+        using var removeIgnored = _connection.CreateCommand();
+        removeIgnored.Transaction = transaction;
+        removeIgnored.CommandText = $"""
+            DELETE FROM tracks
+            WHERE EXISTS (
+              SELECT 1 FROM scan_user_ignored u
+              WHERE u.run_id=$run AND
+                (tracks.path{collation}=u.path OR substr(tracks.path,1,length(u.prefix)){collation}=u.prefix))
+            """;
+        removeIgnored.Parameters.AddWithValue("$run", _runId);
+        removed += removeIgnored.ExecuteNonQuery();
+
         using (var clearSeen = _connection.CreateCommand())
         {
             clearSeen.Transaction = transaction;
             clearSeen.CommandText = "DELETE FROM scan_seen WHERE run_id=$run";
             clearSeen.Parameters.AddWithValue("$run", _runId);
             clearSeen.ExecuteNonQuery();
+        }
+        using (var clearUserIgnored = _connection.CreateCommand())
+        {
+            clearUserIgnored.Transaction = transaction;
+            clearUserIgnored.CommandText = "DELETE FROM scan_user_ignored WHERE run_id=$run";
+            clearUserIgnored.Parameters.AddWithValue("$run", _runId);
+            clearUserIgnored.ExecuteNonQuery();
         }
         using (var clearExcluded = _connection.CreateCommand())
         {
@@ -248,7 +304,8 @@ public sealed class LibraryScanSession : IDisposable
             foreach (var item in _pendingProtected)
             {
                 var command = item.Kind is null ? _incompleteCommand
-                    : item.Kind == ScanExcludedPathKind.DefaultExcluded ? _defaultExcludeCommand : _excludeCommand;
+                    : item.Kind == ScanExcludedPathKind.DefaultExcluded ? _defaultExcludeCommand
+                    : item.Kind == ScanExcludedPathKind.UserIgnored ? _userIgnoredCommand : _excludeCommand;
                 command.Transaction = transaction;
                 command.Parameters["$path"].Value = item.Path;
                 command.Parameters["$prefix"].Value = RootPrefix(item.Path);
@@ -295,12 +352,13 @@ public sealed class LibraryScanSession : IDisposable
         _excludeCommand.Dispose();
         _defaultExcludeCommand.Dispose();
         _incompleteCommand.Dispose();
+        _userIgnoredCommand.Dispose();
         if (!_completed)
         {
             try
             {
                 using var transaction = _connection.BeginTransaction();
-                foreach (var table in new[] { "scan_seen", "scan_excluded", "scan_default_excluded", "scan_incomplete_paths", "scan_roots", "scan_runs" })
+                foreach (var table in new[] { "scan_seen", "scan_user_ignored", "scan_excluded", "scan_default_excluded", "scan_incomplete_paths", "scan_roots", "scan_runs" })
                 {
                     using var command = _connection.CreateCommand();
                     command.Transaction = transaction;

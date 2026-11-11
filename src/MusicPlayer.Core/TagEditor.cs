@@ -122,7 +122,15 @@ public sealed class TagEditor(string backupDirectory)
                 if (edit.Genre is not null) tag.Genres = Split(edit.Genre);
                 if (edit.Year.HasValue) tag.Year = edit.Year.Value;
                 if (edit.TrackNumber.HasValue) tag.Track = edit.TrackNumber.Value;
-                if (edit.Lyrics is not null) tag.Lyrics = edit.Lyrics;
+                if (edit.Lyrics is not null)
+                {
+                    tag.Lyrics = string.IsNullOrWhiteSpace(edit.Lyrics) ? null : edit.Lyrics;
+                    if (string.IsNullOrWhiteSpace(edit.Lyrics) && media.GetTag(TagTypes.Id3v2) is TagLib.Id3v2.Tag id3)
+                    {
+                        id3.RemoveFrames("SYLT");
+                        id3.RemoveFrames("USLT");
+                    }
+                }
                 if (edit.ArtworkPath is not null) tag.Pictures = [new Picture(edit.ArtworkPath)];
                 ApplyAdditionalFields(tag, edit.AdditionalFields);
                 ApplyCustomFields(media, path, edit.CustomFields);

@@ -43,7 +43,7 @@
         <button class="icon-btn" id="libraryRefresh" title="Library updated · refresh this view" aria-label="Refresh updated library" data-icon="refresh" hidden></button>
         <div class="scan-widget" id="scanWidget" hidden>
           <button class="icon-btn scan-ring" id="scanToggle" title="Library scan" aria-label="Show library scan details" aria-expanded="false" aria-controls="scanStrip"><svg viewBox="0 0 32 32" aria-hidden="true"><circle class="scan-ring-track" cx="16" cy="16" r="11"/><circle class="scan-ring-progress" cx="16" cy="16" r="11"/></svg></button>
-          <div class="scan-strip" id="scanStrip" role="status" hidden><b id="scanHeading">Scanning library</b><span id="scanText"></span><div class="scan-actions"><button id="scanPause">Pause</button><button id="scanCancel">Cancel</button><button id="scanHide" aria-label="Hide scan details">Hide</button></div></div>
+          <div class="scan-strip" id="scanStrip" role="status" hidden><b id="scanHeading">Scanning library</b><span id="scanText"></span><div class="scan-actions"><button id="scanPause" title="Pause scan">Pause</button><button id="scanCancel" title="Cancel scan">Cancel</button><button id="scanHide" aria-label="Hide scan details" title="Hide scan details">Hide</button></div></div>
         </div>
         <button class="icon-btn panel-toggle" id="panelToggleBtn" title="Show Now Playing panel" aria-label="Show Now Playing panel" data-icon="queue"></button>
         <div class="top-menu-wrap">
@@ -55,14 +55,13 @@
         </div>
       </header>
       <div class="content" id="content" tabindex="-1"><div id="routeView"></div></div>
-      <button class="lyrics-resume-btn" id="resumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button>
     </main>
 
     <aside class="now-panel" id="rightPanel" aria-label="Now Playing">
       <div class="panel-heading"><b>Now playing</b><button class="icon-btn panel-close" id="panelClose" title="Close panel" aria-label="Close panel" data-icon="close"></button></div>
       <div class="panel-scroll" id="panelScroll">
         <div class="panel-current" id="panelCurrent"></div>
-        <div class="panel-tabs"><button class="active" data-panel="queue">Queue</button><button data-panel="info">Track info</button></div>
+        <div class="panel-tabs"><button class="active" data-panel="queue" title="Playback queue">Queue</button><button data-panel="info" title="Track information">Track info</button></div>
         <div class="panel-content" id="panelContent"></div>
       </div>
     </aside>
@@ -85,7 +84,7 @@
   </div>
   <section class="immersive-player" id="immersivePlayer" aria-label="Full-screen player" hidden>
     <div class="immersive-art-backdrop"><img id="immersiveBackdrop" alt=""></div>
-    <div class="immersive-topbar"><span>NOW PLAYING</span><button class="immersive-exit" id="immersiveExit" aria-label="Exit full screen" title="Exit full screen"><span data-icon="minimize"></span><span>Exit full screen</span></button></div>
+    <div class="immersive-topbar"><span id="immersiveTopTitle">NOW PLAYING</span><div style="display:flex;gap:8px;"><button class="immersive-exit" id="immersiveFullscreenToggle" aria-label="Toggle full screen" title="Toggle full screen"><span data-icon="expand"></span></button><button class="immersive-exit" id="immersiveExit" aria-label="Close now playing" title="Close"><span data-icon="close"></span><span>Close</span></button></div></div>
     <div class="immersive-content" id="immersiveContent">
       <div class="immersive-stage" id="immersiveStage">
         <div class="immersive-art-column">
@@ -95,7 +94,7 @@
         <section class="immersive-lyrics" id="immersiveLyricsPanel" aria-label="Lyrics" aria-hidden="true" inert>
           <header><div class="immersive-lyrics-heading">Lyrics <span class="immersive-lyric-source" id="immersiveLyricsSource"></span></div><button class="ctrl immersive-lyrics-close" id="immersiveLyricsClose" aria-label="Hide lyrics" title="Hide lyrics" data-icon="close"></button></header>
           <div class="immersive-lyrics-scroll" id="immersiveLyricsScroll"><div class="lyrics-lines" id="immersiveLyricsLines"></div></div>
-          <button class="lyrics-resume-btn immersive-lyrics-resume" id="immersiveResumeLyricsBtn" hidden aria-label="Jump to current lyrics"><span data-icon="sync"></span><span>Jump to current</span></button>
+          <button class="lyrics-resume-btn immersive-lyrics-resume" id="immersiveResumeLyricsBtn" hidden aria-label="Jump to current lyrics" title="Jump to current lyrics"><span data-icon="sync"></span></button>
         </section>
       </div>
       <div class="immersive-timeline"><div class="immersive-time-labels"><span id="immersiveCurrentTime">0:00</span><span id="immersiveTotalTime">0:00</span></div><input id="immersiveProgress" type="range" min="0" max="1" value="0" aria-label="Track position"></div>
@@ -105,7 +104,7 @@
     <section class="immersive-drawer" id="immersiveDrawer" aria-label="Full-screen controls" hidden><header><h2 id="immersiveDrawerTitle">Queue</h2><button class="icon-btn" id="immersiveDrawerClose" title="Close panel" aria-label="Close panel" data-icon="close"></button></header><div id="immersiveDrawerBody"></div></section>
   </section>
   <div class="context-menu" id="contextMenu" role="menu"></div>
-  <div class="modal-layer" id="modalLayer" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><header><h2 id="modalTitle"></h2><button class="icon-btn" id="modalClose" aria-label="Close" data-icon="close"></button></header><div class="modal-body" id="modalBody"></div><footer id="modalActions"></footer></section></div>
+  <div class="modal-layer" id="modalLayer" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><header><h2 id="modalTitle"></h2><button class="icon-btn" id="modalClose" aria-label="Close" title="Close modal" data-icon="close"></button></header><div class="modal-body" id="modalBody"></div><footer id="modalActions"></footer></section></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="scripts/app.js"></script>
 </body>

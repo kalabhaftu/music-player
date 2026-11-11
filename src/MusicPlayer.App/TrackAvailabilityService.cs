@@ -20,6 +20,8 @@ internal sealed class TrackAvailabilityService(
         var protectedPrefixes = (unavailableRoots ?? Array.Empty<string>())
             .Concat(incompletePaths ?? Array.Empty<string>())
             .Select(TryNormalizePrefix).Where(prefix => prefix is not null).Cast<string>().ToArray();
+        var excludedPrefixes = locations.GetScanExclusions()
+            .Select(TryNormalizePrefix).Where(prefix => prefix is not null).Cast<string>().ToArray();
         var scopes = scanRoots?.Cast<string?>().ToArray() ?? [null];
         foreach (var scope in scopes)
         {
@@ -31,6 +33,11 @@ internal sealed class TrackAvailabilityService(
             var removedFromPage = new List<string>();
             foreach (var path in paths)
             {
+                if (excludedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)))
+                {
+                    removedFromPage.Add(path);
+                    continue;
+                }
                 if (protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path))) { unavailable++; continue; }
                 if (File.Exists(path))
                 {
@@ -66,8 +73,9 @@ internal sealed class TrackAvailabilityService(
           }
         }
         // Include saved references whose index row was pruned during scanning.
-        var orphaned = store.GetReferencedPaths().Where(path => !File.Exists(path) &&
-            !protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path)).ToArray();
+        var orphaned = store.GetReferencedPaths().Where(path =>
+            excludedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) ||
+            (!File.Exists(path) && !protectedPrefixes.Any(prefix => IsAncestorDirectory(prefix, path)) && IsConfirmedMissingFile(path))).ToArray();
         if (orphaned.Length > 0) { store.PurgeDeletedTracks(orphaned); queries.ForgetDeletedPaths(orphaned); removed.AddRange(orphaned); }
         if (removed.Count > 0) store.PruneUnreferencedArtwork(artworkDirectory);
         return new(removed, unavailable, recovered);

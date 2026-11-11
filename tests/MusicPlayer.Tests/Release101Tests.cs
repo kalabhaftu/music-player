@@ -96,7 +96,7 @@ public sealed class Release101Tests : IDisposable
         Assert.Equal(2, store.CountTracks(hideExactDuplicates: true));
         store.PrepareExactFingerprints();
         Assert.Equal(1, store.CountTracks(hideExactDuplicates: true));
-        File.WriteAllBytes(b.Path, [5, 6, 7, 8]); store.UpsertTrack(b with { ModifiedUtc = File.GetLastWriteTimeUtc(b.Path) });
+        File.WriteAllBytes(b.Path, [5, 6, 7, 8, 9]); store.UpsertTrack(b with { FileSize = 5, ModifiedUtc = DateTime.UtcNow.AddSeconds(2) });
         Assert.Equal(2, store.CountTracks(hideExactDuplicates: true));
     }
 
@@ -145,7 +145,7 @@ public sealed class Release101Tests : IDisposable
     [Fact]
     public void Version_and_window_title_are_local_and_meaningful()
     {
-        Assert.Equal("1.0.3", ApplicationVersion.Resolve(Assembly.GetExecutingAssembly()));
+        Assert.Equal("1.0.4", ApplicationVersion.Resolve(Assembly.GetExecutingAssembly()));
         Assert.Equal("Music Player", NativeWindowTitle.ForTrack(null));
         Assert.Equal("Song — Artist | Music Player", NativeWindowTitle.ForTrack(Track("Song")));
     }

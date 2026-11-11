@@ -321,6 +321,42 @@ public sealed partial class MainWindow : Window
 
     private void PublishQueueStateIfChanged() => PublishQueueState();
 
+    private List<string> FilterAvailablePaths(IEnumerable<string> paths)
+    {
+        var list = new List<string>();
+        var missing = new List<string>();
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            if (File.Exists(path))
+            {
+                list.Add(path);
+            }
+            else
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(path);
+                    if ((!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) ||
+                        (Path.GetPathRoot(path) is { } root && Directory.Exists(root)))
+                    {
+                        missing.Add(path);
+                    }
+                }
+                catch {}
+            }
+        }
+        if (missing.Count > 0)
+        {
+            Task.Run(() =>
+            {
+                _store.PurgeDeletedTracks(missing);
+                _libraryQueries.ForgetDeletedPaths(missing);
+            });
+        }
+        return list;
+    }
+
     private IReadOnlyList<string> GetCurrentQueuePaths()
     {
         return _libraryQueries.CurrentTrackPaths();
@@ -369,6 +405,21 @@ public sealed partial class MainWindow : Window
         AdvanceQueue(false);
     }
 
+
+    private bool IsAutoplaySimilarEnabled() => _store.GetSetting("autoplay-similar") != "false";
+
+    private bool TryAutoplaySimilar()
+    {
+        if (_playback.CurrentTrack is not { } currentTrack) return false;
+        var recommendations = FilterAvailablePaths(_store.GetSmartAutoplayTracks(currentTrack.Path, currentTrack.Genre, currentTrack.Artist, _playbackQueue.Entries, 10));
+        if (recommendations.Count == 0) return false;
+
+        _playbackQueue.Append(recommendations, currentTrack.Path);
+        PublishQueueState(force: true);
+        AdvanceQueue(true);
+        return true;
+    }
+
     private void AdvanceQueue(bool automatic)
     {
         var queuedCount = _playbackQueue.Entries.Count;
@@ -378,6 +429,10 @@ public sealed partial class MainWindow : Window
         var result = _playbackCommands.Advance(automatic, _crossfadeSeconds * 1000,
             SameTrack(_crossfadeFailureSource, _playback.CurrentTrack?.Path), crossfadeSourceIndex);
         LocalAppLog.Shared.Info("playback-queue", $"Advance requested: automatic={automatic}, queuedTracks={queuedCount}, currentIndex={currentIndex}, nextIndex={nextIndex}, repeatMode={_repeatMode}, result={result.Kind}.");
+        if (result.Kind == PlaybackCommandKind.StopPlayback && (automatic || nextIndex < 0) && IsAutoplaySimilarEnabled())
+        {
+            if (TryAutoplaySimilar()) return;
+        }
         ApplyPlaybackCommandResult(result);
     }
 
@@ -504,6 +559,20 @@ public sealed partial class MainWindow : Window
         if (_playback.CurrentTrack is { } track && _playbackListening.Observe(true, _playback.IsPlaying, position, duration))
             _ = RecordPlayedAsync(track.Path);
         var automaticNext = _playbackQueue.NextIndex(automatic: true);
+        if (automaticNext < 0 && _playback.IsPlaying && _repeatMode != "Track" && _repeatA is null && IsAutoplaySimilarEnabled() &&
+            duration > 0 && duration - position <= Math.Max(15000, (_crossfadeSeconds * 1000) + 3000))
+        {
+            if (_playback.CurrentTrack is { } current)
+            {
+                var candidates = _store.GetSmartAutoplayTracks(current.Path, current.Genre, current.Artist, _playbackQueue.Entries, 10);
+                if (candidates.Count > 0)
+                {
+                    _playbackQueue.Append(candidates, current.Path);
+                    PublishQueueState(force: true);
+                    automaticNext = _playbackQueue.NextIndex(automatic: true);
+                }
+            }
+        }
         if (_playback.IsPlaying && _repeatMode != "Track" && _repeatA is null && !_crossfadeInProgress && !SameTrack(_crossfadeFailureSource, _playback.CurrentTrack?.Path) && automaticNext >= 0 &&
             _crossfadeSeconds > 0 && duration > 0 && duration - position <= _crossfadeSeconds * 1000 + 1500)
             StartCrossfade(automaticNext, _crossfadeSeconds * 1000);
@@ -694,7 +763,15 @@ public sealed partial class MainWindow : Window
     private void RestoreSession(bool loadMedia = true)
     {
         var session = _store.LoadSession(); if (session is null) return;
-        var current = session.TrackPath is { } savedTrackPath ? _store.GetTrack(savedTrackPath) : null;
+        var validQueue = FilterAvailablePaths(session.Queue);
+        if (validQueue.Count != session.Queue.Count)
+        {
+            var validIndex = session.QueueIndex >= 0 && session.QueueIndex < session.Queue.Count
+                ? validQueue.IndexOf(session.Queue[session.QueueIndex])
+                : -1;
+            session = session with { Queue = validQueue.ToList(), QueueIndex = validIndex };
+        }
+        var current = session.TrackPath is { } savedTrackPath && File.Exists(savedTrackPath) ? _store.GetTrack(savedTrackPath) : null;
         _playbackQueue.Restore(session, current?.Path);
         if (current is not null && loadMedia)
         {

@@ -38,6 +38,7 @@ public sealed partial class MainWindow
                 HandleWebUiSettingsCommandAsync,
                 HandleWebUiUtilityCommandAsync);
             _webBridge = new(WebUi, commandRouter);
+            _webBridge.FullscreenRequested = SetFullscreen;
             await _webBridge.InitializeAsync(Path.Combine(_appData, "Artwork"),
                 Path.Combine(AppContext.BaseDirectory, "Assets"),
                 Path.Combine(_appData, "WebView2"));

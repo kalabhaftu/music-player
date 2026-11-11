@@ -12,6 +12,9 @@ public static partial class Lyrics
     [GeneratedRegex(@"^\[([a-z][a-z0-9_-]*):([^\]]*)\]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MetadataTag();
 
+    [GeneratedRegex(@"^\[\s*(?:verse|chorus|bridge|intro|outro|hook|pre-chorus|post-chorus|interlude|solo|breakdown|drop|refrain|tag|part)\b[^\]]*\]\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SectionTag();
+
     public static string DisplayAt(LyricsDocument document, string plainText, TimeSpan position)
         => document.Lines.Count == 0 ? plainText : document.At(position);
 
@@ -25,6 +28,7 @@ public static partial class Lyrics
         foreach (var raw in NormalizeNewlines(text).Split('\n'))
         {
             var trimmed = raw.Trim();
+            if (SectionTag().IsMatch(trimmed)) continue;
             var metadataMatch = MetadataTag().Match(trimmed);
             if (metadataMatch.Success)
             {
@@ -61,7 +65,7 @@ public static partial class Lyrics
 
                 var textStart = timestamps[end].Index + timestamps[end].Length;
                 var textEnd = end + 1 < timestamps.Count ? timestamps[end + 1].Index : raw.Length;
-                var lyric = raw[textStart..textEnd].Trim();
+                var lyric = SectionTag().Replace(raw[textStart..textEnd].Trim(), string.Empty).Trim();
                 if (lyric.Length > 0)
                 {
                     for (var index = start; index <= end; index++)
@@ -86,7 +90,7 @@ public static partial class Lyrics
         {
             var trimmed = raw.Trim();
             if (MetadataTag().IsMatch(trimmed)) continue;
-            var lyric = TimeStamp().Replace(raw, string.Empty).Trim();
+            var lyric = SectionTag().Replace(TimeStamp().Replace(raw, string.Empty).Trim(), string.Empty).Trim();
             if (lyric.Length > 0) output.Add(lyric);
         }
         return string.Join(Environment.NewLine, output);

@@ -51,6 +51,33 @@ public sealed partial class MainWindow
             case "getHome": return await Task.Run(() => _libraryQueries.HomeData(Int(payload, "pageSize", 8)));
             case "beginSearch": _libraryQueries.BeginSearch(Long(payload, "requestId")); return null;
             case "search": return await _libraryQueries.SearchAsync(payload);
+            case "saveRecentSearch":
+            {
+                var term = String(payload, "term");
+                if (!string.IsNullOrWhiteSpace(term) && term.Length >= 2)
+                {
+                    try
+                    {
+                        var raw = _store.GetSetting("recent-searches");
+                        var list = string.IsNullOrWhiteSpace(raw) ? new List<string>() : (JsonSerializer.Deserialize<List<string>>(raw) ?? new List<string>());
+                        list.RemoveAll(x => string.Equals(x, term, StringComparison.OrdinalIgnoreCase));
+                        list.Insert(0, term);
+                        if (list.Count > 10) list = list.Take(10).ToList();
+                        _store.SetSetting("recent-searches", JsonSerializer.Serialize(list));
+                    }
+                    catch {}
+                }
+                return null;
+            }
+            case "getRecentSearches":
+            {
+                try
+                {
+                    var raw = _store.GetSetting("recent-searches");
+                    return string.IsNullOrWhiteSpace(raw) ? Array.Empty<string>() : (JsonSerializer.Deserialize<List<string>>(raw) ?? new List<string>());
+                }
+                catch { return Array.Empty<string>(); }
+            }
             case "getTracks":
             {
                 // Persist view state on the UI dispatcher, then perform

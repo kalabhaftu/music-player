@@ -13,7 +13,7 @@ internal sealed class TrayIconService : IDisposable
     private const int SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpShowWindow = 0x0040;
     private const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NimSetVersion = 4, NifMessage = 1, NifIcon = 2, NifTip = 4;
     private const uint TpmRightButton = 0x0002, TpmNonotify = 0x0080, TpmReturnCommand = 0x0100;
-    private const uint MfSeparator = 0x0800;
+    private const uint MfSeparator = 0x0800, MfDisabled = 0x0001;
     private const uint OpenCommand = 1, PreviousCommand = 2, PlayPauseCommand = 3, NextCommand = 4, QuitCommand = 5;
     private const uint CallbackMessage = WmApp + 41;
     private static readonly uint TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
@@ -24,14 +24,16 @@ internal sealed class TrayIconService : IDisposable
     private readonly Action _previous;
     private readonly Action _next;
     private readonly Action _quit;
+    private readonly Func<(string Title, string Artist, bool Playing)>? _status;
     private readonly SubclassProcedure _procedure;
     private bool _disposed;
     private bool _registered;
     private bool _systemSessionEnding;
 
-    public TrayIconService(IntPtr window, string iconPath, Action restore, Action playPause, Action previous, Action next, Action quit)
+    public TrayIconService(IntPtr window, string iconPath, Action restore, Action playPause, Action previous, Action next, Action quit,
+        Func<(string Title, string Artist, bool Playing)>? status = null)
     {
-        _window = window; _restore = restore; _playPause = playPause; _previous = previous; _next = next; _quit = quit; _procedure = WindowProcedure;
+        _window = window; _restore = restore; _playPause = playPause; _previous = previous; _next = next; _quit = quit; _status = status; _procedure = WindowProcedure;
         _icon = LoadSmallIcon(iconPath);
         if (_icon == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not load the Music Player tray icon.");
         if (!SetWindowSubclass(_window, _procedure, (UIntPtr)0xB4A7, UIntPtr.Zero))
@@ -43,6 +45,7 @@ internal sealed class TrayIconService : IDisposable
             RemoveWindowSubclass(_window, _procedure, (UIntPtr)0xB4A7); DestroyIcon(_icon);
             throw new Win32Exception(error, $"Windows could not register the tray icon (native error {error}, data size {data.cbSize}).");
         }
+        try { SetPreferredAppMode(PreferredAppMode.AllowDark); AllowDarkModeForWindow(_window, true); FlushMenuThemes(); } catch { }
         _registered = true;
         data.uTimeoutOrVersion = 4;
         Shell_NotifyIcon(NimSetVersion, ref data);
@@ -133,18 +136,27 @@ internal sealed class TrayIconService : IDisposable
         if (menu == IntPtr.Zero) { _restore(); return; }
         try
         {
-            if (!AppendMenu(menu, 0, OpenCommand, "Open Music Player") ||
+            try { SetPreferredAppMode(PreferredAppMode.AllowDark); AllowDarkModeForWindow(_window, true); FlushMenuThemes(); } catch { }
+            var status = _status?.Invoke() ?? default;
+            var title = string.IsNullOrWhiteSpace(status.Title) ? "Music Player" : status.Title.Trim();
+            var artist = string.IsNullOrWhiteSpace(status.Artist) ? string.Empty : status.Artist.Trim();
+            if (title.Length > 64) title = title[..61] + "…";
+            if (artist.Length > 64) artist = artist[..61] + "…";
+            var header = artist.Length > 0 ? $"{title}  ·  {artist}" : title;
+            if (!AppendMenu(menu, MfDisabled, 0, header) ||
                 !AppendMenu(menu, MfSeparator, 0, string.Empty) ||
+                !AppendMenu(menu, 0, OpenCommand, "Open Music Player") ||
                 !AppendMenu(menu, 0, PreviousCommand, "Previous") ||
-                !AppendMenu(menu, 0, PlayPauseCommand, "Play / Pause") ||
+                !AppendMenu(menu, 0, PlayPauseCommand, status.Playing ? "Pause" : "Play") ||
                 !AppendMenu(menu, 0, NextCommand, "Next") ||
                 !AppendMenu(menu, MfSeparator, 0, string.Empty) ||
-                !AppendMenu(menu, 0, QuitCommand, "Quit"))
+                !AppendMenu(menu, 0, QuitCommand, "Quit Music Player"))
             {
                 _restore();
                 return;
             }
 
+            SetMenuDefaultItem(menu, OpenCommand, 0);
             if (!GetCursorPos(out var point)) { _restore(); return; }
             SetForegroundWindow(_window);
             var command = TrackPopupMenuEx(menu, TpmRightButton | TpmNonotify | TpmReturnCommand,
@@ -210,6 +222,7 @@ internal sealed class TrayIconService : IDisposable
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "AppendMenuW", SetLastError = true)] private static extern bool AppendMenu(IntPtr menu, uint flags, uint itemId, string itemText);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetMenuDefaultItem(IntPtr menu, uint item, uint byPosition);
     [DllImport("user32.dll")] private static extern uint TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr owner, IntPtr parameters);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyMenu(IntPtr menu);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool GetCursorPos(out Point point);
@@ -219,4 +232,8 @@ internal sealed class TrayIconService : IDisposable
     [DllImport("comctl32.dll", SetLastError = true)] private static extern bool SetWindowSubclass(IntPtr window, SubclassProcedure procedure, UIntPtr subclassId, UIntPtr referenceData);
     [DllImport("comctl32.dll", SetLastError = true)] private static extern bool RemoveWindowSubclass(IntPtr window, SubclassProcedure procedure, UIntPtr subclassId);
     [DllImport("comctl32.dll")] private static extern IntPtr DefSubclassProc(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
+    private enum PreferredAppMode { Default = 0, AllowDark = 1, ForceDark = 2, ForceLight = 3 }
+    [DllImport("uxtheme.dll", EntryPoint = "#135", SetLastError = true)] private static extern int SetPreferredAppMode(PreferredAppMode appMode);
+    [DllImport("uxtheme.dll", EntryPoint = "#136", SetLastError = true)] private static extern void FlushMenuThemes();
+    [DllImport("uxtheme.dll", EntryPoint = "#133", SetLastError = true)] private static extern bool AllowDarkModeForWindow(IntPtr hWnd, bool allow);
 }

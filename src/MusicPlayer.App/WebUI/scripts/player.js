@@ -32,6 +32,7 @@ function updatePlayer() {
     }
     $("#immersiveTitle").textContent=t.title||"Unknown track";
     $("#immersiveArtist").textContent=t.artist||"Unknown artist";
+    const topTitle=$("#immersiveTopTitle"); if(topTitle) topTitle.textContent=`${t.title||"Unknown track"} — ${t.artist||"Unknown artist"}`;
     const backdrop=$("#immersiveBackdrop");backdrop.hidden=!t.artworkUrl;if(t.artworkUrl){if(backdrop.getAttribute("src")!==t.artworkUrl)backdrop.src=t.artworkUrl;}else backdrop.removeAttribute("src");
     const immersiveArt=$("#immersiveArtwork");if(immersiveArt.dataset.trackId!==t.id||immersiveArt.dataset.artworkUrl!==(t.artworkUrl||"")){immersiveArt.innerHTML=cover(t,"immersive-cover");immersiveArt.dataset.trackId=t.id;immersiveArt.dataset.artworkUrl=t.artworkUrl||"";const image=immersiveArt.querySelector("img");if(image)image.loading="eager";}
   } else {
@@ -47,7 +48,22 @@ function updatePlayer() {
   $("#playBtn").dataset.icon=state.playing?"pause":"play"; $("#playBtn").title=state.playing?"Pause":"Play"; $("#playBtn").setAttribute("aria-label",state.playing?"Pause":"Play"); $("#playBtn").setAttribute("aria-pressed",String(state.playing)); $("#playBtn").innerHTML=svg(state.playing?"pause":"play");
   const shuffleBtn=$("#shuffleBtn"); shuffleBtn.classList.toggle("active",state.shuffle); shuffleBtn.title=state.shuffle?"Shuffle on":"Shuffle off"; shuffleBtn.setAttribute("aria-label",shuffleBtn.title); shuffleBtn.setAttribute("aria-pressed",String(state.shuffle));
   const repeatBtn=$("#repeatBtn"); const repeatLabel=state.repeat==="Queue"?"Repeat all":state.repeat==="Track"?"Repeat one":"Repeat off"; repeatBtn.classList.toggle("active",state.repeat!=="Off"); repeatBtn.title=repeatLabel; repeatBtn.setAttribute("aria-label",repeatLabel); repeatBtn.setAttribute("aria-pressed",String(state.repeat!=="Off")); repeatBtn.innerHTML=`${svg("repeat")}${state.repeat==="Track"?'<span class="repeat-one" aria-hidden="true">1</span>':""}`;
-  const abBtn=$("#abBtn"); abBtn.classList.toggle("active",state.repeatA!==null); abBtn.title=state.repeatB!==null?"A–B repeat on":state.repeatA!==null?"Mark point B":"A–B repeat off"; abBtn.setAttribute("aria-label",abBtn.title); abBtn.setAttribute("aria-pressed",String(state.repeatA!==null));
+  const abBtn=$("#abBtn");
+  if(abBtn){
+    if(state.repeatA!==null&&state.repeatB!==null){
+      abBtn.innerHTML='<span class="ab-a ab-active">A</span><span class="ab-sep ab-active">–</span><span class="ab-b ab-active">B</span>';
+      abBtn.classList.add("active");
+    }else if(state.repeatA!==null){
+      abBtn.innerHTML='<span class="ab-a ab-active">A</span><span class="ab-sep">–</span><span class="ab-b">B</span>';
+      abBtn.classList.remove("active");
+    }else{
+      abBtn.innerHTML='<span class="ab-a">A</span><span class="ab-sep">–</span><span class="ab-b">B</span>';
+      abBtn.classList.remove("active");
+    }
+    abBtn.title=state.repeatB!==null?"A–B repeat on":state.repeatA!==null?"Mark point B":"A–B repeat off";
+    abBtn.setAttribute("aria-label",abBtn.title);
+    abBtn.setAttribute("aria-pressed",String(state.repeatA!==null));
+  }
   const favoriteLabel=t?.favorite?"Remove from favorites":"Add to favorites";
   const heartBtn=$("#heartBtn"); heartBtn.classList.toggle("on",!!t?.favorite); heartBtn.title=favoriteLabel; heartBtn.setAttribute("aria-label",favoriteLabel); heartBtn.setAttribute("aria-pressed",String(!!t?.favorite)); heartBtn.innerHTML=svg("heart");
   const fullPlay=$("#immersivePlay");fullPlay.innerHTML=svg(state.playing?"pause":"play");fullPlay.title=state.playing?"Pause":"Play";fullPlay.setAttribute("aria-label",fullPlay.title);
@@ -96,7 +112,8 @@ function scrollToActiveLyric(element, scroller, immediate = false) {
   if (!element || !scroller) return;
   const activeElement = element.querySelector(".active");
   if (!activeElement) return;
-  const targetTop = activeElement.offsetTop - (scroller.clientHeight - activeElement.offsetHeight) / 2;
+  const relativeTop = activeElement.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+  const targetTop = relativeTop - (scroller.clientHeight - activeElement.offsetHeight) / 2;
   scroller.scrollTo({
     top: Math.max(0, targetTop),
     behavior: !immediate && (state.settings.motionStyle === "Off" || matchMedia("(prefers-reduced-motion: reduce)").matches) ? "auto" : "smooth"
@@ -115,7 +132,7 @@ function initLyricsScrollListeners() {
   const content = $("#content");
   if (content && typeof content.addEventListener === "function") {
     const onUserScroll = () => {
-      if (state.view === "Lyrics" && state.lyricLines?.length > 0) {
+      if (state.view === "Lyrics" && (state.lyricLines?.length > 0 || state.lyricText)) {
         userPausedLyricsSync = true;
         const btn = $("#resumeLyricsBtn");
         if (btn) btn.hidden = false;
@@ -138,14 +155,15 @@ function initLyricsScrollListeners() {
     immersive.addEventListener("touchmove", onUserImmersiveScroll, { passive: true });
   }
 
-  const resumeBtn = $("#resumeLyricsBtn");
-  if (resumeBtn && typeof resumeBtn.addEventListener === "function") {
-    resumeBtn.addEventListener("click", () => {
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("#resumeLyricsBtn");
+    if (btn) {
       userPausedLyricsSync = false;
-      resumeBtn.hidden = true;
-      scrollToActiveLyric($("#lyricsLines"), $("#content"), true);
-    });
-  }
+      btn.hidden = true;
+      const target = $("#lyricsLines") || $(".lyrics-plain");
+      if (target) scrollToActiveLyric(target, $("#content"), true);
+    }
+  });
 
   const immersiveResumeBtn = $("#immersiveResumeLyricsBtn");
   if (immersiveResumeBtn && typeof immersiveResumeBtn.addEventListener === "function") {
@@ -158,7 +176,7 @@ function initLyricsScrollListeners() {
 }
 
 function updateActiveLyric(){
-  const trackId=state.lyricsTrack?.id;
+  const trackId=state.lyricsTrack?.id||state.trackId||state.track?.id;
   if (trackId !== lastLyricsTrackId) {
     lastLyricsTrackId = trackId;
     resetLyricsSync();
@@ -166,14 +184,32 @@ function updateActiveLyric(){
   const canFollow=state.lyricLines.length>0&&!!trackId&&trackId===state.track?.id;
   let active=-1;
   if(canFollow)active=activeLyricIndex(state.lyricLines,currentPosition());
-  const canFollowMain=canFollow&&state.view==="Lyrics";
-  const canFollowImmersive=canFollow&&state.immersiveLyricsOpen&&!$("#immersivePlayer").hidden;
+  const canFollowUntimed = !state.lyricLines.length && !!state.lyricText && !!trackId && trackId === state.track?.id && state.duration > 0;
+  const canFollowMain = (canFollow || canFollowUntimed) && state.view === "Lyrics";
+  const canFollowImmersive = (canFollow || canFollowUntimed) && state.immersiveLyricsOpen && !$("#immersivePlayer").hidden;
   const roots=[
-    {element:$("#lyricsLines"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn")},
-    {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn")}
+    {element:$("#lyricsLines")||$(".lyrics-plain"),enabled:canFollowMain,scroller:$("#content"),userPaused:userPausedLyricsSync,btn:$("#resumeLyricsBtn"),isUntimed:canFollowUntimed},
+    {element:$("#immersiveLyricsLines"),enabled:canFollowImmersive,scroller:$("#immersiveLyricsScroll"),userPaused:userPausedImmersiveSync,btn:$("#immersiveResumeLyricsBtn"),isUntimed:canFollowUntimed}
   ];
-  for(const {element,enabled,scroller,userPaused,btn} of roots){
+  for(const {element,enabled,scroller,userPaused,btn,isUntimed} of roots){
     if(!element)continue;
+    if(isUntimed && enabled && scroller) {
+      if(userPaused && btn) btn.hidden = false;
+      else if(!userPaused) {
+        if(btn) btn.hidden = true;
+        const progress = Math.max(0, Math.min(1, currentPosition() / (state.duration || 1)));
+        const effective = Math.max(0, Math.min(1, (progress - 0.04) / 0.88));
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+        if(maxScroll > 0) {
+          const targetTop = effective * maxScroll;
+          const diff = targetTop - scroller.scrollTop;
+          if (Math.abs(diff) > 0.5) {
+            scroller.scrollTop += diff * 0.12;
+          }
+        }
+      }
+      continue;
+    }
     const key=`${trackId||""}:${active}:${state.lyricsRevision||0}:${enabled}:${scroller?.clientWidth}:${scroller?.clientHeight}:${userPaused}`;
     if(element.dataset.activeLyricKey===key)continue;
     element.dataset.activeLyricKey=key;
@@ -195,13 +231,15 @@ function updateActiveLyric(){
       if(btn) btn.hidden = true;
     }
     const activeElement=element.querySelector(`[data-lyric-index="${active}"]`);if(!activeElement)continue;
-    const targetTop=activeElement.offsetTop-(scroller.clientHeight-activeElement.offsetHeight)/2;
+    const relativeTop=activeElement.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop;
+    const targetTop=relativeTop-(scroller.clientHeight-activeElement.offsetHeight)/2;
     scroller.scrollTo({top:Math.max(0,targetTop),behavior:state.settings.motionStyle==="Off"||matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
   }
 }
 
 function updatePanel() {
-  const key=JSON.stringify([state.panel,state.track,state.trackDetails,state.queueIndex,state.queueOffset,state.queue]);
+  const panelScroll=$("#panelScroll");
+  const key=JSON.stringify([state.panel,state.track,state.trackDetails,state.queueIndex,state.queueOffset,state.queue,panelScroll?.clientHeight||0]);
   if(key===panelRenderKey)return;
   panelRenderKey=key;
   const current=state.track; const currentBox=$("#panelCurrent"); const content=$("#panelContent");
@@ -219,10 +257,14 @@ function updatePanel() {
   const qualityRow=quality.length?`<div class="info-row"><span>Audio quality</span><b title="${esc(qualityText)}">${esc(qualityText)}</b></div>`:"";
   if(state.panel==="queue") {
     const start=state.queueIndex-(state.queueOffset||0);
-    const upcoming=state.queue.slice(start+1,start+4);
-    patchMarkup(content,`<div class="panel-meta">${current?`<div class="info-row"><span>Album</span><b title="${esc(current.album||"—")}">${esc(current.album||"—")}</b></div><div class="info-row"><span>Format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div>`:`<div class="empty-state">Track information appears here.</div>`}</div><div class="panel-label">Next in queue</div>${upcoming.length?upcoming.map((t,i)=>`<div class="queue-row ${t.fileUnavailable?"unavailable-track":""}" data-action="play-queue" data-index="${state.queueOffset+start+i+1}" data-context="track" data-context-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Play ${esc(t.title)}">${cover(t,"queue-thumb")}<div class="queue-copy"><b>${esc(t.title)}</b><span>${esc(t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist)}</span></div><span class="row-tools"><button class="ctrl" data-action="queue-remove" data-index="${state.queueOffset+start+i+1}" aria-label="Remove from queue">×</button></span></div>`).join(""):`<div class="empty-state">No upcoming tracks.</div>`}`);
+    const available=Math.max(0,(panelScroll?.clientHeight||0)-(currentBox?.offsetHeight||0)-96);
+    const slots=Math.max(4,Math.floor(available/52));
+    const remaining=Math.max(0,(state.queueTotal||state.queue.length)-(state.queueOffset+start+1));
+    const upcoming=state.queue.slice(start+1,start+1+slots);
+    const more=Math.max(0,remaining-upcoming.length);
+    patchMarkup(content,`<div class="panel-label"><span>Next in queue (${remaining})</span>${remaining?`<button class="action-subtle" data-action="clear-queue" title="Clear upcoming tracks">Clear</button>`:""}</div>${upcoming.length?upcoming.map((t,i)=>`<div class="queue-row ${t.fileUnavailable?"unavailable-track":""}" data-action="play-queue" data-index="${state.queueOffset+start+i+1}" data-context="track" data-context-id="${esc(t.id)}" role="button" tabindex="0" aria-label="Play ${esc(t.title)}">${cover(t,"queue-thumb")}<div class="queue-copy"><b>${esc(t.title)}</b><span>${esc(t.fileUnavailable?(t.artist==="Unavailable"?"File unavailable":`${t.artist} · File unavailable`):t.artist)}</span></div><span class="row-tools"><button class="ctrl" data-action="queue-remove" data-index="${state.queueOffset+start+i+1}" aria-label="Remove from queue">×</button></span></div>`).join("")+(more?`<button class="action-subtle queue-more" data-view="Queue">${more.toLocaleString()} more in Queue</button>`:""):`<div class="empty-state">No upcoming tracks.</div>`}`);
   }
-  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span><b>${esc(current.album||"—")}</b></div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b>${esc(current.format||"—")}</b></div>${qualityRow}</div><div class="toolbar"><button class="action" data-action="details" data-id="${esc(current.id)}">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
+  else patchMarkup(content,current?`<div class="info-block"><h3>Track information</h3><div class="info-row"><span>Album</span>${current.album ? `<b class="clickable-link" data-open-type="album" data-open-name="${esc(current.album)}" title="Go to album ${esc(current.album)}" role="button" tabindex="0">${esc(current.album)}</b>` : `<b>—</b>`}</div><div class="info-row"><span>Album artist</span><b>${esc(current.albumArtist||current.artist||"—")}</b></div><div class="info-row"><span>Year · Genre</span><b>${esc([current.year,current.genre].filter(Boolean).join(" · ")||"—")}</b></div><div class="info-row"><span>Audio format</span><b title="${esc(current.format||"—")}">${esc(current.format||"—")}</b></div>${current.fileUnavailable?`<div class="info-row"><span>Status</span><b>File unavailable</b></div>`:""}${qualityRow}<div class="info-row"><span>Location</span><b class="location" data-action="copy-location" data-id="${esc(current.id)}" title="${esc(current.path||"")}" role="button" tabindex="0" aria-label="Copy full file path">${esc(current.path||"—")}</b></div></div><div class="toolbar">${current.album ? `<button class="action" data-action="go-to-album" data-album="${esc(current.album)}" title="Open this track's album">Go to album</button>` : `<button class="action" data-action="go-to-folder" data-path="${esc(current.path)}" title="Open this track's folder">Go to folder</button>`}<button class="action" data-action="details" data-id="${esc(current.id)}" title="Track details">Track details</button><button class="action" data-action="show-location" data-id="${esc(current.id)}">Show in File Explorer</button></div>`:`<div class="empty-state">Track information appears here.</div>`);
   $$(".panel-tabs [data-panel]").forEach(b=>b.classList.toggle("active",b.dataset.panel===state.panel));
 }
 
@@ -278,6 +320,8 @@ async function toggleMute(){if(state.muted){await setVolume(state.lastVolume||75
     else if(!active&&progressTimer!==null){clearInterval(progressTimer);progressTimer=null;}
   }
   document.addEventListener("visibilitychange",()=>{syncProgressTimer();if(!document.hidden)void refreshCurrent();});
+  if(typeof window!=="undefined")window.addEventListener("resize",()=>{panelRenderKey="";updatePanel();});
+  $("#panelToggleBtn")?.addEventListener("click",()=>{panelRenderKey="";setTimeout(updatePanel,0);});
   initLyricsScrollListeners();
   return {updatePlayer,updateActiveLyric,updatePanel,loadTrackDetails,refreshCurrent,setVolume,toggleMute,resetLyricsSync};
 }
