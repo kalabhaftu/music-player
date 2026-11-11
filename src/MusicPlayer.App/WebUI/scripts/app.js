@@ -914,7 +914,7 @@ $("#immersiveDrawerClose").addEventListener("click",()=>closeImmersiveDrawer());
 function revealImmersiveExit(){const layer=$("#immersivePlayer");layer.classList.add("controls-visible");clearTimeout(immersiveExitTimer);immersiveExitTimer=setTimeout(()=>layer.classList.remove("controls-visible"),2400);}
 $("#playBtn").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();}); $("#prevBtn").addEventListener("click",async()=>{await call("previous");await refreshCurrent();}); $("#nextBtn").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
 $("#nowCover")?.addEventListener("click",()=>setImmersiveMode(true,false));
-$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,true));
+$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,false));
 $("#immersiveExit").addEventListener("click",()=>setImmersiveMode(false));
 $("#immersiveFullscreenToggle")?.addEventListener("click",()=>setImmersiveMode(true,!immersiveIsFullscreen));
 $("#immersivePlayer").addEventListener("pointermove",revealImmersiveExit);

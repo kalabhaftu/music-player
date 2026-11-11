@@ -77,7 +77,7 @@ public sealed partial class MainWindow : Window
             var titleBar = appWindow.TitleBar;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             if (!AppWindowTitleBar.IsCustomizationSupported()) return;
-            if (_immersiveMode || _isFullscreen) return;
+            if (_isFullscreen) return;
             var artworkSurface = _store.GetSetting("accent-mode") == "Artwork" && _webArtworkTitleBarColor is { };
             var dark = artworkSurface || ShellRoot.RequestedTheme == ElementTheme.Dark ||
                 (ShellRoot.RequestedTheme == ElementTheme.Default && ShellRoot.ActualTheme == ElementTheme.Dark);
@@ -444,14 +444,15 @@ public sealed partial class MainWindow : Window
                     }
                     if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
                     {
-                        presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
+                        presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: true);
                     }
                     if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
                     {
                         var titleBar = appWindow.TitleBar;
-                        titleBar.ExtendsContentIntoTitleBar = true;
-                        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
+                        titleBar.ExtendsContentIntoTitleBar = false;
+                        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
                     }
+                    ApplyNativeWindowChrome();
                 }
             }
             else
