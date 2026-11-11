@@ -51,13 +51,13 @@ function updatePlayer() {
   const abBtn=$("#abBtn");
   if(abBtn){
     if(state.repeatA!==null&&state.repeatB!==null){
-      abBtn.innerHTML='<span class="ab-active">A–B</span>';
+      abBtn.innerHTML='<span class="ab-a ab-active">A</span><span class="ab-sep ab-active">–</span><span class="ab-b ab-active">B</span>';
       abBtn.classList.add("active");
     }else if(state.repeatA!==null){
-      abBtn.innerHTML='<span class="ab-active">A</span>–B';
-      abBtn.classList.add("active");
+      abBtn.innerHTML='<span class="ab-a ab-active">A</span><span class="ab-sep">–</span><span class="ab-b">B</span>';
+      abBtn.classList.remove("active");
     }else{
-      abBtn.innerHTML='A–B';
+      abBtn.innerHTML='<span class="ab-a">A</span><span class="ab-sep">–</span><span class="ab-b">B</span>';
       abBtn.classList.remove("active");
     }
     abBtn.title=state.repeatB!==null?"A–B repeat on":state.repeatA!==null?"Mark point B":"A–B repeat off";

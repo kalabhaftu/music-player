@@ -414,13 +414,16 @@ async function action(name,el) {
       break;
     }
     case "clear-recent-searches": {
+      document.querySelector(".recent-searches")?.remove();
       try { localStorage.removeItem("musicplayer_recent_searches"); } catch {}
       invalidateCache();
-      await renderView();
       break;
     }
     case "remove-recent-search": {
       const term = el?.dataset?.search || "";
+      el?.closest(".chip-wrap")?.remove();
+      const chips = document.querySelector(".recent-chips");
+      if (!chips || !chips.children.length) document.querySelector(".recent-searches")?.remove();
       if (term) {
         try {
           const existing = JSON.parse(localStorage.getItem("musicplayer_recent_searches") || "[]");
@@ -428,7 +431,6 @@ async function action(name,el) {
           localStorage.setItem("musicplayer_recent_searches", JSON.stringify(filtered));
         } catch {}
         invalidateCache();
-        await renderView();
       }
       break;
     }
@@ -762,7 +764,7 @@ $("#sidebarToggleBtn").addEventListener("click",async()=>{
 $("#topMenu").addEventListener("click",()=>{$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");});
 document.addEventListener("click",e=>{if(!e.target.closest(".top-menu-wrap")){$("#topMenu").hidden=true;$("#topMenuToggle").setAttribute("aria-expanded","false");}});
 let immersiveIsFullscreen = false;
-async function setImmersiveMode(enabled, fullscreen = false){
+async function setImmersiveMode(enabled, fullscreen = true){
   const layer=$("#immersivePlayer");
   if(enabled&&!state.track){toast("Choose a track before opening the now playing player.");return;}
   if(!enabled)await closeImmersiveDrawer();
@@ -819,8 +821,8 @@ async function openImmersiveDrawer(view){
 $("#immersiveDrawerClose").addEventListener("click",()=>closeImmersiveDrawer());
 function revealImmersiveExit(){const layer=$("#immersivePlayer");layer.classList.add("controls-visible");clearTimeout(immersiveExitTimer);immersiveExitTimer=setTimeout(()=>layer.classList.remove("controls-visible"),2400);}
 $("#playBtn").addEventListener("click",async()=>{await call("playPause");await refreshCurrent();}); $("#prevBtn").addEventListener("click",async()=>{await call("previous");await refreshCurrent();}); $("#nextBtn").addEventListener("click",async()=>{await call("next");await refreshCurrent();});
-$("#nowCover")?.addEventListener("click",()=>setImmersiveMode(true,false));
-$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,false));
+$("#nowCover")?.addEventListener("click",()=>setImmersiveMode(true,true));
+$("#immersiveToggle").addEventListener("click",()=>setImmersiveMode(true,true));
 $("#immersiveExit").addEventListener("click",()=>setImmersiveMode(false));
 $("#immersiveFullscreenToggle")?.addEventListener("click",()=>setImmersiveMode(true,!immersiveIsFullscreen));
 $("#immersivePlayer").addEventListener("pointermove",revealImmersiveExit);

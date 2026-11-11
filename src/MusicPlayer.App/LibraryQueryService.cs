@@ -455,6 +455,11 @@ internal sealed class LibraryQueryService
             sort = TrackSort.PlayCount;
             descending = true;
         }
+        else if (_context.View == "Artist" || string.Equals(_context.GroupColumn, "artist", StringComparison.OrdinalIgnoreCase))
+        {
+            sort = TrackSort.PlayCount;
+            descending = true;
+        }
 
         var filter = _context.View switch
         {

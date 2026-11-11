@@ -30,23 +30,35 @@ public sealed partial class MainWindow
                 var isFolderView = string.Equals(currentView, "Folder", StringComparison.OrdinalIgnoreCase) ||
                                    string.Equals(groupColumn, "folder", StringComparison.OrdinalIgnoreCase);
 
-                if ((paths.Count <= 1 || !paths.Contains(track.Path, StringComparer.OrdinalIgnoreCase)) && isAlbumView)
+                if (isArtistView)
                 {
-                    var album = !string.IsNullOrWhiteSpace(groupValue) && isAlbumView ? groupValue : track.Album;
-                    if (!string.IsNullOrWhiteSpace(album))
-                        paths = _store.GetTrackPaths(sort: TrackSort.TrackNumber, descending: false, groupColumn: "album", groupValue: album, hideExactDuplicates: _store.UseCachedFingerprints);
-                }
-                else if ((paths.Count <= 1 || !paths.Contains(track.Path, StringComparer.OrdinalIgnoreCase)) && isArtistView)
-                {
-                    var artist = !string.IsNullOrWhiteSpace(groupValue) && isArtistView ? groupValue : track.Artist;
+                    var artist = !string.IsNullOrWhiteSpace(groupValue) ? groupValue : track.Artist;
                     if (!string.IsNullOrWhiteSpace(artist))
-                        paths = _store.GetTrackPaths(sort: TrackSort.PlayCount, descending: true, groupColumn: "artist", groupValue: artist, hideExactDuplicates: _store.UseCachedFingerprints);
+                    {
+                        var artistPaths = _store.GetTrackPaths(sort: TrackSort.PlayCount, descending: true, groupColumn: "artist", groupValue: artist, hideExactDuplicates: _store.UseCachedFingerprints);
+                        if (artistPaths.Count > 0 && artistPaths.Contains(track.Path, StringComparer.OrdinalIgnoreCase))
+                            paths = artistPaths;
+                    }
                 }
-                else if ((paths.Count <= 1 || !paths.Contains(track.Path, StringComparer.OrdinalIgnoreCase)) && isFolderView)
+                else if (isAlbumView)
                 {
-                    var folder = !string.IsNullOrWhiteSpace(groupValue) && isFolderView ? groupValue : Path.GetDirectoryName(track.Path);
+                    var album = !string.IsNullOrWhiteSpace(groupValue) ? groupValue : track.Album;
+                    if (!string.IsNullOrWhiteSpace(album))
+                    {
+                        var albumPaths = _store.GetTrackPaths(sort: TrackSort.TrackNumber, descending: false, groupColumn: "album", groupValue: album, hideExactDuplicates: _store.UseCachedFingerprints);
+                        if (albumPaths.Count > 0 && albumPaths.Contains(track.Path, StringComparer.OrdinalIgnoreCase))
+                            paths = albumPaths;
+                    }
+                }
+                else if (isFolderView)
+                {
+                    var folder = !string.IsNullOrWhiteSpace(groupValue) ? groupValue : Path.GetDirectoryName(track.Path);
                     if (!string.IsNullOrWhiteSpace(folder))
-                        paths = _store.GetTrackPaths(sort: TrackSort.Title, descending: false, groupColumn: "folder", groupValue: folder, hideExactDuplicates: _store.UseCachedFingerprints);
+                    {
+                        var folderPaths = _store.GetTrackPaths(sort: TrackSort.Title, descending: false, groupColumn: "folder", groupValue: folder, hideExactDuplicates: _store.UseCachedFingerprints);
+                        if (folderPaths.Count > 0 && folderPaths.Contains(track.Path, StringComparer.OrdinalIgnoreCase))
+                            paths = folderPaths;
+                    }
                 }
                 _playbackQueue.SelectTrack(paths, track.Path);
                 PlayTrack(track, false, _queueIndex);
