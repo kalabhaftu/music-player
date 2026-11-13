@@ -5,7 +5,7 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260803003" />
-    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.8.0" />
     <PackageVersion Include="TagLibSharp" Version="2.3.0" />
     <PackageVersion Include="LibVLCSharp" Version="3.10.1" />
     <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
