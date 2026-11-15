@@ -20,3 +20,5 @@ node_modules/
 Cleanup-MusicPlayerLocalBuilds.bat
 Cleanup-MusicPlayerLocalBuilds.ps1
 progress.md
+slint-prototype/
+target/

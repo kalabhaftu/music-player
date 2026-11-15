@@ -1,0 +1,13 @@
+[package]
+name = "music-player-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+music-player-core = { path = "../core" }
+slint = "1.18.1"
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png"] }
+directories = "=6.0.0"
+
+[build-dependencies]
+slint-build = "1.18.1"
