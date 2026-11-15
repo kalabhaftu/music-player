@@ -2767,6 +2767,7 @@ dependencies = [
  "crossbeam-channel",
  "directories",
  "image",
+ "libloading",
  "regex",
  "rusqlite",
  "serde",

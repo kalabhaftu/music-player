@@ -6,7 +6,8 @@ export struct TrackItem {
     artist: string,
     album: string,
     duration: string,
-    cover: image,
+    initials: string,
+    badge_bg: color,
     is_favorite: bool,
     accent: color,
 }
@@ -152,20 +153,22 @@ component TrackRow inherits Rectangle {
             }
         }
 
-        // Real Song Artwork Thumbnail (38px x 38px, border-radius 8px)
+        // Song Artwork Thumbnail (38px x 38px, border-radius 6px) with initials badge
         Rectangle {
             width: 38px;
             height: 38px;
-            border-radius: 8px;
+            border-radius: 6px;
             clip: true;
             y: (parent.height - self.height) / 2;
-            background: #111411;
+            background: root.track.badge_bg;
 
-            Image {
-                source: root.track.cover;
-                width: 100%;
-                height: 100%;
-                image-fit: cover;
+            Text {
+                text: root.track.initials;
+                color: #f7f8f6;
+                font-size: 13px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
             }
         }
 
@@ -243,6 +246,7 @@ component TrackRow inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Music Player";
+    icon: @image-url("../assets/icons/music.svg");
     min-width: 980px;
     min-height: 640px;
     preferred-width: 1180px;
@@ -830,13 +834,15 @@ export component AppWindow inherits Window {
                                     height: 28px;
                                     border-radius: 4px;
                                     clip: true;
-                                    background: #111411;
+                                    background: track.badge_bg;
 
-                                    Image {
-                                        source: track.cover;
-                                        width: 100%;
-                                        height: 100%;
-                                        image-fit: cover;
+                                    Text {
+                                        text: track.initials;
+                                        color: #f7f8f6;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
                                     }
                                 }
 

@@ -5,7 +5,7 @@ use music_player_core::{
     extract_palette, AudioEngine, LibraryIndexer, LibraryStore, QueueCoordinator, RgbColor,
     ScannerControl, Track, TrackSort,
 };
-use slint::{Model, VecModel};
+use slint::{Model, SharedPixelBuffer, VecModel};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -15,28 +15,77 @@ fn rgb_to_slint(rgb: RgbColor) -> slint::Color {
     slint::Color::from_argb_u8(255, rgb.r, rgb.g, rgb.b)
 }
 
+fn load_artwork_safe(path: &Path) -> Option<slint::Image> {
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    let dynamic_img = image::load_from_memory(&bytes).ok()?;
+    let rgba = dynamic_img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let pixel_buffer = SharedPixelBuffer::clone_from_slice(rgba.as_raw(), width, height);
+    Some(slint::Image::from_rgba8(pixel_buffer))
+}
+
+fn track_initials(track: &Track) -> String {
+    let val = if !track.album.is_empty() {
+        &track.album
+    } else if !track.artist.is_empty() {
+        &track.artist
+    } else {
+        &track.title
+    };
+    let words: Vec<&str> = val.split_whitespace().collect();
+    if words.is_empty() {
+        return "MP".to_string();
+    }
+    if words.len() == 1 {
+        words[0].chars().take(2).collect::<String>().to_uppercase()
+    } else {
+        format!(
+            "{}{}",
+            words[0].chars().next().unwrap_or('M'),
+            words[1].chars().next().unwrap_or('P')
+        )
+        .to_uppercase()
+    }
+}
+
+fn track_badge_color(track: &Track) -> slint::Color {
+    let seed = if !track.album.is_empty() {
+        format!("{}:{}", track.album_artist, track.album)
+    } else if !track.artist.is_empty() {
+        track.artist.clone()
+    } else {
+        track.title.clone()
+    };
+    let mut hash: u32 = 2166136261;
+    for b in seed.bytes() {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(16777619);
+    }
+    let colors = [
+        slint::Color::from_rgb_u8(42, 47, 63), // c1
+        slint::Color::from_rgb_u8(33, 51, 55), // c2
+        slint::Color::from_rgb_u8(56, 39, 43), // c3
+        slint::Color::from_rgb_u8(36, 51, 40), // c4
+        slint::Color::from_rgb_u8(53, 48, 37), // c5
+        slint::Color::from_rgb_u8(42, 42, 50), // c6
+    ];
+    colors[(hash % 6) as usize]
+}
+
 fn track_to_ui(track: &Track, id: i32) -> TrackItem {
-    let cover_img = track
-        .artwork_path
-        .as_ref()
-        .and_then(|p| slint::Image::load_from_path(Path::new(p)).ok())
-        .unwrap_or_default();
-
-    let accent_color = track
-        .artwork_path
-        .as_ref()
-        .map(|p| rgb_to_slint(extract_palette(Path::new(p)).accent))
-        .unwrap_or_else(|| slint::Color::from_argb_u8(255, 183, 255, 45));
-
     TrackItem {
         id,
         title: track.title.clone().into(),
         artist: track.artist.clone().into(),
         album: track.album.clone().into(),
         duration: track.duration_display().into(),
-        cover: cover_img,
+        initials: track_initials(track).into(),
+        badge_bg: track_badge_color(track),
         is_favorite: track.favorite,
-        accent: accent_color,
+        accent: slint::Color::from_argb_u8(255, 183, 255, 45),
     }
 }
 
@@ -84,7 +133,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let queue_paths: Vec<String> = db_tracks.iter().map(|t| t.path.clone()).collect();
     queue.borrow_mut().replace(queue_paths, Some(0));
 
-    // Convert db tracks to UI models
+    // Convert db tracks to lightweight UI models
     let ui_tracks: Vec<TrackItem> = db_tracks
         .iter()
         .enumerate()
@@ -100,34 +149,40 @@ fn main() -> Result<(), slint::PlatformError> {
     let current_lyrics: Rc<RefCell<Option<LyricsDocument>>> = Rc::new(RefCell::new(None));
     let last_active_lyric: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
 
-    // Set initial playing track if available
-    if let Some(first) = ui_tracks.first() {
-        ui.set_current_track_id(first.id);
-        ui.set_current_title(first.title.clone());
-        ui.set_current_artist(first.artist.clone());
-        ui.set_current_cover(first.cover.clone());
-        ui.set_theme_accent(first.accent);
-        ui.set_total_time(first.duration.clone());
+    // Set initial track metadata and load its artwork
+    if let Some(first_db) = db_tracks.first() {
+        ui.set_current_track_id(1);
+        ui.set_current_title(first_db.title.clone().into());
+        ui.set_current_artist(first_db.artist.clone().into());
+        ui.set_total_time(first_db.duration_display().into());
         ui.set_current_time("0:00".into());
         ui.set_progress(0.0);
         ui.set_is_playing(false);
 
-        // Check for lyrics for the first track
-        if let Some(first_db) = db_tracks.first() {
-            if has_sidecar(&first_db.path) {
-                if let Some(lrc) = read_sidecar(Path::new(&first_db.path)) {
-                    let doc = parse_lrc(&lrc);
-                    let ui_lyr: Vec<LyricLineItem> = doc
-                        .lines
-                        .iter()
-                        .map(|l| LyricLineItem {
-                            text: l.text.clone().into(),
-                            is_active: false,
-                        })
-                        .collect();
-                    lyrics_model.set_vec(ui_lyr);
-                    *current_lyrics.borrow_mut() = Some(doc);
-                }
+        // Load artwork safely for the initial track
+        if let Some(ref art_path) = first_db.artwork_path {
+            let p = Path::new(art_path);
+            if let Some(img) = load_artwork_safe(p) {
+                ui.set_current_cover(img);
+                let palette = extract_palette(p);
+                ui.set_theme_accent(rgb_to_slint(palette.accent));
+            }
+        }
+
+        // Check for sidecar lyrics
+        if has_sidecar(&first_db.path) {
+            if let Some(lrc) = read_sidecar(Path::new(&first_db.path)) {
+                let doc = parse_lrc(&lrc);
+                let ui_lyr: Vec<LyricLineItem> = doc
+                    .lines
+                    .iter()
+                    .map(|l| LyricLineItem {
+                        text: l.text.clone().into(),
+                        is_active: false,
+                    })
+                    .collect();
+                lyrics_model.set_vec(ui_lyr);
+                *current_lyrics.borrow_mut() = Some(doc);
             }
         }
     }
@@ -137,7 +192,6 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         let store_clone = store.clone();
         let db_tracks_clone = db_tracks.clone();
-        let ui_tracks_clone = ui_tracks.clone();
         let audio_engine_clone = audio_engine.clone();
         let queue_clone = queue.clone();
         let current_lyrics_clone = current_lyrics.clone();
@@ -148,49 +202,59 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(track) = db_tracks_clone.get(track_idx) {
                 if let Some(ui) = ui_handle.upgrade() {
                     let track_id = (track_idx + 1) as i32;
-                    if let Some(item) = ui_tracks_clone.iter().find(|t| t.id == track_id) {
-                        ui.set_current_track_id(item.id);
-                        ui.set_current_title(item.title.clone());
-                        ui.set_current_artist(item.artist.clone());
-                        ui.set_current_cover(item.cover.clone());
-                        ui.set_theme_accent(item.accent);
-                        ui.set_total_time(item.duration.clone());
-                        ui.set_current_time("0:00".into());
-                        ui.set_progress(0.0);
-                        ui.set_is_playing(true);
+                    ui.set_current_track_id(track_id);
+                    ui.set_current_title(track.title.clone().into());
+                    ui.set_current_artist(track.artist.clone().into());
+                    ui.set_total_time(track.duration_display().into());
+                    ui.set_current_time("0:00".into());
+                    ui.set_progress(0.0);
+                    ui.set_is_playing(true);
 
-                        // Start audio playback
-                        let _ = audio_engine_clone.borrow_mut().play_track(&track.path);
+                    // Load artwork safely for playing track
+                    if let Some(ref art_path) = track.artwork_path {
+                        let p = Path::new(art_path);
+                        if let Some(img) = load_artwork_safe(p) {
+                            ui.set_current_cover(img);
+                            let palette = extract_palette(p);
+                            ui.set_theme_accent(rgb_to_slint(palette.accent));
+                        } else {
+                            ui.set_current_cover(slint::Image::default());
+                        }
+                    } else {
+                        ui.set_current_cover(slint::Image::default());
+                    }
 
-                        // Update queue position
-                        queue_clone.borrow_mut().set_current_index(Some(track_idx));
+                    // Start hardware audio playback
+                    let _ = audio_engine_clone.borrow_mut().play_track(&track.path);
 
-                        // Record play in SQLite
-                        let _ = store_clone.record_play(&track.path);
+                    // Update queue position
+                    queue_clone.borrow_mut().set_current_index(Some(track_idx));
 
-                        // Load lyrics if available
-                        *last_active_lyric_clone.borrow_mut() = None;
-                        if has_sidecar(&track.path) {
-                            if let Some(lrc) = read_sidecar(Path::new(&track.path)) {
-                                let doc = parse_lrc(&lrc);
-                                let ui_lyr: Vec<LyricLineItem> = doc
-                                    .lines
-                                    .iter()
-                                    .map(|l| LyricLineItem {
-                                        text: l.text.clone().into(),
-                                        is_active: false,
-                                    })
-                                    .collect();
-                                lyrics_model_clone.set_vec(ui_lyr);
-                                *current_lyrics_clone.borrow_mut() = Some(doc);
-                            } else {
-                                lyrics_model_clone.set_vec(Vec::new());
-                                *current_lyrics_clone.borrow_mut() = None;
-                            }
+                    // Record play in SQLite
+                    let _ = store_clone.record_play(&track.path);
+
+                    // Load lyrics if available
+                    *last_active_lyric_clone.borrow_mut() = None;
+                    if has_sidecar(&track.path) {
+                        if let Some(lrc) = read_sidecar(Path::new(&track.path)) {
+                            let doc = parse_lrc(&lrc);
+                            let ui_lyr: Vec<LyricLineItem> = doc
+                                .lines
+                                .iter()
+                                .map(|l| LyricLineItem {
+                                    text: l.text.clone().into(),
+                                    is_active: false,
+                                })
+                                .collect();
+                            lyrics_model_clone.set_vec(ui_lyr);
+                            *current_lyrics_clone.borrow_mut() = Some(doc);
                         } else {
                             lyrics_model_clone.set_vec(Vec::new());
                             *current_lyrics_clone.borrow_mut() = None;
                         }
+                    } else {
+                        lyrics_model_clone.set_vec(Vec::new());
+                        *current_lyrics_clone.borrow_mut() = None;
                     }
                 }
             }
@@ -363,7 +427,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_immersive_toggle_clicked(|| {});
     ui.on_immersive_close_clicked(|| {});
 
-    // 11. Playback Timeline & Synced Lyrics Synchronization Timer (250ms polling)
+    // 11. Playback Timeline & Synced Lyrics Synchronization Timer (200ms polling)
     {
         let ui_handle = ui.as_weak();
         let audio_engine_clone = audio_engine.clone();
@@ -376,7 +440,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
-            std::time::Duration::from_millis(250),
+            std::time::Duration::from_millis(200),
             move || {
                 if let Some(ui) = ui_handle.upgrade() {
                     let engine = audio_engine_clone.borrow();
@@ -392,6 +456,11 @@ fn main() -> Result<(), slint::PlatformError> {
                             let mins = pos_secs / 60;
                             let secs = pos_secs % 60;
                             ui.set_current_time(format!("{}:{:02}", mins, secs).into());
+
+                            let dur_secs = dur_ms / 1000;
+                            let d_mins = dur_secs / 60;
+                            let d_secs = dur_secs % 60;
+                            ui.set_total_time(format!("{}:{:02}", d_mins, d_secs).into());
 
                             // Update synchronized lyrics active line
                             if let Some(ref doc) = *current_lyrics_clone.borrow() {
@@ -412,7 +481,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
 
                             // Check if track reached end (within 300ms of end)
-                            if pos_ms + 300 >= dur_ms {
+                            if pos_ms > 0 && pos_ms + 300 >= dur_ms {
                                 drop(engine);
                                 let mut q = queue_clone.borrow_mut();
                                 if q.next(true).is_some() {
