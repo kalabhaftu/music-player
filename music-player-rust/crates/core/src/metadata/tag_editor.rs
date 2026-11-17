@@ -454,8 +454,9 @@ struct EditPlan {
     strings: BTreeMap<String, String>,
     arrays: BTreeMap<String, Vec<String>>,
     doubles: BTreeMap<String, f64>,
-    /// Validated custom fields (key casing preserved from the input).
-    custom: BTreeMap<String, String>,
+    /// Validated custom fields with the caller's key casing; `None` leaves
+    /// every existing custom field untouched (C# passes null).
+    custom: Option<BTreeMap<String, String>>,
 }
 
 fn split_values(value: &str) -> Vec<String> {
@@ -619,13 +620,13 @@ fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
 }
 
 /// Validates the custom field set (ApplyCustomFields' loop) and returns the
-/// desired mapping with the caller's key casing.
+/// desired mapping with the caller's key casing; `None` = no custom edit.
 fn validated_custom_fields(
     fields: Option<&std::collections::HashMap<String, String>>,
     format: Option<&'static str>,
-) -> Result<BTreeMap<String, String>, String> {
+) -> Result<Option<BTreeMap<String, String>>, String> {
     let Some(fields) = fields else {
-        return Ok(BTreeMap::new());
+        return Ok(None);
     };
     let Some(format) = format else {
         return Err("Custom tags are not supported for this file format.".to_string());
@@ -665,7 +666,7 @@ fn validated_custom_fields(
         }
         desired.insert(key.to_string(), value.clone());
     }
-    Ok(desired)
+    Ok(Some(desired))
 }
 
 fn is_common_id3_frame(id: &str) -> bool {
@@ -1164,8 +1165,14 @@ const ID3_FIELD_TXXX: &[(&str, &str)] = &[
 ];
 
 /// Clears and rewrites the custom fields (ApplyCustomFields port for ID3v2).
+/// `None` leaves every existing custom field untouched.
 fn apply_id3_custom_fields(frames: &mut Vec<Id3Frame>, plan: &EditPlan) {
-    // Existing keys: TXXX descriptions plus non-common text frames.
+    let Some(desired) = plan.custom.as_ref() else {
+        return;
+    };
+    // Existing keys: TXXX descriptions plus non-common text frames (the C#
+    // reader enumerates TagLib TextInformationFrames only, so binary frames
+    // like PRIV are never treated as custom fields).
     let mut existing: Vec<String> = Vec::new();
     for frame in frames.iter() {
         if frame.id.eq_ignore_ascii_case("TXXX") {
@@ -1174,12 +1181,11 @@ fn apply_id3_custom_fields(frames: &mut Vec<Id3Frame>, plan: &EditPlan) {
                     existing.push(description);
                 }
             }
-        } else if !is_common_id3_frame(&frame.id) {
+        } else if !is_common_id3_frame(&frame.id) && frame.id.starts_with('T') {
             existing.push(format!("ID3:{}", frame.id));
         }
     }
 
-    let desired = &plan.custom;
     for key in &existing {
         if desired.keys().any(|d| d.eq_ignore_ascii_case(key)) {
             continue;
@@ -1547,8 +1553,11 @@ fn apply_flac_comments(
         }
     }
 
-    // Custom fields: reconcile against the existing non-common keys.
-    let desired = &plan.custom;
+    // Custom fields: reconcile against the existing non-common keys; a None
+    // plan leaves them untouched.
+    let Some(desired) = plan.custom.as_ref() else {
+        return entries;
+    };
     let existing_keys: Vec<String> = entries
         .iter()
         .map(|(key, _)| key.clone())
@@ -1720,7 +1729,7 @@ const ASF_CONTENT_DESCRIPTION_GUID: [u8; 16] = [
     0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
 ];
 const ASF_EXTENDED_CONTENT_GUID: [u8; 16] = [
-    0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0x3F, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x36,
+    0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50,
 ];
 
 /// Canonical descriptor names for the additional fields (reader-mapped names
@@ -1844,6 +1853,27 @@ fn parse_asf_extended_content(body: &[u8]) -> Vec<AsfDescriptor> {
 
 /// Rebuilds the ASF header objects: Content Description (title/author) and
 /// Extended Content Description (everything else). Stream data stays raw.
+/// Descriptor names that are standard tags rather than custom fields (the
+/// C# CommonFields entries that exist as ASF descriptors): the basic WM/*
+/// names plus every additional-field alias.
+fn is_asf_common_descriptor_name(name: &str) -> bool {
+    const STANDARD: &[&str] = &[
+        "WM/Title",
+        "WM/Author",
+        "WM/AlbumTitle",
+        "WM/AlbumArtist",
+        "WM/Genre",
+        "WM/Year",
+        "WM/TrackNumber",
+        "WM/Lyrics",
+        "WM/Picture",
+    ];
+    STANDARD.iter().any(|item| item.eq_ignore_ascii_case(name))
+        || ASF_ADDITIONAL_NAMES
+            .iter()
+            .any(|(_, alias)| alias.eq_ignore_ascii_case(name))
+}
+
 fn rewrite_asf(data: &[u8], plan: &EditPlan) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     if data.len() < 30 || data[0..16] != ASF_HEADER_GUID {
         return Err("Invalid ASF file.".into());
@@ -1918,9 +1948,48 @@ fn rewrite_asf(data: &[u8], plan: &EditPlan) -> Result<Vec<u8>, Box<dyn std::err
     let additional_edited: Vec<(String, Vec<String>)> = additional_name_values(plan);
     let custom_edited: Vec<(String, Vec<String>)> = plan
         .custom
-        .iter()
-        .map(|(key, value)| (key.clone(), split_values(value)))
+        .as_ref()
+        .map(|custom| {
+            custom
+                .iter()
+                .map(|(key, value)| (key.clone(), split_values(value)))
+                .collect()
+        })
+        .unwrap_or_default();
+    // C# ApplyCustomFields reuses the existing descriptor's name casing when
+    // the desired key matches one already in the file.
+    let custom_edited: Vec<(String, Vec<String>)> = custom_edited
+        .into_iter()
+        .map(|(key, values)| {
+            let stored = ecd
+                .iter()
+                .find(|descriptor| {
+                    descriptor.value_type == 0 && descriptor.name.eq_ignore_ascii_case(&key)
+                })
+                .map(|descriptor| descriptor.name.clone())
+                .unwrap_or(key);
+            (stored, values)
+        })
         .collect();
+    // Custom reconcile: when custom fields are part of this edit, every
+    // existing non-common unicode descriptor whose name is not in the
+    // desired set is removed (C# ApplyCustomFields' removal loop).
+    let custom_removed: Vec<String> = plan
+        .custom
+        .as_ref()
+        .map(|desired| {
+            ecd.iter()
+                .filter(|descriptor| {
+                    descriptor.value_type == 0
+                        && !is_asf_common_descriptor_name(&descriptor.name)
+                        && !desired
+                            .keys()
+                            .any(|key| key.eq_ignore_ascii_case(&descriptor.name))
+                })
+                .map(|descriptor| descriptor.name.clone())
+                .collect()
+        })
+        .unwrap_or_default();
 
     let mut edited_names: Vec<String> = standard_edited_names
         .iter()
@@ -1935,9 +2004,10 @@ fn rewrite_asf(data: &[u8], plan: &EditPlan) -> Result<Vec<u8>, Box<dyn std::err
     let mut kept: Vec<AsfDescriptor> = Vec::new();
     for descriptor in ecd {
         if descriptor.value_type == 0
-            && edited_names
+            && (edited_names
                 .iter()
-                .any(|name| name.eq_ignore_ascii_case(&descriptor.name))
+                .chain(custom_removed.iter())
+                .any(|name| name.eq_ignore_ascii_case(&descriptor.name)))
         {
             continue;
         }
@@ -2134,14 +2204,20 @@ fn parse_ape_tag(data: &[u8]) -> Option<(Vec<ApeItem>, usize, usize)> {
     let tag_size = u32::from_le_bytes([footer[12], footer[13], footer[14], footer[15]]) as usize;
     let item_count = u32::from_le_bytes([footer[16], footer[17], footer[18], footer[19]]) as usize;
     let has_header = footer[23] & 0x80 != 0;
-    if tag_size < 32 || tag_size > data.len() {
+    if tag_size < 32 || footer_pos + 32 < tag_size || tag_size > data.len() {
         return None;
     }
     let region_start = footer_pos + 32 - tag_size;
-    let mut items_start = region_start;
-    if has_header {
-        items_start += 32;
-    }
+    // TagLib's tagSize field always counts the items plus the footer (or the
+    // header on a headerless tag), so the items end at the footer and begin
+    // right there — the header never sits inside the counted region.
+    let items_start = region_start;
+    // The replaced region spans the header (when present) + items + footer.
+    let region_start = if has_header && region_start >= 32 {
+        region_start - 32
+    } else {
+        region_start
+    };
     let items_end = footer_pos;
     let mut items = Vec::new();
     let mut offset = items_start;
@@ -2274,8 +2350,10 @@ fn rewrite_ape_tag(data: &[u8], plan: &EditPlan) -> Result<Vec<u8>, Box<dyn std:
             }
         }
     }
-    for (key, value) in &plan.custom {
-        desired.push((key.clone(), split_values(value)));
+    if let Some(custom) = plan.custom.as_ref() {
+        for (key, value) in custom {
+            desired.push((key.clone(), split_values(value)));
+        }
     }
 
     // Existing items survive unless their key is rewritten or cleared.
@@ -2542,10 +2620,12 @@ fn rewrite_mp4(data: &[u8], plan: &EditPlan) -> Result<Vec<u8>, Box<dyn std::err
         }
         mp4_push_text(&mut written, canonical, &values);
     }
-    for (key, value) in &plan.custom {
-        let name = format!("----:com.apple.iTunes:{}", key);
-        removal.insert(name.clone());
-        mp4_push_text(&mut written, &name, &split_values(value));
+    if let Some(custom) = plan.custom.as_ref() {
+        for (key, value) in custom {
+            let name = format!("----:com.apple.iTunes:{}", key);
+            removal.insert(name.clone());
+            mp4_push_text(&mut written, &name, &split_values(value));
+        }
     }
 
     // Untouched children are preserved verbatim.

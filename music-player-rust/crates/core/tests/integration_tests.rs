@@ -1,8 +1,13 @@
 use music_player_core::{
     parse_lrc, plain_text, EqualizerState, LibraryScanCoordinator, LibraryStore,
-    QueueCoordinator, RepeatMode, RgbColor, Track, TrackAvailabilityService, TrackSort,
+    QueueCoordinator, RepeatMode, RgbColor, TagEdit, TagEditor, Track, TrackAvailabilityService,
+    TrackSort, inspect_file, read_tags, read_tags_in_cache,
+};
+use music_player_core::metadata::tag_reader::{
+    read_additional_standard_fields, read_custom_fields,
 };
 use chrono::Utc;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -851,6 +856,1000 @@ fn scan_coordinator_lifecycle_and_empty_start() {
         let _ = index_result.indexed;
     }
     assert!(!coordinator.is_running());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ---------------------------------------------------------------------------
+// Tag writer round-trip tests (TagEditor::save for every container)
+// ---------------------------------------------------------------------------
+
+const ASF_TEST_HEADER_GUID: [u8; 16] = [
+    0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
+];
+const ASF_TEST_FILE_PROPERTIES_GUID: [u8; 16] = [
+    0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65,
+];
+const ASF_TEST_CONTENT_DESCRIPTION_GUID: [u8; 16] = [
+    0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
+];
+const ASF_TEST_EXTENDED_CONTENT_GUID: [u8; 16] = [
+    0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50,
+];
+
+fn synchsafe_size(size: usize) -> [u8; 4] {
+    let v = size as u32;
+    [
+        ((v >> 21) & 0x7F) as u8,
+        ((v >> 14) & 0x7F) as u8,
+        ((v >> 7) & 0x7F) as u8,
+        (v & 0x7F) as u8,
+    ]
+}
+
+fn id3v23_tag(payload: &[u8]) -> Vec<u8> {
+    let mut tag = Vec::with_capacity(10 + payload.len());
+    tag.extend_from_slice(b"ID3");
+    tag.push(3);
+    tag.push(0);
+    tag.push(0);
+    tag.extend_from_slice(&synchsafe_size(payload.len()));
+    tag.extend_from_slice(payload);
+    tag
+}
+
+fn id3_frame(id: &str, content: &[u8]) -> Vec<u8> {
+    let mut frame = id.as_bytes().to_vec();
+    frame.extend_from_slice(&(content.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(content);
+    frame
+}
+
+fn id3_text_frame(id: &str, values: &[&str]) -> Vec<u8> {
+    let mut content = vec![3u8];
+    for value in values {
+        content.extend_from_slice(value.as_bytes());
+        content.push(0);
+    }
+    id3_frame(id, &content)
+}
+
+fn id3_txxx_frame(description: &str, value: &str) -> Vec<u8> {
+    let mut content = vec![3u8];
+    content.extend_from_slice(description.as_bytes());
+    content.push(0);
+    content.extend_from_slice(value.as_bytes());
+    content.push(0);
+    id3_frame("TXXX", &content)
+}
+
+fn png_bytes() -> Vec<u8> {
+    let mut bytes = vec![0x89u8, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    bytes.extend_from_slice(b"PNGDATA");
+    bytes
+}
+
+fn write_png(root: &std::path::Path, name: &str) -> PathBuf {
+    let path = root.join(name);
+    std::fs::write(&path, png_bytes()).unwrap();
+    path
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+fn ape_item(key: &str, value: &[u8]) -> Vec<u8> {
+    let mut item = ((key.len() + 1 + value.len()) as u32).to_le_bytes().to_vec();
+    item.extend_from_slice(&0u32.to_le_bytes()); // flags
+    item.extend_from_slice(key.as_bytes());
+    item.push(0);
+    item.extend_from_slice(value);
+    item
+}
+
+fn ape_tag_bytes(items: &[Vec<u8>]) -> Vec<u8> {
+    let mut body = Vec::new();
+    for item in items {
+        body.extend_from_slice(item);
+    }
+    // APEv2 layout: header (flags 0xA0000000) + items + footer (0x80000000);
+    // TagLib's size field counts the items plus the footer only.
+    let tag_size = (body.len() + 32) as u32;
+    let mut out = Vec::new();
+    for (flags, is_footer) in [(0xA000_0000u32, false), (0x8000_0000u32, true)] {
+        out.extend_from_slice(b"APETAGEX");
+        out.extend_from_slice(&2000u32.to_le_bytes());
+        out.extend_from_slice(&tag_size.to_le_bytes());
+        out.extend_from_slice(&(items.len() as u32).to_le_bytes());
+        out.extend_from_slice(&flags.to_le_bytes());
+        if is_footer {
+            out.extend_from_slice(&body);
+        }
+        out.extend_from_slice(&[0u8; 8]);
+    }
+    out
+}
+
+fn asf_wide(text: &str) -> Vec<u8> {
+    text.encode_utf16().flat_map(|unit| unit.to_le_bytes()).collect()
+}
+
+fn asf_object(guid: &[u8; 16], body: &[u8]) -> Vec<u8> {
+    let mut out = guid.to_vec();
+    out.extend_from_slice(&((body.len() + 24) as u64).to_le_bytes());
+    out.extend_from_slice(body);
+    out
+}
+
+fn asf_file(cd: [&str; 5], ecd: &[(&str, &str)]) -> Vec<u8> {
+    // File Properties: play duration lives at body offset 40 (100ns units).
+    let mut file_props = vec![0u8; 48];
+    file_props[40..48].copy_from_slice(&5_000_000u64.to_le_bytes());
+    let mut cd_body = Vec::new();
+    let texts: Vec<Vec<u8>> = cd.iter().map(|text| asf_wide(text)).collect();
+    for text in &texts {
+        cd_body.extend_from_slice(&(text.len() as u16).to_le_bytes());
+    }
+    for text in &texts {
+        cd_body.extend_from_slice(text);
+    }
+    let mut ecd_body = Vec::new();
+    ecd_body.extend_from_slice(&(ecd.len() as u16).to_le_bytes());
+    for (name, value) in ecd {
+        let name_bytes = asf_wide(name);
+        let value_bytes = asf_wide(value);
+        ecd_body.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        ecd_body.extend_from_slice(&name_bytes);
+        ecd_body.extend_from_slice(&0u16.to_le_bytes()); // unicode type
+        ecd_body.extend_from_slice(&(value_bytes.len() as u16).to_le_bytes());
+        ecd_body.extend_from_slice(&value_bytes);
+    }
+    let mut header = Vec::new();
+    header.extend_from_slice(&ASF_TEST_HEADER_GUID);
+    header.extend_from_slice(&0u64.to_le_bytes());
+    header.extend_from_slice(&[0x01, 0x02, 0xFF, 0x1B, 0x5A, 0x43]);
+    header.extend_from_slice(&asf_object(&ASF_TEST_FILE_PROPERTIES_GUID, &file_props));
+    header.extend_from_slice(&asf_object(&ASF_TEST_CONTENT_DESCRIPTION_GUID, &cd_body));
+    header.extend_from_slice(&asf_object(&ASF_TEST_EXTENDED_CONTENT_GUID, &ecd_body));
+    let header_size = header.len() as u64;
+    header[16..24].copy_from_slice(&header_size.to_le_bytes());
+    header.extend_from_slice(b"asf-media-payload");
+    header
+}
+
+fn mp4_atom(name: &[u8; 4], body: &[u8]) -> Vec<u8> {
+    let mut out = (body.len() as u32 + 8).to_be_bytes().to_vec();
+    out.extend_from_slice(name);
+    out.extend_from_slice(body);
+    out
+}
+
+fn mp4_data_atom(data_type: u32, payload: &[u8]) -> Vec<u8> {
+    let mut out = ((payload.len() as u32) + 16).to_be_bytes().to_vec();
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_type.to_be_bytes());
+    out.extend_from_slice(&0u32.to_be_bytes()); // locale
+    out.extend_from_slice(payload);
+    out
+}
+
+fn mp4_freeform_child(key: &str, value: &str) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(&mp4_atom(
+        b"mean",
+        &[&[0u8; 4][..], b"com.apple.iTunes"].concat(),
+    ));
+    body.extend_from_slice(&mp4_atom(b"name", &[&[0u8; 4][..], key.as_bytes()].concat()));
+    body.extend_from_slice(&mp4_data_atom(1, value.as_bytes()));
+    mp4_atom(b"----", &body)
+}
+
+fn mp4_seed() -> (Vec<u8>, usize) {
+    let ftyp = mp4_atom(b"ftyp", b"isom");
+    let mp4a = mp4_atom(b"mp4a", &{
+        let mut body = vec![0u8; 6]; // reserved
+        body.extend_from_slice(&[0, 1]); // data reference index
+        body.extend_from_slice(&[0, 0]); // version
+        body.extend_from_slice(&[0, 0]); // revision
+        body.extend_from_slice(&[0u8; 4]); // vendor
+        body.extend_from_slice(&[0, 2]); // channels
+        body.extend_from_slice(&[0, 16]); // sample size
+        body.extend_from_slice(&[0, 0]); // compression id
+        body.extend_from_slice(&[0, 0]); // packet size
+        body.extend_from_slice(&[0xAC, 0x44, 0, 0]); // 44100 (16.16 fixed)
+        body
+    });
+    let stsd = mp4_atom(b"stsd", &{
+        let mut body = vec![0u8; 4]; // version/flags
+        body.extend_from_slice(&1u32.to_be_bytes()); // entry count
+        body.extend_from_slice(&mp4a);
+        body
+    });
+    let stco = mp4_atom(b"stco", &{
+        let mut body = vec![0u8; 4]; // version/flags
+        body.extend_from_slice(&1u32.to_be_bytes()); // entry count
+        body.extend_from_slice(&0u32.to_be_bytes()); // patched after assembly
+        body
+    });
+    let stbl = mp4_atom(b"stbl", &[&stsd[..], &stco[..]].concat());
+    let minf = mp4_atom(b"minf", &stbl);
+    let mdia = mp4_atom(b"mdia", &[&mp4_atom(b"mdhd", &vec![0u8; 24])[..], &minf[..]].concat());
+    let trak = mp4_atom(b"trak", &[&mp4_atom(b"tkhd", &vec![0u8; 84])[..], &mdia[..]].concat());
+    let mvhd = mp4_atom(b"mvhd", &{
+        let mut body = vec![0u8; 100];
+        body[12..16].copy_from_slice(&1000u32.to_be_bytes()); // timescale
+        body[16..20].copy_from_slice(&1000u32.to_be_bytes()); // duration
+        body
+    });
+    let hdlr = mp4_atom(b"hdlr", &{
+        let mut body = Vec::new();
+        body.extend_from_slice(&[0u8; 8]); // version/flags + pre_defined
+        body.extend_from_slice(b"mdir");
+        body.extend_from_slice(b"appl");
+        body.extend_from_slice(&[0u8; 9]); // reserved + empty name
+        body
+    });
+    let ilst = mp4_atom(
+        b"ilst",
+        &[
+            &mp4_atom(b"zzzz", &mp4_data_atom(1, b"KeepMe"))[..],
+            &mp4_freeform_child("FOO", "OldFoo")[..],
+        ]
+        .concat(),
+    );
+    let meta = mp4_atom(b"meta", &[&[0u8; 4][..], &hdlr[..], &ilst[..]].concat());
+    let udta = mp4_atom(b"udta", &meta);
+    let moov = mp4_atom(b"moov", &[&mvhd[..], &trak[..], &udta[..]].concat());
+    let mdat_payload = b"music-payload-bytes";
+    // The mdat atom directly follows the moov atom.
+    let mdat_offset = ftyp.len() + moov.len();
+    let mdat = mp4_atom(b"mdat", mdat_payload);
+    let mut seed = Vec::new();
+    seed.extend_from_slice(&ftyp);
+    seed.extend_from_slice(&moov);
+    seed.extend_from_slice(&mdat);
+    let stco_pos = find_bytes(&seed, b"stco").unwrap();
+    // The chunk-offset table starts after the 8-byte header plus the 4-byte
+    // version/flags and 4-byte entry count: name_pos + 12.
+    seed[stco_pos + 12..stco_pos + 16].copy_from_slice(&(mdat_offset as u32).to_be_bytes());
+    (seed, mdat_offset)
+}
+
+fn vorbis_comment_block(vendor: &str, entries: &[(&str, &str)]) -> Vec<u8> {
+    let mut body = Vec::new();
+    let vendor_bytes = vendor.as_bytes();
+    body.extend_from_slice(&(vendor_bytes.len() as u32).to_le_bytes());
+    body.extend_from_slice(vendor_bytes);
+    body.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (key, value) in entries {
+        let comment = format!("{}={}", key, value);
+        body.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        body.extend_from_slice(comment.as_bytes());
+    }
+    body
+}
+
+fn flac_block(kind: u8, body: &[u8], is_last: bool) -> Vec<u8> {
+    let mut out = vec![if is_last { kind | 0x80 } else { kind }];
+    out.extend_from_slice(&(body.len() as u32).to_be_bytes()[1..4]);
+    out.extend_from_slice(body);
+    out
+}
+
+fn flac_seed() -> Vec<u8> {
+    // STREAMINFO with 44100 Hz, 2 channels, 16 bits, 44100 samples.
+    let mut streaminfo = vec![0u8; 34];
+    streaminfo[10] = 0x0A; // sample rate 44100 >> 12
+    streaminfo[11] = 0xC4; // (44100 >> 4) & 0xFF
+    streaminfo[12] = 0x4B; // low rate nibble + channels-1 (1) + bps-1 (15)
+    streaminfo[14..18].copy_from_slice(&44100u32.to_be_bytes()); // total samples
+    let mut out = Vec::new();
+    out.extend_from_slice(b"fLaC");
+    out.extend_from_slice(&flac_block(0, &streaminfo, false));
+    out.extend_from_slice(&flac_block(1, b"padpadpadpad", false));
+    out.extend_from_slice(&flac_block(
+        4,
+        &vorbis_comment_block(
+            "test-vendor",
+            &[
+                ("TITLE", "Old Title"),
+                ("ARTIST", "Old Artist"),
+                ("SOURCE", "Old Source"),
+                ("REPLAYGAIN_TRACK_GAIN", "old"),
+            ],
+        ),
+        true,
+    ));
+    out
+}
+
+#[test]
+fn writer_mp3_standard_composites_custom_and_preservation() {
+    let root = temp_dir("writer-mp3");
+    let mut payload = Vec::new();
+    payload.extend(id3_text_frame("TIT2", &["Old Title"]));
+    payload.extend(id3_text_frame("TRCK", &["7/12"]));
+    payload.extend(id3_text_frame("TMED", &["CD"]));
+    payload.extend(id3_frame("PRIV", b"owner.example\x00\x01\x02\x03"));
+    let mut sylt = vec![3u8, b'e', b'n', b'g', 0];
+    sylt.extend_from_slice(b"Sync text");
+    payload.extend(id3_frame("SYLT", &sylt));
+    let mut seed = id3v23_tag(&payload);
+    seed.extend_from_slice(b"audio-bytes-here");
+    let file = root.join("song.mp3");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+    let png = write_png(&root, "cover.png");
+
+    // Save 1: standard fields + artwork; custom fields untouched (None).
+    let edit1 = TagEdit {
+        title: Some("New Title".to_string()),
+        artist: Some("Artist One; Artist Two".to_string()),
+        album: Some("New Album".to_string()),
+        album_artist: Some("Album Artist".to_string()),
+        genre: Some("Rock".to_string()),
+        year: Some(1985),
+        track_number: Some(3),
+        lyrics: Some("Some lyrics".to_string()),
+        artwork_path: Some(png.to_string_lossy().into_owned()),
+        ..Default::default()
+    };
+    editor.save(&file, &edit1).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("New Title"));
+    assert_eq!(tags.artist.as_deref(), Some("Artist One; Artist Two"));
+    assert_eq!(tags.album.as_deref(), Some("New Album"));
+    assert_eq!(tags.album_artist.as_deref(), Some("Album Artist"));
+    assert_eq!(tags.genre.as_deref(), Some("Rock"));
+    assert_eq!(tags.year, 1985);
+    assert_eq!(tags.track_number, 3);
+    assert!(tags.has_lyrics);
+
+    // Untouched custom frames survive a custom_fields = None edit.
+    let custom1 = read_custom_fields(&file);
+    assert_eq!(custom1.get("ID3:TMED").map(String::as_str), Some("CD"));
+    let saved = std::fs::read(&file).unwrap();
+    assert!(find_bytes(&saved, b"PRIV").is_some());
+    assert!(find_bytes(&saved, b"owner.example").is_some());
+    // The lyrics edit removes the competing SYLT frame.
+    assert!(find_bytes(&saved, b"SYLT").is_none());
+    assert!(find_bytes(&saved, b"image/png").is_some());
+
+    // Artwork round-trips through a cache directory.
+    let cache = root.join("cache");
+    let tags_cached = read_tags_in_cache(&file, &cache);
+    let artwork_path = tags_cached.artwork_path.expect("artwork saved");
+    assert_eq!(std::fs::read(&artwork_path).unwrap(), png_bytes());
+
+    // The track composite kept its total ("3/12").
+    let additional1 = read_additional_standard_fields(&file);
+    assert_eq!(additional1.get("TRACK_COUNT").map(String::as_str), Some("12"));
+
+    // Save 2: custom reconcile (TMED drops), lyrics cleared, total updated.
+    let edit2 = TagEdit {
+        lyrics: Some(String::new()),
+        custom_fields: Some(HashMap::from([("SOURCE".to_string(), "CD".to_string())])),
+        additional_fields: Some(HashMap::from([("TRACK_COUNT".to_string(), "14".to_string())])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit2).unwrap();
+
+    let custom2 = read_custom_fields(&file);
+    assert_eq!(custom2.get("SOURCE").map(String::as_str), Some("CD"));
+    assert!(custom2.get("ID3:TMED").is_none());
+    let tags2 = read_tags(&file);
+    assert!(!tags2.has_lyrics);
+    assert_eq!(tags2.track_number, 3);
+    let additional2 = read_additional_standard_fields(&file);
+    assert_eq!(additional2.get("TRACK_COUNT").map(String::as_str), Some("14"));
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_flac_roundtrip_with_artwork_and_aliases() {
+    let root = temp_dir("writer-flac");
+    let seed = flac_seed();
+    let file = root.join("song.flac");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+    let png = write_png(&root, "cover.png");
+
+    let edit = TagEdit {
+        title: Some("Flac Title".to_string()),
+        artist: Some("Flac Artist".to_string()),
+        album: Some("Flac Album".to_string()),
+        genre: Some("Rock".to_string()),
+        year: Some(2011),
+        track_number: Some(4),
+        lyrics: Some("Flac lyric".to_string()),
+        artwork_path: Some(png.to_string_lossy().into_owned()),
+        custom_fields: Some(HashMap::from([("SOURCE".to_string(), "CD".to_string())])),
+        additional_fields: Some(HashMap::from([(
+            "REPLAYGAIN_TRACK_GAIN".to_string(),
+            "-7.5".to_string(),
+        )])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Flac Title"));
+    assert_eq!(tags.artist.as_deref(), Some("Flac Artist"));
+    assert_eq!(tags.album.as_deref(), Some("Flac Album"));
+    assert_eq!(tags.genre.as_deref(), Some("Rock"));
+    assert_eq!(tags.year, 2011);
+    assert_eq!(tags.track_number, 4);
+    assert!(tags.has_lyrics);
+    // STREAMINFO duration: 44100 samples at 44100 Hz.
+    assert_eq!(tags.duration_ms, 1000);
+
+    let cache = root.join("cache");
+    let tags_cached = read_tags_in_cache(&file, &cache);
+    let artwork_path = tags_cached.artwork_path.expect("artwork saved");
+    assert_eq!(std::fs::read(&artwork_path).unwrap(), png_bytes());
+
+    let custom = read_custom_fields(&file);
+    assert_eq!(custom.get("SOURCE").map(String::as_str), Some("CD"));
+    let additional = read_additional_standard_fields(&file);
+    assert_eq!(
+        additional.get("REPLAYGAIN_TRACK_GAIN").map(String::as_str),
+        Some("-7.5")
+    );
+
+    let saved = std::fs::read(&file).unwrap();
+    assert_eq!(find_bytes(&saved, b"fLaC"), Some(0));
+    // The STREAMINFO block must remain the first metadata block.
+    assert_eq!(saved[4] & 0x7F, 0);
+    // Padding block and the vendor string are preserved; the replaced
+    // custom value is gone.
+    assert!(find_bytes(&saved, b"padpadpadpad").is_some());
+    assert!(find_bytes(&saved, b"test-vendor").is_some());
+    assert!(find_bytes(&saved, b"Old Source").is_none());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_wma_roundtrip_cd_ecd_and_additional() {
+    let root = temp_dir("writer-wma");
+    let seed = asf_file(
+        ["OldTitle", "OldAuthor", "(c) Old", "Old description", "5"],
+        &[
+            ("WM/AlbumTitle", "OldAlbum"),
+            ("WM/Genre", "OldGenre"),
+            ("WM/Year", "1999"),
+            ("WM/TrackNumber", "5"),
+            ("WM/Mood", "Blue"),
+        ],
+    );
+    let file = root.join("song.wma");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let edit = TagEdit {
+        title: Some("Wma Title".to_string()),
+        artist: Some("Wma Artist".to_string()),
+        album: Some("Wma Album".to_string()),
+        genre: Some("Rock".to_string()),
+        year: Some(2001),
+        track_number: Some(2),
+        lyrics: Some("Wma lyric".to_string()),
+        custom_fields: Some(HashMap::from([("MOOD".to_string(), "Happy".to_string())])),
+        additional_fields: Some(HashMap::from([
+            ("BPM".to_string(), "123".to_string()),
+            ("DISC".to_string(), "2".to_string()),
+        ])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Wma Title"));
+    assert_eq!(tags.artist.as_deref(), Some("Wma Artist"));
+    assert_eq!(tags.album.as_deref(), Some("Wma Album"));
+    assert_eq!(tags.genre.as_deref(), Some("Rock"));
+    assert_eq!(tags.year, 2001);
+    assert_eq!(tags.track_number, 2);
+    assert!(tags.has_lyrics);
+    // File Properties play duration: 5_000_000 * 100ns = 500 ms.
+    assert_eq!(tags.duration_ms, 500);
+
+    let custom = read_custom_fields(&file);
+    // The reconcile removed WM/Mood in favor of the desired MOOD key.
+    assert!(custom.get("WM/Mood").is_none());
+    assert_eq!(custom.get("MOOD").map(String::as_str), Some("Happy"));
+
+    let additional = read_additional_standard_fields(&file);
+    assert_eq!(additional.get("BPM").map(String::as_str), Some("123"));
+    assert_eq!(additional.get("DISC").map(String::as_str), Some("2"));
+    assert_eq!(additional.get("TITLE_SORT").map(String::as_str), Some(""));
+
+    // Reserved header bytes and trailing data are preserved.
+    let saved = std::fs::read(&file).unwrap();
+    assert_eq!(&saved[24..30], &[0x01, 0x02, 0xFF, 0x1B, 0x5A, 0x43]);
+    assert!(find_bytes(&saved, b"asf-media-payload").is_some());
+    // CD keeps copyright/description/rating when only title/author change.
+    assert!(find_bytes(&saved, &asf_wide("Old description")).is_some());
+    assert!(find_bytes(&saved, &asf_wide("OldAlbum")).is_none());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_wav_fixes_container_size_and_replaces_id3_chunk() {
+    let root = temp_dir("writer-wav");
+    let audio = b"audiodata-payload";
+    let mut seed = Vec::new();
+    seed.extend_from_slice(b"RIFF");
+    seed.extend_from_slice(&0u32.to_le_bytes()); // deliberately wrong size
+    seed.extend_from_slice(b"WAVE");
+    seed.extend_from_slice(b"fmt ");
+    seed.extend_from_slice(&16u32.to_le_bytes());
+    seed.extend_from_slice(&[1, 0, 1, 0, 0x80, 0x1F, 0, 0, 0x80, 0x1F, 0, 0, 1, 0, 8, 0]);
+    seed.extend_from_slice(b"data");
+    seed.extend_from_slice(&(audio.len() as u32).to_le_bytes());
+    seed.extend_from_slice(audio);
+    seed.push(0); // chunk pad
+    let mut id3_payload = id3_text_frame("TALB", &["Old Album"]);
+    id3_payload.extend(id3_txxx_frame("SOURCE", "Old Source"));
+    let tag = id3v23_tag(&id3_payload);
+    seed.extend_from_slice(b"ID3 ");
+    seed.extend_from_slice(&(tag.len() as u32).to_le_bytes());
+    seed.extend_from_slice(&tag);
+    let file = root.join("song.wav");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let edit = TagEdit {
+        title: Some("Wav Title".to_string()),
+        custom_fields: Some(HashMap::from([("SOURCE".to_string(), "CD".to_string())])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Wav Title"));
+    assert_eq!(tags.album.as_deref(), Some("Old Album"));
+    let custom = read_custom_fields(&file);
+    assert_eq!(custom.get("SOURCE").map(String::as_str), Some("CD"));
+
+    let saved = std::fs::read(&file).unwrap();
+    let size = u32::from_le_bytes([saved[4], saved[5], saved[6], saved[7]]);
+    assert_eq!(size as usize, saved.len() - 8);
+    assert!(find_bytes(&saved, b"audiodata-payload").is_some());
+    // The tag chunk is normalized to uppercase "ID3 ".
+    assert!(find_bytes(&saved, b"id3 ").is_none());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_aiff_roundtrip_comm_and_custom() {
+    let root = temp_dir("writer-aiff");
+    let audio = b"aiff-audio-data";
+    let mut seed = Vec::new();
+    seed.extend_from_slice(b"FORM");
+    seed.extend_from_slice(&0u32.to_be_bytes());
+    seed.extend_from_slice(b"AIFF");
+    seed.extend_from_slice(b"COMM");
+    seed.extend_from_slice(&18u32.to_be_bytes());
+    seed.extend_from_slice(&2u16.to_be_bytes()); // channels
+    seed.extend_from_slice(&100_000u32.to_be_bytes()); // frames
+    seed.extend_from_slice(&16u16.to_be_bytes()); // bits
+    seed.extend_from_slice(&[0x40, 0x0E, 0xAC, 0x44, 0, 0, 0, 0, 0, 0]); // 44100
+    seed.extend_from_slice(b"SSND");
+    seed.extend_from_slice(&((audio.len() as u32) + 8).to_be_bytes());
+    seed.extend_from_slice(&0u32.to_be_bytes()); // offset
+    seed.extend_from_slice(&0u32.to_be_bytes()); // block size
+    seed.extend_from_slice(audio);
+    let tag = id3v23_tag(&id3_text_frame("TIT2", &["Old Title"]));
+    seed.extend_from_slice(b"ID3 ");
+    seed.extend_from_slice(&(tag.len() as u32).to_be_bytes());
+    seed.extend_from_slice(&tag);
+    let file = root.join("song.aiff");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let edit = TagEdit {
+        title: Some("Aiff Title".to_string()),
+        custom_fields: Some(HashMap::from([(
+            "ID3:TMED".to_string(),
+            "Vinyl".to_string(),
+        )])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Aiff Title"));
+    // COMM duration: 100 frames at 44100 Hz.
+    assert_eq!(tags.duration_ms, 2267);
+    let custom = read_custom_fields(&file);
+    assert_eq!(custom.get("ID3:TMED").map(String::as_str), Some("Vinyl"));
+
+    let saved = std::fs::read(&file).unwrap();
+    let size = u32::from_be_bytes([saved[4], saved[5], saved[6], saved[7]]);
+    assert_eq!(size as usize, saved.len() - 8);
+    assert!(find_bytes(&saved, b"aiff-audio-data").is_some());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_dsf_updates_pointer_and_size() {
+    let root = temp_dir("writer-dsf");
+    let audio = b"dsd-audio-payload";
+    let mut seed = Vec::new();
+    seed.extend_from_slice(b"DSD ");
+    seed.extend_from_slice(&28u64.to_le_bytes()); // DSD chunk size
+    seed.extend_from_slice(&0u64.to_le_bytes()); // total file size
+    seed.extend_from_slice(&0u64.to_le_bytes()); // metadata pointer
+    seed.extend_from_slice(b"fmt ");
+    seed.extend_from_slice(&52u64.to_le_bytes());
+    seed.extend_from_slice(&1u32.to_le_bytes()); // version
+    seed.extend_from_slice(&0u32.to_le_bytes()); // format id (DSD raw)
+    seed.extend_from_slice(&2u32.to_le_bytes()); // channel type
+    seed.extend_from_slice(&2u32.to_le_bytes()); // channel num
+    seed.extend_from_slice(&2822400u32.to_le_bytes()); // sampling freq
+    seed.extend_from_slice(&1u32.to_le_bytes()); // bits per sample
+    seed.extend_from_slice(&2822400u64.to_le_bytes()); // sample count
+    seed.extend_from_slice(&4096u32.to_le_bytes()); // block size
+    seed.extend_from_slice(b"data");
+    seed.extend_from_slice(&((audio.len() as u64) + 8).to_le_bytes());
+    seed.extend_from_slice(audio);
+    let file = root.join("song.dsf");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let edit = TagEdit {
+        title: Some("Dsf Title".to_string()),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Dsf Title"));
+    // fmt duration: 2822400 samples at 2822400 Hz.
+    assert_eq!(tags.duration_ms, 1000);
+
+    let saved = std::fs::read(&file).unwrap();
+    let pointer = u64::from_le_bytes(saved[20..28].try_into().unwrap());
+    assert_eq!(pointer as usize, seed.len());
+    let total = u64::from_le_bytes(saved[12..20].try_into().unwrap());
+    assert_eq!(total as usize, saved.len());
+
+    // A second save replaces the tail tag and keeps the pointer.
+    let edit2 = TagEdit {
+        custom_fields: Some(HashMap::from([(
+            "ID3:TMED".to_string(),
+            "SACD".to_string(),
+        )])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit2).unwrap();
+    let custom = read_custom_fields(&file);
+    assert_eq!(custom.get("ID3:TMED").map(String::as_str), Some("SACD"));
+    let saved2 = std::fs::read(&file).unwrap();
+    let pointer2 = u64::from_le_bytes(saved2[20..28].try_into().unwrap());
+    assert_eq!(pointer2, pointer);
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_mp4_grow_patch_shrink_free_and_errors() {
+    let root = temp_dir("writer-mp4");
+    let (seed, mdat_offset) = mp4_seed();
+    let file = root.join("song.m4a");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    // Grow: the fresh ilst extends moov; chunk offsets shift with it.
+    let edit1 = TagEdit {
+        title: Some("M4a Title".to_string()),
+        genre: Some("Rock".to_string()),
+        additional_fields: Some(HashMap::from([(
+            "COMMENT".to_string(),
+            "Hi".to_string(),
+        )])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit1).unwrap();
+    let out1 = std::fs::read(&file).unwrap();
+    assert!(out1.len() > seed.len());
+    let delta1 = (out1.len() - seed.len()) as u32;
+    let stco1 = find_bytes(&out1, b"stco").unwrap();
+    let entry1 = u32::from_be_bytes(out1[stco1 + 12..stco1 + 16].try_into().unwrap());
+    assert_eq!(entry1, mdat_offset as u32 + delta1);
+    // Unknown ilst children and freeform atoms survive.
+    assert!(find_bytes(&out1, b"zzzz").is_some());
+    assert!(find_bytes(&out1, b"KeepMe").is_some());
+    assert!(find_bytes(&out1, b"com.apple.iTunes").is_some());
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("M4a Title"));
+    assert_eq!(tags.genre.as_deref(), Some("Rock"));
+    assert_eq!(tags.duration_ms, 1000);
+    let details = inspect_file(&file).expect("mp4 details");
+    assert_eq!(details.sample_rate_hz, 44100);
+    assert_eq!(details.bits_per_sample, 16);
+    let additional = read_additional_standard_fields(&file);
+    assert_eq!(additional.get("COMMENT").map(String::as_str), Some("Hi"));
+    // The freeform seed value is not surfaced as a catalog field.
+    assert_eq!(additional.get("BPM").map(String::as_str), Some(""));
+
+    // Shrink: clearing the genre pads with `free` so offsets stay stable.
+    let edit2 = TagEdit {
+        genre: Some(String::new()),
+        ..Default::default()
+    };
+    editor.save(&file, &edit2).unwrap();
+    let out2 = std::fs::read(&file).unwrap();
+    assert_eq!(out2.len(), out1.len());
+    let stco2 = find_bytes(&out2, b"stco").unwrap();
+    let entry2 = u32::from_be_bytes(out2[stco2 + 12..stco2 + 16].try_into().unwrap());
+    assert_eq!(entry2, entry1);
+    assert!(find_bytes(&out2, b"free").is_some());
+    let tags2 = read_tags(&file);
+    assert!(tags2.genre.is_none());
+    assert_eq!(tags2.title.as_deref(), Some("M4a Title"));
+    assert_eq!(
+        read_additional_standard_fields(&file)
+            .get("COMMENT")
+            .map(String::as_str),
+        Some("Hi")
+    );
+
+    // Custom fields are rejected for MP4.
+    let edit3 = TagEdit {
+        custom_fields: Some(HashMap::from([("X".to_string(), "1".to_string())])),
+        ..Default::default()
+    };
+    let err = editor.save(&file, &edit3).unwrap_err().to_string();
+    assert!(
+        err.contains("Custom tags are not supported for this file format."),
+        "{}",
+        err
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_ape_roundtrip_preserves_binary_and_id3v1() {
+    let root = temp_dir("writer-ape");
+    let audio = b"wv-audio-bytes";
+    let mut seed = Vec::new();
+    seed.extend_from_slice(audio);
+    seed.extend_from_slice(&ape_tag_bytes(&[
+        ape_item("Title", b"Old Title"),
+        ape_item("Cover Art (front)", &png_bytes()),
+    ]));
+    // Trailing ID3v1 tag (128 bytes).
+    let mut id3v1 = vec![0u8; 128];
+    id3v1[..3].copy_from_slice(b"TAG");
+    seed.extend_from_slice(&id3v1);
+    let file = root.join("song.wv");
+    std::fs::write(&file, &seed).unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let edit = TagEdit {
+        title: Some("Ape Title".to_string()),
+        artist: Some("Ape Artist".to_string()),
+        custom_fields: Some(HashMap::from([("MOOD".to_string(), "Chill".to_string())])),
+        ..Default::default()
+    };
+    editor.save(&file, &edit).unwrap();
+
+    let tags = read_tags(&file);
+    assert_eq!(tags.title.as_deref(), Some("Ape Title"));
+    assert_eq!(tags.artist.as_deref(), Some("Ape Artist"));
+    let custom = read_custom_fields(&file);
+    assert_eq!(custom.get("MOOD").map(String::as_str), Some("Chill"));
+
+    let saved = std::fs::read(&file).unwrap();
+    // The binary artwork item and the trailing ID3v1 tag are preserved.
+    assert_eq!(find_bytes(&saved, &png_bytes()).is_some(), true);
+    assert_eq!(&saved[saved.len() - 128..saved.len() - 125], b"TAG");
+    assert!(find_bytes(&saved, b"APETAGEX").is_some());
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_ogg_copy_only_and_unsupported_formats() {
+    let root = temp_dir("writer-ogg-unsupported");
+    let editor = TagEditor::new(&root.join("backups"));
+
+    // The OGG family is copy-only: the file bytes stay identical.
+    let ogg = root.join("song.ogg");
+    std::fs::write(&ogg, b"OggS-fake-ogg-payload").unwrap();
+    let edit = TagEdit {
+        title: Some("Ogg Title".to_string()),
+        ..Default::default()
+    };
+    editor.save(&ogg, &edit).unwrap();
+    assert_eq!(std::fs::read(&ogg).unwrap(), b"OggS-fake-ogg-payload");
+
+    // DFF, TTA and unknown extensions report TagLib's error.
+    for (name, bytes) in [
+        ("song.dff", b"DSD ".as_slice()),
+        ("song.tta", b"TTA1".as_slice()),
+        ("song.xyz", b"data".as_slice()),
+    ] {
+        let file = root.join(name);
+        std::fs::write(&file, bytes).unwrap();
+        let err = editor.save(&file, &edit).unwrap_err().to_string();
+        assert!(err.contains("unsupported format"), "{}: {}", name, err);
+    }
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_validation_error_strings() {
+    let root = temp_dir("writer-validation");
+    let mp3 = root.join("song.mp3");
+    std::fs::write(&mp3, b"audio").unwrap();
+    let flac = root.join("song.flac");
+    std::fs::write(&flac, b"fLaC-payload").unwrap();
+    let m4a = root.join("song.m4a");
+    std::fs::write(&m4a, b"mdat").unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    let save_err = |file: &std::path::Path, edit: &TagEdit| {
+        editor.save(file, edit).unwrap_err().to_string()
+    };
+
+    // Additional fields.
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            additional_fields: Some(HashMap::from([("TRACK".to_string(), "5".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(err.contains("Unknown standard tag field 'TRACK'."), "{}", err);
+
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            additional_fields: Some(HashMap::from([("BPM".to_string(), "abc".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(err.contains("'BPM' must be a whole number."), "{}", err);
+
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            additional_fields: Some(HashMap::from([(
+                "REPLAYGAIN_TRACK_GAIN".to_string(),
+                "abc".to_string(),
+            )])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("'REPLAYGAIN_TRACK_GAIN' must be a finite number."),
+        "{}",
+        err
+    );
+
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            additional_fields: Some(HashMap::from([(
+                "DATE_TAGGED".to_string(),
+                "not-a-date".to_string(),
+            )])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("'Date tagged' must use an ISO 8601 date and time."),
+        "{}",
+        err
+    );
+
+    // Custom fields.
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            custom_fields: Some(HashMap::from([("A=B".to_string(), "x".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("Custom tag names cannot be empty or contain '=', or line breaks."),
+        "{}",
+        err
+    );
+
+    let err = save_err(
+        &flac,
+        &TagEdit {
+            custom_fields: Some(HashMap::from([(
+                "HAS SPACE".to_string(),
+                "x".to_string(),
+            )])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("Xiph field names can contain only ASCII letters, digits, and underscores."),
+        "{}",
+        err
+    );
+
+    let err = save_err(
+        &flac,
+        &TagEdit {
+            custom_fields: Some(HashMap::from([("ARTIST".to_string(), "x".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("'ARTIST' is already edited in a standard tag field."),
+        "{}",
+        err
+    );
+
+    let err = save_err(
+        &mp3,
+        &TagEdit {
+            custom_fields: Some(HashMap::from([("ID3:XX".to_string(), "x".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("Use ID3: followed by a non-standard four-character text frame identifier."),
+        "{}",
+        err
+    );
+
+    let err = save_err(
+        &m4a,
+        &TagEdit {
+            custom_fields: Some(HashMap::from([("X".to_string(), "1".to_string())])),
+            ..Default::default()
+        },
+    );
+    assert!(
+        err.contains("Custom tags are not supported for this file format."),
+        "{}",
+        err
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn writer_backup_prune_keeps_five_and_restore_roundtrip() {
+    let root = temp_dir("writer-prune");
+    let file = root.join("song.mp3");
+    std::fs::write(&file, b"audio").unwrap();
+    let editor = TagEditor::new(&root.join("backups"));
+
+    for index in 1..=6 {
+        let edit = TagEdit {
+            title: Some(format!("T{}", index)),
+            ..Default::default()
+        };
+        editor.save(&file, &edit).unwrap();
+    }
+    assert_eq!(editor.list_backups(&file).len(), 5);
+
+    // Restoring the newest snapshot rolls back to the state before save 6.
+    let newest = editor.list_backups(&file)[0].clone();
+    editor.restore(&newest).unwrap();
+    assert_eq!(read_tags(&file).title.as_deref(), Some("T5"));
+    // The restore created an undo snapshot; retention still caps at 5.
+    assert_eq!(editor.list_backups(&file).len(), 5);
 
     std::fs::remove_dir_all(&root).ok();
 }

@@ -1683,10 +1683,10 @@ const ASF_CONTENT_DESCRIPTION_GUID: [u8; 16] = [
     0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
 ];
 const ASF_EXTENDED_CONTENT_GUID: [u8; 16] = [
-    0xD2, 0xD0, 0xA4, 0x40, 0xE3, 0x07, 0xD2, 0x11, 0x97, 0x3F, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x36,
+    0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50,
 ];
 const ASF_STREAM_PROPERTIES_GUID: [u8; 16] = [
-    0x91, 0x07, 0xDC, 0xB7, 0xB7, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65,
+    0x91, 0x07, 0xDC, 0xB7, 0xB7, 0xA9, 0xCF, 0x11, 0x8E, 0xE6, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65,
 ];
 
 #[derive(Debug, Default)]
@@ -1900,14 +1900,13 @@ pub fn parse_ape_items(data: &[u8]) -> Vec<(String, Vec<String>)> {
     let footer = &data[footer_pos..footer_pos + 32];
     let tag_size = u32::from_le_bytes([footer[12], footer[13], footer[14], footer[15]]) as usize;
     let item_count = u32::from_le_bytes([footer[16], footer[17], footer[18], footer[19]]) as usize;
-    let has_header = footer[23] & 0x80 != 0;
-    if tag_size < 32 || tag_size > data.len() {
+    if tag_size < 32 || footer_pos + 32 < tag_size || tag_size > data.len() {
         return items;
     }
-    let mut items_start = footer_pos + 32 - tag_size;
-    if has_header {
-        items_start += 32;
-    }
+    // TagLib's tagSize field always counts the items plus the footer (or the
+    // header on a headerless tag), so the items end at the footer and begin
+    // right there — the header never sits inside the counted region.
+    let items_start = footer_pos + 32 - tag_size;
     let items_end = footer_pos;
     let mut offset = items_start;
     for _ in 0..item_count {
@@ -2093,20 +2092,18 @@ fn dsf_quality(path: &Path) -> Quality {
     if data.len() < 28 || &data[0..4] != b"DSD " {
         return Quality::default();
     }
-    // The DSD chunk's pointer to the fmt chunk (spec offset 20; 0 falls back
-    // to the first position after the 28-byte DSD chunk).
-    let fmt_start = u64::from_le_bytes([
-        data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27],
-    ]) as usize;
-    let offset = if fmt_start >= 28 { fmt_start } else { 28 };
-    if offset + 52 > data.len() || &data[offset..offset + 4] != b"fmt " {
+    // The fmt chunk always directly follows the 28-byte DSD chunk (the DSD
+    // chunk's 64-bit field at offset 20 points to the metadata/ID3 tail, not
+    // to the fmt chunk).
+    let offset = 28usize;
+    if offset + 64 > data.len() || &data[offset..offset + 4] != b"fmt " {
         return Quality::default();
     }
-    let freq = u32::from_le_bytes([data[offset + 16], data[offset + 17], data[offset + 18], data[offset + 19]]);
-    let bits = u32::from_le_bytes([data[offset + 20], data[offset + 21], data[offset + 22], data[offset + 23]]);
+    let freq = u32::from_le_bytes([data[offset + 28], data[offset + 29], data[offset + 30], data[offset + 31]]);
+    let bits = u32::from_le_bytes([data[offset + 32], data[offset + 33], data[offset + 34], data[offset + 35]]);
     let samples = u64::from_le_bytes([
-        data[offset + 24], data[offset + 25], data[offset + 26], data[offset + 27],
-        data[offset + 28], data[offset + 29], data[offset + 30], data[offset + 31],
+        data[offset + 36], data[offset + 37], data[offset + 38], data[offset + 39],
+        data[offset + 40], data[offset + 41], data[offset + 42], data[offset + 43],
     ]);
     let duration = if freq > 0 { samples * 1000 / freq as u64 } else { 0 };
     Quality {
