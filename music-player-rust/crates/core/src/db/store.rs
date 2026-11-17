@@ -163,9 +163,56 @@ impl LibraryStore {
         playlists::add_tracks_to_playlist(&conn, id, paths)
     }
 
+    pub fn playlist_exists(&self, id: &str) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        playlists::playlist_exists(&conn, id)
+    }
+
+    pub fn rename_playlist(&self, id: &str, name: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        playlists::rename_playlist(&conn, id, name)
+    }
+
+    pub fn get_playlist_paths(&self, id: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        playlists::get_playlist_paths(&conn, id)
+    }
+
+    pub fn remove_from_playlist(&self, id: &str, position: u32) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        playlists::remove_from_playlist(&conn, id, position)
+    }
+
+    pub fn move_playlist_track(&self, id: &str, position: u32, to_position: u32) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        playlists::move_playlist_track(&conn, id, position, to_position)
+    }
+
+    pub fn set_playlist_tracks(&self, id: &str, paths: &[String]) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        playlists::set_playlist_tracks(&conn, id, paths)
+    }
+
     pub fn delete_playlist(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         playlists::delete_playlist(&conn, id)
+    }
+
+    // --- View & group queries ---
+    pub fn query_track_page(&self, query: &tracks::TrackQuery) -> Result<(Vec<Track>, i64)> {
+        let conn = self.conn.lock().unwrap();
+        tracks::query_track_page(&conn, query)
+    }
+
+    pub fn query_group_page(
+        &self,
+        column: &str,
+        search: Option<&str>,
+        offset: u32,
+        page_size: u32,
+    ) -> Result<(Vec<LibraryGroup>, i64)> {
+        let conn = self.conn.lock().unwrap();
+        tracks::query_group_page(&conn, column, search, offset, page_size)
     }
 
     // --- Session & Queue ---
@@ -195,6 +242,11 @@ impl LibraryStore {
         session::get_setting(&conn, key)
     }
 
+    pub fn get_setting_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        session::get_setting_keys_with_prefix(&conn, prefix)
+    }
+
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         session::set_setting(&conn, key, value)
@@ -209,5 +261,78 @@ impl LibraryStore {
     pub fn purge_tracks_under_directory(&self, dir_prefix: &str) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
         availability::purge_tracks_under_directory(&conn, dir_prefix)
+    }
+
+    pub fn purge_tracks_under_directories(&self, prefixes: &[String]) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        availability::purge_tracks_under_directories(&conn, prefixes)
+    }
+
+    pub fn purge_tracks_in_default_excluded_directories(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        availability::purge_tracks_in_default_excluded_directories(&conn)
+    }
+
+    pub fn get_referenced_paths(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        availability::get_referenced_paths(&conn)
+    }
+
+    pub fn clear_unavailable_tracks_that_exist(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        availability::clear_unavailable_tracks_that_exist(&conn)
+    }
+
+    pub fn set_track_unavailable(&self, path: &str, unavailable: bool) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        tracks::set_track_unavailable(&conn, path, unavailable)
+    }
+
+    /// Restores an available track, reporting whether the flag changed.
+    pub fn reinstate_track(&self, path: &str) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        availability::reinstate_track(&conn, path)
+    }
+
+    pub fn mark_tracks_under_root_unavailable(&self, root_prefix: &str) -> Result<u32> {
+        let conn = self.conn.lock().unwrap();
+        tracks::mark_tracks_under_root_unavailable(&conn, root_prefix)
+    }
+
+    pub fn get_track_paths_page(
+        &self,
+        group_column: Option<&str>,
+        group_value: Option<&str>,
+        offset: u32,
+        page_size: u32,
+    ) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::get_track_paths_page(&conn, group_column, group_value, offset, page_size)
+    }
+
+    /// Bounded page of full tracks in stable path order — used by index
+    /// refresh passes (GetTracksPage contract).
+    pub fn get_tracks_page(
+        &self,
+        query: &tracks::TrackQuery,
+    ) -> Result<Vec<Track>> {
+        let (tracks, _) = self.query_track_page(query)?;
+        Ok(tracks)
+    }
+
+    pub fn artwork_refs(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::artwork_refs(&conn)
+    }
+
+    pub fn clear_missing_artwork_refs(&self, missing: &[String]) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        tracks::clear_missing_artwork_refs(&conn, missing)
+    }
+
+    pub fn checkpoint_wal(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE)", [])?;
+        Ok(())
     }
 }

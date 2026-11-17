@@ -2,6 +2,21 @@ use super::tracks::row_to_track;
 use crate::models::Track;
 use rusqlite::{params, Connection, Result};
 
+/// Builds the FTS5 MATCH expression for a free-text query: whitespace-split
+/// words, alphanumeric-filtered, quoted-prefix form joined with AND. Empty
+/// when the query carries no searchable words.
+pub fn fts_query_string(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|w| {
+            let clean: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
+            format!("\"{}\"*", clean)
+        })
+        .filter(|w| w != "\"\"*")
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
 pub fn search_tracks(conn: &Connection, query: &str, limit: u32) -> Result<Vec<Track>> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -9,20 +24,7 @@ pub fn search_tracks(conn: &Connection, query: &str, limit: u32) -> Result<Vec<T
     }
 
     // Split search terms and create FTS prefix match: "word"*
-    let words: Vec<&str> = trimmed.split_whitespace().collect();
-    if words.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let fts_query = words
-        .iter()
-        .map(|w| {
-            let clean: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
-            format!("\"{}\"*", clean)
-        })
-        .collect::<Vec<_>>()
-        .join(" AND ");
-
+    let fts_query = fts_query_string(trimmed);
     if fts_query.trim().is_empty() {
         return Ok(Vec::new());
     }

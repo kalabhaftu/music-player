@@ -94,10 +94,62 @@ pub fn shuffle_upcoming<T>(queue: &mut [T], start_index: usize) {
     }
 }
 
+/// Builds the queue state for externally opened files, mirroring
+/// `QueueNavigation.BuildExternalOpenQueue`.
+///
+/// The opened paths come first (deduplicated, case-insensitive, blanks dropped),
+/// then the currently playing track if it is not among them, then every
+/// still-unplayed existing entry that was not opened.
+pub fn build_external_open_queue(
+    opened_paths: &[String],
+    current_track_path: Option<&str>,
+    existing_queue: &[String],
+    current_index: i64,
+) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    let mut newly_opened: Vec<String> = Vec::new();
+    for path in opened_paths {
+        if path.trim().is_empty() {
+            continue;
+        }
+        if newly_opened.iter().any(|seen| seen.eq_ignore_ascii_case(path)) {
+            continue;
+        }
+        newly_opened.push(path.clone());
+        result.push(path.clone());
+    }
+
+    if let Some(current) = current_track_path {
+        if !current.trim().is_empty()
+            && !result.iter().any(|seen| seen.eq_ignore_ascii_case(current))
+        {
+            result.push(current.to_string());
+        }
+    }
+
+    let first_upcoming = (current_index + 1).clamp(0, existing_queue.len() as i64) as usize;
+    for entry in existing_queue.iter().skip(first_upcoming) {
+        if !newly_opened.iter().any(|seen| seen.eq_ignore_ascii_case(entry)) {
+            result.push(entry.clone());
+        }
+    }
+
+    result
+}
+
+fn same_path(left: &str, right: &str) -> bool {
+    left.eq_ignore_ascii_case(right)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueueCoordinator {
     entries: Vec<String>,
     current_index: Option<usize>,
+    /// Set when the entry at `current_index` was removed from the queue. While
+    /// it is set, automatic advance behaves like a manual advance so a
+    /// track-repeat wrap cannot restart an entry that no longer exists.
+    /// Mirrors `PlaybackQueueCoordinator._currentEntryRemoved`.
+    current_entry_removed: bool,
     pub shuffle: bool,
     pub repeat_mode: RepeatMode,
     pub repeat_a_ms: Option<u64>,
@@ -119,7 +171,51 @@ impl QueueCoordinator {
     }
 
     pub fn set_current_index(&mut self, idx: Option<usize>) {
-        self.current_index = idx;
+        // Mirrors SetCurrentIndex: an out-of-range index becomes "no current"
+        // and every explicit selection clears the removed-entry flag.
+        self.current_index = match idx {
+            Some(i) if i < self.entries.len() => Some(i),
+            _ => None,
+        };
+        self.current_entry_removed = false;
+    }
+
+    pub fn current_entry_removed(&self) -> bool {
+        self.current_entry_removed
+    }
+
+    pub fn content_revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn set_shuffle(&mut self, enabled: bool) {
+        self.shuffle = enabled;
+    }
+
+    pub fn set_repeat_mode(&mut self, mode: RepeatMode) {
+        self.repeat_mode = mode;
+    }
+
+    pub fn repeat_a_ms(&self) -> Option<u64> {
+        self.repeat_a_ms
+    }
+
+    pub fn repeat_b_ms(&self) -> Option<u64> {
+        self.repeat_b_ms
+    }
+
+    pub fn cycle_repeat_mode(&mut self) {
+        self.repeat_mode = self.repeat_mode.cycle();
+    }
+
+    /// Finds the first entry matching `path` case-insensitively; `None`
+    /// mirrors the C# `-1` sentinel for blank or unknown paths.
+    pub fn find_index(&self, path: Option<&str>) -> Option<usize> {
+        let path = path?;
+        if path.trim().is_empty() {
+            return None;
+        }
+        self.entries.iter().position(|entry| same_path(entry, path))
     }
 
     pub fn current_track_path(&self) -> Option<&str> {
@@ -130,12 +226,13 @@ impl QueueCoordinator {
 
     pub fn replace(&mut self, paths: Vec<String>, current_index: Option<usize>) {
         self.entries = paths;
+        self.current_entry_removed = false;
+        self.revision += 1;
         self.current_index = if self.entries.is_empty() {
             None
         } else {
-            current_index.map(|idx| idx.min(self.entries.len() - 1))
+            current_index.filter(|idx| *idx < self.entries.len())
         };
-        self.revision += 1;
     }
 
     pub fn select_track(&mut self, context_paths: Vec<String>, track_path: &str) {
@@ -155,6 +252,7 @@ impl QueueCoordinator {
             let start = self.current_index.map_or(0, |i| i + 1);
             shuffle_upcoming(&mut self.entries, start);
         }
+        self.current_entry_removed = false;
         self.revision += 1;
     }
 
@@ -179,7 +277,7 @@ impl QueueCoordinator {
         self.revision += 1;
     }
 
-    pub fn append(&mut self, path: String) {
+    pub fn append_one(&mut self, path: String) {
         self.entries.push(path);
         self.revision += 1;
     }
@@ -225,5 +323,188 @@ impl QueueCoordinator {
     pub fn clear_ab_repeat(&mut self) {
         self.repeat_a_ms = None;
         self.repeat_b_ms = None;
+    }
+
+    /// Mirrors `PlaybackQueueCoordinator.NextIndex`: the removed-entry flag
+    /// downgrades an automatic advance to a manual one.
+    pub fn next_index(&self, automatic: bool) -> Option<usize> {
+        next_index(
+            self.entries.len(),
+            self.current_index,
+            automatic && !self.current_entry_removed,
+            self.repeat_mode,
+        )
+    }
+
+    /// Mirrors `PlaybackQueueCoordinator.ShuffleUpcoming`.
+    pub fn shuffle_upcoming(&mut self, start_index: usize) {
+        shuffle_upcoming(&mut self.entries, start_index);
+        let clamped = start_index.min(self.entries.len());
+        if self.entries.len() - clamped > 1 {
+            self.revision += 1;
+        }
+    }
+
+    /// Mirrors `MoveEntry`: `direction` may be negative (up) or positive (down).
+    pub fn move_entry(&mut self, index: usize, direction: isize) -> bool {
+        match (index as i64).checked_add(direction as i64) {
+            Some(target) if target >= 0 => self.move_entry_to(index, target as usize),
+            _ => false,
+        }
+    }
+
+    /// Mirrors `MoveEntryTo`: only upcoming entries (after the current one)
+    /// may be reordered.
+    pub fn move_entry_to(&mut self, index: usize, target_index: usize) -> bool {
+        let first_upcoming_index = self.current_index.map_or(0, |idx| idx + 1);
+        if index < first_upcoming_index
+            || index >= self.entries.len()
+            || target_index < first_upcoming_index
+            || target_index >= self.entries.len()
+            || target_index == index
+        {
+            return false;
+        }
+        let entry = self.entries.remove(index);
+        self.entries.insert(target_index, entry);
+        self.revision += 1;
+        true
+    }
+
+    /// Mirrors `RemovePaths`, including the manual-advance rule for the
+    /// currently playing entry.
+    pub fn remove_paths(&mut self, paths: &[String]) -> bool {
+        if paths.is_empty() {
+            return false;
+        }
+        let removed = |candidate: &str| {
+            paths
+                .iter()
+                .any(|path| same_path(path, candidate))
+        };
+        let old_index = self.current_index;
+        if let Some(old) = old_index {
+            if old < self.entries.len() && removed(&self.entries[old]) {
+                self.current_entry_removed = true;
+            }
+        }
+        let retained_before_current = self
+            .entries
+            .iter()
+            .take(old_index.map_or(0, |old| (old + 1).min(self.entries.len())))
+            .filter(|entry| !removed(entry))
+            .count();
+        let before = self.entries.len();
+        self.entries.retain(|entry| !removed(entry));
+        if self.entries.len() == before {
+            return false;
+        }
+        let new_index = retained_before_current as i64 - 1;
+        self.current_index = if new_index >= 0 && (new_index as usize) < self.entries.len() {
+            Some(new_index as usize)
+        } else {
+            None
+        };
+        self.revision += 1;
+        true
+    }
+
+    /// Mirrors `EnsureCurrentTrack`.
+    pub fn ensure_current_track(&mut self, current_track_path: Option<&str>) {
+        let Some(current) = current_track_path else {
+            return;
+        };
+        if current.trim().is_empty() {
+            return;
+        }
+        if self.entries.is_empty() {
+            self.entries.push(current.to_string());
+            self.revision += 1;
+            self.current_index = Some(0);
+            return;
+        }
+        if self
+            .current_index
+            .and_then(|idx| self.entries.get(idx))
+            .map(|entry| same_path(entry, current))
+            .unwrap_or(false)
+        {
+            return;
+        }
+        if let Some(existing) = self.find_index(Some(current)) {
+            self.current_index = Some(existing);
+            return;
+        }
+        let insert_at = self.current_index.map_or(0, |idx| idx + 1).min(self.entries.len());
+        self.entries.insert(insert_at, current.to_string());
+        self.revision += 1;
+        self.current_index = Some(insert_at);
+    }
+
+    /// Mirrors `Append`.
+    pub fn append(&mut self, paths: &[String], current_track_path: Option<&str>) {
+        self.ensure_current_track(current_track_path);
+        let previous_count = self.entries.len();
+        self.entries.extend(paths.iter().cloned());
+        if self.entries.len() != previous_count {
+            self.revision += 1;
+        }
+    }
+
+    /// Mirrors `InsertNextRange`.
+    pub fn insert_next_range(&mut self, paths: &[String], current_track_path: Option<&str>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.ensure_current_track(current_track_path);
+        let insert_at = self
+            .current_index
+            .map_or(0, |idx| idx + 1)
+            .min(self.entries.len());
+        let position = insert_at;
+        for (offset, path) in paths.iter().enumerate() {
+            self.entries.insert(position + offset, path.clone());
+        }
+        self.revision += 1;
+    }
+
+    /// Mirrors `EnsureQueue`: fills an empty queue from the current view.
+    pub fn ensure_queue(&mut self, view_paths: &[String], current_track_path: Option<&str>) {
+        if !self.entries.is_empty() {
+            return;
+        }
+        self.replace(view_paths.to_vec(), None);
+        let Some(current) = current_track_path else {
+            return;
+        };
+        if current.trim().is_empty() {
+            return;
+        }
+        self.current_index = self.find_index(Some(current));
+        if self.current_index.is_none() {
+            self.entries.insert(0, current.to_string());
+            self.current_index = Some(0);
+        }
+    }
+
+    /// Mirrors `ToggleShuffle`.
+    pub fn toggle_shuffle(&mut self, view_paths: &[String], current_track_path: Option<&str>) {
+        self.shuffle = !self.shuffle;
+        if self.entries.is_empty() {
+            self.replace(view_paths.to_vec(), None);
+            if let Some(current) = current_track_path {
+                if !current.trim().is_empty() {
+                    self.current_index = self.find_index(Some(current));
+                    if self.current_index.is_none() {
+                        self.entries.insert(0, current.to_string());
+                        self.current_index = Some(0);
+                    }
+                }
+            }
+        }
+        if self.shuffle {
+            let start = self.current_index.map_or(0, |idx| idx + 1).min(self.entries.len());
+            self.shuffle_upcoming(start);
+        }
     }
 }

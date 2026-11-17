@@ -6,4 +6,4 @@ pub mod track;
 pub use lyrics::{LyricsDocument, LyricsLine};
 pub use playlist::{Playlist, PlaylistEntry, PlaylistSummary};
 pub use session::{PlaybackSession, ScanProgress, TagBackup, TagEdit};
-pub use track::{LibraryGroup, LibraryStats, Track, TrackSort};
+pub use track::{LibraryGroup, LibraryStats, Track, TrackSort, opaque_id_for, track_id_for_path};

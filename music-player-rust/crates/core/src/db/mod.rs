@@ -1,4 +1,5 @@
 pub mod availability;
+pub mod functions;
 pub mod playlists;
 pub mod schema;
 pub mod search;

@@ -51,6 +51,18 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     }
 }
 
+/// All setting keys starting with `prefix` (equalizer preset discovery).
+pub fn get_setting_keys_with_prefix(conn: &Connection, prefix: &str) -> Result<Vec<String>> {
+    let pattern = format!("{}%", prefix);
+    let mut stmt = conn.prepare("SELECT key FROM settings WHERE key LIKE ?1")?;
+    let mut rows = stmt.query(params![pattern])?;
+    let mut keys = Vec::new();
+    while let Some(row) = rows.next()? {
+        keys.push(row.get(0)?);
+    }
+    Ok(keys)
+}
+
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

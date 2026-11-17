@@ -1,6 +1,7 @@
 use crate::models::{LibraryGroup, LibraryStats, Track, TrackSort};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result, Row};
+use super::search;
 
 pub fn row_to_track(row: &Row) -> Result<Track> {
     let path: String = row.get("path")?;
@@ -36,6 +37,8 @@ pub fn row_to_track(row: &Row) -> Result<Track> {
             .ok()
     });
 
+    let unavailable = row.get::<_, Option<i64>>("unavailable").unwrap_or(Some(0)).unwrap_or(0) != 0;
+
     Ok(Track {
         path,
         title,
@@ -55,6 +58,7 @@ pub fn row_to_track(row: &Row) -> Result<Track> {
         last_played_utc,
         artwork_path,
         has_lyrics,
+        unavailable,
     })
 }
 
@@ -68,9 +72,10 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<()> {
         INSERT INTO tracks (
             path, title, artist, album, album_artist, genre, year,
             track_number, duration_ms, file_size, modified_utc, added_utc,
-            favorite, rating, play_count, last_played_utc, artwork_path, has_lyrics
+            favorite, rating, play_count, last_played_utc, artwork_path, has_lyrics,
+            unavailable
         ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
         )
         ON CONFLICT(path) DO UPDATE SET
             title = excluded.title,
@@ -84,7 +89,8 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<()> {
             file_size = excluded.file_size,
             modified_utc = excluded.modified_utc,
             artwork_path = excluded.artwork_path,
-            has_lyrics = excluded.has_lyrics
+            has_lyrics = excluded.has_lyrics,
+            unavailable = excluded.unavailable
         "#,
         params![
             track.path,
@@ -104,7 +110,8 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<()> {
             track.play_count as i64,
             last_played_str,
             track.artwork_path,
-            if track.has_lyrics { 1 } else { 0 }
+            if track.has_lyrics { 1 } else { 0 },
+            if track.unavailable { 1 } else { 0 }
         ],
     )?;
 
@@ -316,4 +323,428 @@ pub fn get_genre_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
         });
     }
     Ok(groups)
+}
+
+// ---------------------------------------------------------------------------
+// View query surface (getTracks / getPlaylistTracks contracts)
+// ---------------------------------------------------------------------------
+
+/// Filter + sort + pagination contract used by the app's track views.
+#[derive(Debug, Clone, Default)]
+pub struct TrackQuery {
+    /// `Favorites` view.
+    pub favorites: bool,
+    /// `Most Played` view (play_count > 0).
+    pub most_played: bool,
+    /// `Recently Played` view (last_played_utc is set).
+    pub recently_played: bool,
+    /// `With Lyrics` view.
+    pub with_lyrics: bool,
+    /// `Videos` view: restrict to the supplied extension set.
+    pub extension_filter: Option<Vec<String>>,
+    /// Group filter: "album" | "artist" | "genre" | "folder".
+    pub group_column: Option<String>,
+    pub group_value: Option<String>,
+    /// Free-text search narrowed with the FTS index.
+    pub search: Option<String>,
+    /// Hide copies that share a content fingerprint with another visible track.
+    pub hide_duplicates: bool,
+    pub sort: TrackSort,
+    pub descending: bool,
+    pub offset: u32,
+    pub page_size: u32,
+    /// Folder detail views surface unavailable tracks as placeholders.
+    pub include_unavailable: bool,
+    /// Browsing-availability overlay: hide paths under these root prefixes
+    /// (unavailable roots + scan exclusions; mirrors `musicplayer_visible`).
+    pub excluded_prefixes: Vec<String>,
+}
+
+fn order_expression(sort: TrackSort, descending: bool) -> String {
+    let dir = if descending { "DESC" } else { "ASC" };
+    let col = match sort {
+        TrackSort::Title => "t.title COLLATE NOCASE",
+        TrackSort::Artist => "t.artist COLLATE NOCASE, t.album COLLATE NOCASE, t.track_number",
+        TrackSort::Album => "t.album COLLATE NOCASE, t.track_number",
+        TrackSort::Genre => "t.genre COLLATE NOCASE, t.artist COLLATE NOCASE",
+        TrackSort::Year => "t.year, t.album COLLATE NOCASE, t.track_number",
+        TrackSort::Added => "t.added_utc",
+        TrackSort::Duration => "t.duration_ms",
+        TrackSort::PlayCount => "t.play_count",
+        TrackSort::LastPlayed => "t.last_played_utc",
+        TrackSort::Path => "t.path COLLATE NOCASE",
+        TrackSort::Rating => "t.rating",
+        TrackSort::TrackNumber => "t.track_number",
+        TrackSort::Type => "t.path COLLATE NOCASE",
+    };
+    format!("{} {}", col, dir)
+}
+
+/// True when the duplicate-fingerprint cache holds rows for the current library.
+fn fingerprints_present(conn: &Connection) -> bool {
+    conn.query_row("SELECT EXISTS(SELECT 1 FROM track_fingerprints LIMIT 1)", [], |r| {
+        r.get::<_, i64>(0)
+    })
+    .map(|v| v != 0)
+    .unwrap_or(false)
+}
+
+/// SQL fragment that excludes every copy of a duplicate set except the single
+/// deterministic representative (lowest path), mirroring the original
+/// `hideExactDuplicates` Songs-page behavior.
+fn duplicate_suppression_sql() -> &'static str {
+    r#"
+    AND t.path NOT IN (
+        SELECT t2.path FROM tracks t2
+        JOIN track_fingerprints f2 ON f2.path = t2.path
+        WHERE EXISTS (
+            SELECT 1 FROM track_fingerprints f3
+            WHERE f3.audio_hash = f2.audio_hash
+              AND f3.path < t2.path
+              AND EXISTS (SELECT 1 FROM tracks t3 WHERE t3.path = f3.path AND t3.unavailable = 0)
+        )
+    )"#
+}
+
+fn build_view_where(query: &TrackQuery, use_fts: bool) -> (String, Vec<String>) {
+    let mut clauses: Vec<String> = if query.include_unavailable {
+        Vec::new()
+    } else {
+        vec!["t.unavailable = 0".to_string()]
+    };
+    let mut params: Vec<String> = Vec::new();
+
+    // Browsing-availability overlay (unavailable roots + scan exclusions).
+    for prefix in &query.excluded_prefixes {
+        let trimmed = prefix.trim_end_matches(['/', '\\']);
+        if trimmed.is_empty() {
+            continue;
+        }
+        clauses.push("t.path NOT LIKE ? ESCAPE '\\'".to_string());
+        let escaped = trimmed
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        params.push(format!("{}\\%", escaped));
+    }
+
+    if query.favorites {
+        clauses.push("t.favorite = 1".to_string());
+    }
+    if query.most_played {
+        clauses.push("t.play_count > 0".to_string());
+    }
+    if query.recently_played {
+        clauses.push("t.last_played_utc IS NOT NULL".to_string());
+    }
+    if query.with_lyrics {
+        clauses.push("t.has_lyrics = 1".to_string());
+    }
+    if let Some(extensions) = &query.extension_filter {
+        if !extensions.is_empty() {
+            let ext_clauses = extensions
+                .iter()
+                .map(|_| format!("t.path LIKE ?"))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            clauses.push(format!("({})", ext_clauses));
+            for ext in extensions {
+                params.push(format!("%.{}", ext.trim_start_matches('.').to_lowercase()));
+            }
+        }
+    }
+    if let (Some(column), Some(value)) = (&query.group_column, &query.group_value) {
+        match column.as_str() {
+            "album" => {
+                clauses.push("t.album = ? COLLATE NOCASE".to_string());
+                params.push(value.clone());
+            }
+            "artist" => {
+                // Multi-value artist lists are ';'-separated (1:1 with the
+                // original BuildTrackQuery artist predicate).
+                clauses.push(
+                    "(t.artist = ? COLLATE NOCASE OR t.artist LIKE (? || ';%') OR t.artist LIKE ('%; ' || ? || ';%') OR t.artist LIKE ('%; ' || ?) OR t.artist LIKE (? || ' feat%') OR t.artist LIKE (? || ' ft%'))"
+                        .to_string(),
+                );
+                for _ in 0..6 {
+                    params.push(value.clone());
+                }
+            }
+            "genre" => {
+                clauses.push("t.genre = ? COLLATE NOCASE".to_string());
+                params.push(value.clone());
+            }
+            "folder" => {
+                // Folder detail shows direct children only (1:1 with
+                // `musicplayer_directory(tracks.path) = $folderPrefix`).
+                clauses.push(super::functions::FOLDER_CHILD_PREDICATE.to_string());
+                let normalized = value.trim_end_matches('\\').trim_end_matches('/').to_string();
+                params.push(normalized);
+            }
+            _ => {}
+        }
+    }
+    if let Some(term) = query.search.as_deref().map(str::trim) {
+        if !term.is_empty() && use_fts {
+            clauses.push(
+                "t.path IN (SELECT path FROM tracks_fts WHERE tracks_fts MATCH ?)".to_string(),
+            );
+            params.push(search::fts_query_string(term));
+        }
+    }
+
+    (clauses.join(" AND "), params)
+}
+
+/// Paginated track page for a view query: `(tracks, total_count)`.
+/// `hide_duplicates` only takes effect when a fingerprint cache exists.
+pub fn query_track_page(
+    conn: &Connection,
+    query: &TrackQuery,
+) -> Result<(Vec<Track>, i64)> {
+    let (where_sql, params) = build_view_where(query, true);
+    let suppression = if query.hide_duplicates && fingerprints_present(conn) {
+        duplicate_suppression_sql().to_string()
+    } else {
+        String::new()
+    };
+
+    // FTS MATCH can be an empty/invalid expression for punctuation-only terms;
+    // fall back to a plain (non-FTS) where clause on error.
+    let attempt = || -> Result<(Vec<Track>, i64)> {
+        let order = order_expression(query.sort, query.descending);
+        let sql = format!(
+            "SELECT t.* FROM tracks t WHERE {}{} ORDER BY {} LIMIT ? OFFSET ?",
+            where_sql,
+            suppression,
+            order
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut bound: Vec<Box<dyn rusqlite::ToSql>> = params
+            .iter()
+            .map(|p| Box::new(p.clone()) as Box<dyn rusqlite::ToSql>)
+            .collect();
+        bound.push(Box::new(query.page_size.max(1) as i64));
+        bound.push(Box::new(query.offset as i64));
+        let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
+        let mut tracks = Vec::new();
+        while let Some(row) = rows.next()? {
+            tracks.push(row_to_track(row)?);
+        }
+
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM tracks t WHERE {}{}",
+            where_sql,
+            suppression
+        );
+        let total: i64 = conn.query_row(
+            &count_sql,
+            rusqlite::params_from_iter(params.iter()),
+            |r| r.get(0),
+        )?;
+        Ok((tracks, total))
+    };
+
+    match attempt() {
+        Ok(page) => Ok(page),
+        Err(_) => {
+            // Retire the FTS clause and retry, mirroring the original
+            // duplicate-suppression fallback logging/retry behavior.
+            let mut relaxed = query.clone();
+            relaxed.search = None;
+            let (where_sql, params) = build_view_where(&relaxed, false);
+            let order = order_expression(query.sort, query.descending);
+            let sql = format!(
+                "SELECT t.* FROM tracks t WHERE {} ORDER BY {} LIMIT ? OFFSET ?",
+                where_sql, order
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let mut bound: Vec<Box<dyn rusqlite::ToSql>> = params
+                .iter()
+                .map(|p| Box::new(p.clone()) as Box<dyn rusqlite::ToSql>)
+                .collect();
+            bound.push(Box::new(query.page_size.max(1) as i64));
+            bound.push(Box::new(query.offset as i64));
+            let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
+            let mut tracks = Vec::new();
+            while let Some(row) = rows.next()? {
+                tracks.push(row_to_track(row)?);
+            }
+            let count_sql = format!("SELECT COUNT(*) FROM tracks t WHERE {}", where_sql);
+            let total: i64 =
+                conn.query_row(&count_sql, rusqlite::params_from_iter(params.iter()), |r| {
+                    r.get(0)
+                })?;
+            Ok((tracks, total))
+        }
+    }
+}
+
+/// Distinct group page (`getGroups` contract): album | artist | genre, with
+/// optional search narrowing, ordered alphabetically.
+pub fn query_group_page(
+    conn: &Connection,
+    column: &str,
+    search: Option<&str>,
+    offset: u32,
+    page_size: u32,
+) -> Result<(Vec<LibraryGroup>, i64)> {
+    let (value_expr, artwork_expr, artist_expr, year_expr, where_name) = match column {
+        "album" => ("t.album", "MAX(t.artwork_path)", "MAX(t.artist)", "MAX(t.year)", "t.album"),
+        "artist" => ("t.artist", "MAX(t.artwork_path)", "NULL", "0", "t.artist"),
+        "genre" => ("t.genre", "MAX(t.artwork_path)", "NULL", "0", "t.genre"),
+        "folder" => (
+            "musicplayer_directory(t.path)",
+            "MAX(t.artwork_path)",
+            "NULL",
+            "0",
+            "musicplayer_directory(t.path)",
+        ),
+        _ => return Ok((Vec::new(), 0)),
+    };
+
+    let search_clause = match search.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(_) => " WHERE value LIKE ? COLLATE NOCASE",
+        None => "",
+    };
+
+    let sql = format!(
+        r#"
+        WITH groups AS (
+            SELECT {} AS value, COUNT(*) AS cnt, {} AS artwork, {} AS artist, {} AS year
+            FROM tracks t
+            WHERE t.unavailable = 0 AND t.path != '' AND {} != ''
+            GROUP BY value COLLATE NOCASE
+        )
+        SELECT value, cnt, artwork, artist, year FROM groups{}
+        ORDER BY value COLLATE NOCASE ASC
+        LIMIT ? OFFSET ?
+        "#,
+        value_expr, artwork_expr, artist_expr, year_expr, where_name, search_clause
+    );
+
+    let mut bound: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(term) = search.map(str::trim).filter(|s| !s.is_empty()) {
+        bound.push(Box::new(format!("%{}%", term)));
+    }
+    bound.push(Box::new(page_size.max(1) as i64));
+    bound.push(Box::new(offset as i64));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
+    let mut groups = Vec::new();
+    while let Some(row) = rows.next()? {
+        groups.push(LibraryGroup {
+            name: row.get(0)?,
+            track_count: row.get::<_, i64>(1)? as u32,
+            artwork_path: row.get(2)?,
+            artist: row.get(3)?,
+            year: row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0) as u32,
+        });
+    }
+
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM (SELECT {} AS value FROM tracks t WHERE t.unavailable = 0 AND {} != '' GROUP BY value COLLATE NOCASE)",
+        value_expr, where_name
+    );
+    let total: i64 = conn.query_row(&count_sql, [], |r| r.get(0))?;
+    Ok((groups, total))
+}
+
+/// Availability helpers ------------------------------------------------------
+
+pub fn set_track_unavailable(conn: &Connection, path: &str, unavailable: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE tracks SET unavailable = ?1 WHERE path = ?2",
+        rusqlite::params![if unavailable { 1 } else { 0 }, path],
+    )?;
+    Ok(())
+}
+
+/// Marks every track under an unavailable root (prefix match) as unavailable.
+pub fn mark_tracks_under_root_unavailable(conn: &Connection, root_prefix: &str) -> Result<u32> {
+    let pattern = format!("{}%", root_prefix.trim_end_matches(['/', '\\']));
+    let count = conn.execute(
+        "UPDATE tracks SET unavailable = 1 WHERE path LIKE ?1",
+        rusqlite::params![pattern],
+    )?;
+    Ok(count as u32)
+}
+
+/// Returns a page of indexed paths (any availability), optionally narrowed to
+/// a group prefix — the paging contract used by availability reconciliation.
+pub fn get_track_paths_page(
+    conn: &Connection,
+    group_column: Option<&str>,
+    group_value: Option<&str>,
+    offset: u32,
+    page_size: u32,
+) -> Result<Vec<String>> {
+    let (sql, params): (String, Vec<String>) = match (group_column, group_value) {
+        (Some("folder"), Some(value)) => (
+            // Parent-directory equality (1:1 with musicplayer_directory(path) = $folderPrefix).
+            "SELECT path FROM tracks WHERE musicplayer_directory(path) = ? COLLATE NOCASE ORDER BY path LIMIT ? OFFSET ?"
+                .to_string(),
+            vec![value.trim_end_matches(['/', '\\']).to_string()],
+        ),
+        (Some("album"), Some(value)) => (
+            "SELECT path FROM tracks WHERE album = ? COLLATE NOCASE ORDER BY path LIMIT ? OFFSET ?"
+                .to_string(),
+            vec![value.to_string()],
+        ),
+        (Some("artist"), Some(value)) => (
+            "SELECT path FROM tracks WHERE artist = ? COLLATE NOCASE ORDER BY path LIMIT ? OFFSET ?"
+                .to_string(),
+            vec![value.to_string()],
+        ),
+        (Some("genre"), Some(value)) => (
+            "SELECT path FROM tracks WHERE genre = ? COLLATE NOCASE ORDER BY path LIMIT ? OFFSET ?"
+                .to_string(),
+            vec![value.to_string()],
+        ),
+        _ => (
+            "SELECT path FROM tracks ORDER BY path LIMIT ? OFFSET ?".to_string(),
+            Vec::new(),
+        ),
+    };
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut bound: Vec<Box<dyn rusqlite::ToSql>> = params
+        .iter()
+        .map(|p| Box::new(p.clone()) as Box<dyn rusqlite::ToSql>)
+        .collect();
+    bound.push(Box::new(page_size.max(1) as i64));
+    bound.push(Box::new(offset as i64));
+    let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
+    let mut paths = Vec::new();
+    while let Some(row) = rows.next()? {
+        paths.push(row.get(0)?);
+    }
+    Ok(paths)
+}
+
+/// Rows that reference artwork files no longer referenced by any track.
+pub fn artwork_refs(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT artwork_path FROM tracks WHERE artwork_path IS NOT NULL AND artwork_path != ''",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut refs = Vec::new();
+    while let Some(row) = rows.next()? {
+        refs.push(row.get(0)?);
+    }
+    Ok(refs)
+}
+
+/// Deletes artwork rows whose cache file no longer exists (the caller removes
+/// the file itself after checking references).
+pub fn clear_missing_artwork_refs(conn: &Connection, missing: &[String]) -> Result<usize> {
+    let mut count = 0;
+    for path in missing {
+        count += conn.execute(
+            "UPDATE tracks SET artwork_path = NULL WHERE artwork_path = ?1",
+            rusqlite::params![path],
+        )?;
+    }
+    Ok(count)
 }

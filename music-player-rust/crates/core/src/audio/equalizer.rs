@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 
 pub const EQUALIZER_BANDS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
+/// VLC's one-pass equalizer filter attenuates dry input by 0.25, so a neutral
+/// curve must be attached with this preamp to pass audio through untouched.
+/// Mirrors `PlaybackService.NeutralEqualizerPreamp` (12.0412 dB).
+pub const NEUTRAL_EQUALIZER_PREAMP: f32 = 12.0412;
+
+pub const EQUALIZER_PREAMP_LIMIT: f32 = 20.0;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EqualizerState {
     pub enabled: bool,

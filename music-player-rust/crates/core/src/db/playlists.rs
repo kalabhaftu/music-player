@@ -136,3 +136,82 @@ pub fn delete_playlist(conn: &Connection, playlist_id: &str) -> Result<()> {
     conn.execute("DELETE FROM playlists WHERE id = ?1", params![playlist_id])?;
     Ok(())
 }
+
+pub fn playlist_exists(conn: &Connection, playlist_id: &str) -> Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM playlists WHERE id = ?1)",
+        params![playlist_id],
+        |r| r.get::<_, i64>(0).map(|v| v != 0),
+    )
+}
+
+pub fn rename_playlist(conn: &Connection, playlist_id: &str, name: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE playlists SET name = ?1 WHERE id = ?2",
+        params![name, playlist_id],
+    )?;
+    Ok(())
+}
+
+/// Ordered paths for playback (playlist play / shuffle contracts).
+pub fn get_playlist_paths(conn: &Connection, playlist_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT track_path FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position ASC",
+    )?;
+    let mut rows = stmt.query(params![playlist_id])?;
+    let mut paths = Vec::new();
+    while let Some(row) = rows.next()? {
+        paths.push(row.get(0)?);
+    }
+    Ok(paths)
+}
+
+/// Removes the entry at `position` and resequences every later row so the
+/// position index stays dense (original `RemoveFromPlaylist` behavior).
+pub fn remove_from_playlist(conn: &Connection, playlist_id: &str, position: u32) -> Result<bool> {
+    let mut paths = get_playlist_paths(conn, playlist_id)?;
+    if position as usize >= paths.len() {
+        return Ok(false);
+    }
+    paths.remove(position as usize);
+    set_playlist_tracks(conn, playlist_id, &paths)?;
+    Ok(true)
+}
+
+/// Moves an entry from `position` to `to_position` (playlist reorder).
+/// Positions are 0-based and bounded by the current entry count.
+pub fn move_playlist_track(
+    conn: &Connection,
+    playlist_id: &str,
+    position: u32,
+    to_position: u32,
+) -> Result<bool> {
+    let mut paths = get_playlist_paths(conn, playlist_id)?;
+    if position as usize >= paths.len() || to_position as usize >= paths.len() {
+        return Ok(false);
+    }
+    if position == to_position {
+        return Ok(false);
+    }
+    let item = paths.remove(position as usize);
+    paths.insert(to_position as usize, item);
+    set_playlist_tracks(conn, playlist_id, &paths)?;
+    Ok(true)
+}
+
+/// Replaces the full track list (M3U import contract).
+pub fn set_playlist_tracks(conn: &Connection, playlist_id: &str, paths: &[String]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
+        params![playlist_id],
+    )?;
+    for (index, path) in paths.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO playlist_tracks (playlist_id, position, track_path) VALUES (?1, ?2, ?3)",
+            params![playlist_id, index as i64, path],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}

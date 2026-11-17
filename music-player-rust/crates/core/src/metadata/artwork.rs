@@ -21,10 +21,14 @@ pub fn hash_artwork(data: &[u8]) -> String {
 }
 
 pub fn save_artwork_to_cache(data: &[u8]) -> std::io::Result<PathBuf> {
+    save_artwork_to_cache_in(&artwork_cache_dir(), data)
+}
+
+pub fn save_artwork_to_cache_in(dir: &std::path::Path, data: &[u8]) -> std::io::Result<PathBuf> {
     let hash = hash_artwork(data);
     let ext = if data.starts_with(b"\x89PNG") { "png" } else { "jpg" };
     let filename = format!("{}.{}", hash, ext);
-    let target = artwork_cache_dir().join(filename);
+    let target = dir.join(filename);
 
     if !target.exists() {
         fs::write(&target, data)?;
@@ -44,4 +48,31 @@ pub fn resolve_cached_artwork(hash: &str) -> Option<PathBuf> {
         return Some(png);
     }
     None
+}
+
+/// Deletes artwork cache files that no track references any more
+/// (mirrors `LibraryStore.PruneUnreferencedArtwork`).
+pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db::LibraryStore) -> usize {
+    let referenced: std::collections::HashSet<String> =
+        store.artwork_refs().unwrap_or_default().into_iter().collect();
+    let refs: std::collections::HashSet<&str> = referenced.iter().map(|p| p.as_str()).collect();
+    let mut removed = 0;
+    if let Ok(entries) = fs::read_dir(cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.ends_with(".jpg") && !name.ends_with(".png") && !name.ends_with(".jpeg")
+                && !name.ends_with(".webp") && !name.ends_with(".img")
+            {
+                continue;
+            }
+            let full = path.to_string_lossy().into_owned();
+            if !refs.contains(full.as_str()) {
+                if fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    removed
 }

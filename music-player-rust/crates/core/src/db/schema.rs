@@ -3,6 +3,14 @@ use rusqlite::{Connection, Result};
 pub const SCHEMA_VERSION: i32 = 11;
 
 pub fn initialize_schema(conn: &Connection) -> Result<()> {
+    // Migration gate (mirrors LibraryStore.cs): stamp PRAGMA user_version with the
+    // schema version; existing pre-versioned databases are upgraded in place by the
+    // idempotent CREATE IF NOT EXISTS batch below.
+    let user_version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap_or(0);
+    let _ = user_version;
+
     conn.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;
@@ -27,9 +35,11 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
             play_count INTEGER NOT NULL DEFAULT 0,
             last_played_utc TEXT NULL,
             artwork_path TEXT NULL,
-            has_lyrics INTEGER NOT NULL DEFAULT -1 CHECK(has_lyrics IN (-1,0,1))
+            has_lyrics INTEGER NOT NULL DEFAULT -1 CHECK(has_lyrics IN (-1,0,1)),
+            unavailable INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE INDEX IF NOT EXISTS ix_tracks_unavailable ON tracks(unavailable);
         CREATE INDEX IF NOT EXISTS ix_tracks_title ON tracks(title COLLATE NOCASE);
         CREATE INDEX IF NOT EXISTS ix_tracks_artist ON tracks(artist COLLATE NOCASE);
         CREATE INDEX IF NOT EXISTS ix_tracks_album ON tracks(album COLLATE NOCASE);
@@ -95,6 +105,49 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
             created_utc TEXT NOT NULL
         );
 
+        -- Scan session state (LibraryScanSession.cs): unseen tracks under a
+        -- completed root are removed when the run completes.
+        CREATE TABLE IF NOT EXISTS scan_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_utc TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS scan_roots (
+            run_id INTEGER NOT NULL,
+            root_path TEXT NOT NULL,
+            root_prefix TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(run_id, root_path)
+        );
+        CREATE TABLE IF NOT EXISTS scan_seen (
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            PRIMARY KEY(run_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS scan_excluded (
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            PRIMARY KEY(run_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS scan_user_ignored (
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            PRIMARY KEY(run_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS scan_default_excluded (
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            PRIMARY KEY(run_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS scan_incomplete_paths (
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            PRIMARY KEY(run_id, path)
+        );
+
         -- Preserve interactions when tracks are deleted and re-scanned
         CREATE TRIGGER IF NOT EXISTS tracks_preserve_interactions BEFORE DELETE ON tracks BEGIN
             INSERT INTO track_interaction_state(path, added_utc, favorite, rating, play_count, last_played_utc)
@@ -152,6 +205,26 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
             "#,
         )?;
     }
+
+    // Pre-v11 databases carry no `unavailable` column; add it so the soft
+    // availability model (retain row / exclude from visible queries) applies.
+    let has_unavailable: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM pragma_table_info('tracks') WHERE name = 'unavailable'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if has_unavailable == 0 {
+        conn.execute_batch(
+            "ALTER TABLE tracks ADD COLUMN unavailable INTEGER NOT NULL DEFAULT 0;
+             CREATE INDEX IF NOT EXISTS ix_tracks_unavailable ON tracks(unavailable);",
+        )?;
+    }
+
+    conn.execute(&format!("PRAGMA user_version = {}", SCHEMA_VERSION), [])?;
+
+    super::functions::register_query_functions(conn);
 
     Ok(())
 }
