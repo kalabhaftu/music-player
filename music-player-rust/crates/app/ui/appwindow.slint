@@ -5,7 +5,7 @@ import { State, Actions } from "state.slint";
 import {
     TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem,
     TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem,
-    BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem,
+    BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, NavEntry, NavSettingItem,
 } from "models.slint";
 import { ListView, Slider, ComboBox, LineEdit, Switch, TextEdit, CheckBox, ScrollView } from "std-widgets.slint";
 import { Palette, IcBtn, TextBtn, TrackRow, EmptyState, Chip, SectionTitle } from "widgets.slint";
@@ -16,46 +16,77 @@ export { State, Actions } from "state.slint";
 export {
     TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem,
     ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem,
-    GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem,
+    GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem,
 } from "models.slint";
 
 // ---- Navigation rail entry -----------------------------------------------------
 component NavEntryRow inherits Rectangle {
     in property <string> view;
     in property <string> label;
-    in property <image> icon;
+    in property <string> section-title;
 
-    height: 44px;
-    border-radius: 6px;
-    background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? Palette.border-soft : (State.view == root.view ? Palette.raised : transparent));
-    animate background { duration: 120ms; }
+    height: root.section-title == "" ? 44px : 69px;
 
-    nav-area := TouchArea {
-        clicked => { Actions.set-view(root.view, "", "", 0); }
-    }
-
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        spacing: 13px;
-
-        Image {
-            source: root.icon;
-            width: 18px;
-            height: 18px;
-            colorize: State.view == root.view ? State.accent : (nav-area.has-hover ? Palette.text : Palette.muted);
-            animate colorize { duration: 120ms; }
-            vertical-alignment: center;
+    VerticalLayout {
+        spacing: 0px;
+        if root.section-title != "" : Text {
+            text: root.section-title;
+            color: Palette.muted-2;
+            font-size: 10px;
+            font-weight: 700;
+            x: 12px;
+            height: 25px;
+            vertical-alignment: bottom;
         }
+        Rectangle {
+            height: 44px;
+            border-radius: 6px;
+            background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? Palette.border-soft : (State.view == root.view ? Palette.raised : transparent));
+            animate background { duration: 120ms; }
 
-        Text {
-            text: root.label;
-            color: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
-            font-size: 13px;
-            font-weight: 650;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
+            nav-area := TouchArea {
+                clicked => { Actions.set-view(root.view, "", "", ""); }
+            }
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 13px;
+
+                Image {
+                    source: root.view == "Home" ? @image-url("../assets/icons/home.svg")
+                        : root.view == "Search" ? @image-url("../assets/icons/search.svg")
+                        : root.view == "Favorites" ? @image-url("../assets/icons/heart.svg")
+                        : root.view == "Albums" ? @image-url("../assets/icons/disc.svg")
+                        : root.view == "Artists" ? @image-url("../assets/icons/users.svg")
+                        : root.view == "Genres" ? @image-url("../assets/icons/tag.svg")
+                        : root.view == "Playlists" ? @image-url("../assets/icons/list.svg")
+                        : root.view == "Folders" ? @image-url("../assets/icons/folder.svg")
+                        : root.view == "Recently Added" ? @image-url("../assets/icons/spark.svg")
+                        : @image-url("../assets/icons/music.svg");
+                    width: 18px;
+                    height: 18px;
+                    colorize: State.view == root.view ? State.accent : (nav-area.has-hover ? Palette.text : Palette.muted);
+                    animate colorize { duration: 120ms; }
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.label;
+                    color: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
+                    font-size: 13px;
+                    font-weight: 650;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                if root.view == "Search" : Text {
+                    text: "Ctrl K";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }
@@ -98,21 +129,51 @@ component NavRail inherits Rectangle {
             vertical-stretch: 1;
             VerticalLayout {
                 spacing: 2px;
-                Text { text: "DISCOVER"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
-                NavEntryRow { view: "Home"; label: "Home"; icon: @image-url("../assets/icons/home.svg"); }
-                NavEntryRow { view: "Search"; label: "Search"; icon: @image-url("../assets/icons/search.svg"); }
-                NavEntryRow { view: "Favorites"; label: "Favorites"; icon: @image-url("../assets/icons/heart.svg"); }
+                for item in State.navigation-items : NavEntryRow {
+                    view: item.view;
+                    label: item.label;
+                    section-title: item.section-title;
+                }
+            }
+        }
+    }
+}
 
-                Text { text: "YOUR LIBRARY"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
-                NavEntryRow { view: "Songs"; label: "Songs"; icon: @image-url("../assets/icons/music.svg"); }
-                NavEntryRow { view: "Albums"; label: "Albums"; icon: @image-url("../assets/icons/disc.svg"); }
-                NavEntryRow { view: "Artists"; label: "Artists"; icon: @image-url("../assets/icons/users.svg"); }
-                NavEntryRow { view: "Genres"; label: "Genres"; icon: @image-url("../assets/icons/tag.svg"); }
-                NavEntryRow { view: "Recently Added"; label: "Recently Added"; icon: @image-url("../assets/icons/music.svg"); }
+// Persisted, draggable column dividers mirror the release's sidebar and
+// Now Playing panel resize handles.
+component PanelResizeHandle inherits Rectangle {
+    in property <bool> right-side: false;
+    in-out property <bool> drag-active: false;
+    in-out property <int> drag-start-x: 0;
+    in-out property <int> drag-start-width: 0;
 
-                Text { text: "MANAGE"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
-                NavEntryRow { view: "Playlists"; label: "Playlists"; icon: @image-url("../assets/icons/list.svg"); }
-                NavEntryRow { view: "Folders"; label: "Folders"; icon: @image-url("../assets/icons/folder.svg"); }
+    x: root.right-side
+        ? parent.width - State.right-panel-width * 1px - 4px
+        : State.navigation-width * 1px - 4px;
+    y: 0px;
+    width: 8px;
+    height: parent.height - 88px;
+    visible: !State.immersive-player-open && (root.right-side ? State.right-panel-open : !State.navigation-collapsed);
+    background: root.drag-active || divider.has-hover ? State.accent.with-alpha(0.28) : #00000000;
+
+    divider := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.drag-active = true;
+                root.drag-start-x = round((root.absolute-position.x + divider.mouse-x) / 1px);
+                root.drag-start-width = root.right-side ? State.right-panel-width : State.navigation-width;
+            }
+            if (event.kind == PointerEventKind.move && root.drag-active) {
+                if (root.right-side) {
+                    State.right-panel-width = clamp(root.drag-start-width - (round((root.absolute-position.x + divider.mouse-x) / 1px) - root.drag-start-x), 240, 460);
+                } else {
+                    State.navigation-width = clamp(root.drag-start-width + (round((root.absolute-position.x + divider.mouse-x) / 1px) - root.drag-start-x), 180, 360);
+                }
+            }
+            if ((event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) && root.drag-active) {
+                root.drag-active = false;
+                if (root.right-side) { Actions.set-setting("right-panel-width", "\{State.right-panel-width}"); }
+                else { Actions.set-setting("navigation-width", "\{State.navigation-width}"); }
             }
         }
     }
@@ -170,10 +231,12 @@ component TopBar inherits Rectangle {
                 }
                 LineEdit {
                     horizontal-stretch: 1;
-                    placeholder-text: "Search songs, artists, albums, playlists…";
+                    selection-background-color: Palette.selection;
+                    selection-foreground-color: Palette.selection-ink;
+                    placeholder-text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
                     text <=> State.view-search;
                     edited(text) => { Actions.search-input(text); }
-                    accepted(text) => { Actions.save-recent-search(text); }
+                    accepted(text) => { if (State.view != "Settings") { Actions.save-recent-search(text); } }
                 }
                 Text {
                     text: "Ctrl K";
@@ -581,14 +644,11 @@ component RightPanel inherits Rectangle {
                     y: 16px;
                 }
             }
-            if State.queue-more-count > 0 : Rectangle {
-                height: 28px;
-                Text {
-                    text: "\{State.queue-more-count} more in Queue";
-                    color: Palette.muted-2;
-                    font-size: 10px;
-                    vertical-alignment: center;
-                    horizontal-alignment: center;
+            if State.queue-panel-more-count > 0 : Rectangle {
+                height: 30px;
+                TextBtn {
+                    label: "\{State.queue-panel-more-count} more in Queue";
+                    clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
             }
         }
@@ -735,6 +795,7 @@ component PlayerBar inherits Rectangle {
                 Rectangle {
                     width: 32px;
                     height: 30px;
+                    visible: State.window-width > 1100;
                     border-radius: 15px;
                     background: ab-area.has-hover ? Palette.overlay : transparent;
                     Text {
@@ -805,7 +866,7 @@ component PlayerBar inherits Rectangle {
                 clicked => { Actions.set-view("Audio", "", "", ""); }
             }
             IcBtn {
-                icon: @image-url("../assets/icons/expand.svg");
+                icon: State.immersive-fullscreen ? @image-url("../assets/icons/compress.svg") : @image-url("../assets/icons/expand.svg");
                 icon-size: 15px;
                 tint: Palette.icon-muted;
                 clicked => { Actions.open-immersive-player(); }
@@ -936,6 +997,8 @@ component ModalField inherits Rectangle {
         }
         LineEdit {
             height: 30px;
+            selection-background-color: Palette.selection;
+            selection-foreground-color: Palette.selection-ink;
             text: root.text;
             edited(value) => { root.changed(value); }
         }
@@ -1012,12 +1075,16 @@ component TagsModal inherits Rectangle {
                     LineEdit {
                         width: 140px;
                         height: 26px;
+                        selection-background-color: Palette.selection;
+                        selection-foreground-color: Palette.selection-ink;
                         text: field.key;
                         edited(v) => { Actions.tags-custom-key-changed(index, v); }
                     }
                     LineEdit {
                         horizontal-stretch: 1;
                         height: 26px;
+                        selection-background-color: Palette.selection;
+                        selection-foreground-color: Palette.selection-ink;
                         text: field.value;
                         edited(v) => { Actions.tags-custom-value-changed(index, v); }
                     }
@@ -1059,6 +1126,8 @@ component TagsModal inherits Rectangle {
                     LineEdit {
                         horizontal-stretch: 1;
                         height: 26px;
+                        selection-background-color: Palette.selection;
+                        selection-foreground-color: Palette.selection-ink;
                         text: field.value;
                         edited(v) => { Actions.tags-field-changed(index, v); }
                     }
@@ -1311,6 +1380,8 @@ component EditLyricsModal inherits Rectangle {
             TextEdit {
                 width: parent.width;
                 height: parent.height;
+                selection-background-color: Palette.selection;
+                selection-foreground-color: Palette.selection-ink;
                 text <=> State.edit-lyrics-text;
                 font-size: 12px;
             }
@@ -1452,6 +1523,8 @@ component ExclusionsModal inherits Rectangle {
             LineEdit {
                 width: 130px;
                 height: 30px;
+                selection-background-color: Palette.selection;
+                selection-foreground-color: Palette.selection-ink;
                 placeholder-text: ".mkv";
                 text <=> State.exclusion-new-extension;
             }
@@ -1552,6 +1625,8 @@ component NameModal inherits Rectangle {
 
         LineEdit {
             height: 34px;
+            selection-background-color: Palette.selection;
+            selection-foreground-color: Palette.selection-ink;
             placeholder-text: root.placeholder;
             text <=> State.modal-text;
             accepted(text) => { root.submit(text); }
@@ -1695,11 +1770,11 @@ component ResetModal inherits Rectangle {
             checked <=> State.reset-appearance;
         }
         CheckBox {
-            text: "Reset playback and equalizer settings";
+            text: "Reset panels and navigation settings";
             checked <=> State.reset-playback;
         }
         CheckBox {
-            text: "Reset library roots and exclusions";
+            text: "Reset library display settings";
             checked <=> State.reset-library;
         }
 
@@ -1712,8 +1787,8 @@ component ResetModal inherits Rectangle {
                 clicked => {
                     Actions.reset-settings(
                         (State.reset-appearance ? "appearance," : "")
-                        + (State.reset-playback ? "playback," : "")
-                        + (State.reset-library ? "library" : "")
+                        + (State.reset-playback ? "layout," : "")
+                        + (State.reset-library ? "libraryDisplay" : "")
                     );
                 }
             }
@@ -1768,7 +1843,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
         image-fit: ImageFit.cover;
         opacity: 0.20;
     }
-    Rectangle { width: 100%; height: 100%; background: #080908d9; }
+    Rectangle { width: 100%; height: 100%; background: #08090896; }
 
     VerticalLayout {
         padding-left: 30px;
@@ -1789,7 +1864,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
                 overflow: elide;
             }
             IcBtn {
-                icon: @image-url("../assets/icons/expand.svg");
+                icon: State.immersive-fullscreen ? @image-url("../assets/icons/compress.svg") : @image-url("../assets/icons/expand.svg");
                 icon-size: 16px;
                 tint: #d4d7d1;
                 clicked => { Actions.toggle-immersive-fullscreen(); }
@@ -1800,6 +1875,13 @@ component ImmersivePlayerOverlay inherits Rectangle {
                 tint: #d4d7d1;
                 clicked => { Actions.close-immersive-player(); }
             }
+            Text {
+                text: "Close";
+                color: #d4d7d1;
+                font-size: 10px;
+                vertical-alignment: center;
+                TouchArea { clicked => { Actions.close-immersive-player(); } }
+            }
         }
 
         HorizontalLayout {
@@ -1807,14 +1889,14 @@ component ImmersivePlayerOverlay inherits Rectangle {
             alignment: center;
             padding-left: 14px;
             padding-right: 14px;
-            spacing: 32px;
+            spacing: State.immersive-lyrics-open ? 30px : 0px;
 
             VerticalLayout {
                 alignment: center;
                 spacing: 14px;
-                width: State.immersive-lyrics-open ? 420px : 540px;
+                horizontal-stretch: State.immersive-lyrics-open ? 0.85 : 1;
                 Rectangle {
-                    width: State.immersive-lyrics-open ? 320px : 380px;
+                    width: min(parent.height * (State.immersive-lyrics-open ? 0.38 : 0.44), State.immersive-lyrics-open ? 380px : 440px);
                     height: self.width;
                     border-radius: 14px;
                     clip: true;
@@ -1839,7 +1921,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
                     Text {
                         text: State.has-track ? State.current-title : "Nothing playing";
                         color: #ffffff;
-                        font-size: 27px;
+                        font-size: 26px;
                         font-weight: 800;
                         horizontal-alignment: center;
                         overflow: elide;
@@ -1878,12 +1960,18 @@ component ImmersivePlayerOverlay inherits Rectangle {
                         label: "Resume";
                         clicked => { Actions.lyrics-scroll-changed(false); }
                     }
+                    IcBtn {
+                        icon: @image-url("../assets/icons/close.svg");
+                        icon-size: 12px;
+                        tint: #d0d2ce;
+                        clicked => { Actions.toggle-immersive-lyrics(); }
+                    }
                 }
                 Rectangle {
                     vertical-stretch: 1;
                     clip: true;
                     Flickable {
-                        content-y: min(0px, - State.lyrics-active-line * 40px + parent.height * 0.35);
+                        content-y: min(0px, - State.lyrics-active-line * 42px + parent.height * 0.35);
                         animate content-y { duration: 250ms; easing: ease-out; }
                         VerticalLayout {
                             for line[index] in State.lyrics-lines : TouchArea {
@@ -1891,12 +1979,12 @@ component ImmersivePlayerOverlay inherits Rectangle {
                                 clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
                                 Text {
                                     text: line.text;
-                                    color: line.is-active ? State.accent : (line.is-past ? #a4a8a1 : #e3e4df);
-                                    font-size: line.is-active ? 20px : 16px;
+                                    color: line.is-active ? #ffffff : (line.is-past ? #a4a8a1 : #e3e4df);
+                                    font-size: line.is-active ? 24px : 18px;
                                     font-weight: line.is-active ? 750 : 550;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
-                                    overflow: elide;
+                                    wrap: word-wrap;
                                 }
                             }
                             if State.lyrics-lines.length == 0 : Text {
@@ -1928,31 +2016,27 @@ component ImmersivePlayerOverlay inherits Rectangle {
                 Text { text: State.total-time; color: #d0d2ce; width: 44px; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
             }
             HorizontalLayout {
-                height: 52px;
-                spacing: 24px;
+                height: 64px;
+                spacing: 36px;
                 alignment: center;
-                IcBtn { icon: @image-url("../assets/icons/shuffle.svg"); icon-size: 18px; tint: State.shuffle ? State.accent : #d0d2ce; clicked => { Actions.toggle-shuffle(); } }
-                IcBtn { icon: @image-url("../assets/icons/skip-back.svg"); icon-size: 20px; tint: #f3f4f0; clicked => { Actions.previous(); } }
+                IcBtn { icon: @image-url("../assets/icons/skip-back.svg"); icon-size: 22px; tint: #f3f4f0; clicked => { Actions.previous(); } }
                 Rectangle {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 24px;
+                    width: 66px;
+                    height: 66px;
+                    border-radius: 33px;
                     background: #f7f8f6;
-                    Image { source: State.is-playing ? @image-url("../assets/icons/pause.svg") : @image-url("../assets/icons/play.svg"); width: 19px; height: 19px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: #101210; }
+                    Image { source: State.is-playing ? @image-url("../assets/icons/pause.svg") : @image-url("../assets/icons/play.svg"); width: 26px; height: 26px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; colorize: #101210; }
                     TouchArea { clicked => { Actions.toggle-play(); } }
                 }
-                IcBtn { icon: @image-url("../assets/icons/skip-forward.svg"); icon-size: 20px; tint: #f3f4f0; clicked => { Actions.next(); } }
-                IcBtn { icon: @image-url("../assets/icons/repeat.svg"); icon-size: 18px; tint: State.repeat-mode == "Off" ? #d0d2ce : State.accent; clicked => { Actions.cycle-repeat(); } }
+                IcBtn { icon: @image-url("../assets/icons/skip-forward.svg"); icon-size: 22px; tint: #f3f4f0; clicked => { Actions.next(); } }
             }
             HorizontalLayout {
                 height: 38px;
-                spacing: 18px;
+                spacing: 30px;
                 alignment: center;
+                IcBtn { icon: @image-url("../assets/icons/equalizer.svg"); tint: #d0d2ce; clicked => { Actions.toggle-immersive("Audio"); } }
                 IcBtn { icon: @image-url("../assets/icons/lyrics.svg"); active: State.immersive-lyrics-open; tint: #d0d2ce; clicked => { Actions.toggle-immersive-lyrics(); } }
                 IcBtn { icon: @image-url("../assets/icons/queue.svg"); tint: #d0d2ce; clicked => { Actions.toggle-immersive("Queue"); } }
-                IcBtn { icon: @image-url("../assets/icons/equalizer.svg"); tint: #d0d2ce; clicked => { Actions.toggle-immersive("Audio"); } }
-                Image { source: @image-url("../assets/icons/volume.svg"); width: 15px; height: 15px; colorize: #d0d2ce; vertical-alignment: center; }
-                Slider { width: 110px; minimum: 0; maximum: 100; value: State.volume; changed value => { Actions.volume-changed(round(self.value)); } }
             }
         }
     }
@@ -2034,6 +2118,8 @@ export component AppWindow inherits Window {
     preferred-height: 800px;
     background: Palette.canvas;
 
+    changed width => { State.set_window_width(round(self.width / 1px)); }
+
     init => { Actions.ui-ready(); }
 
     forward-focus: key-handler;
@@ -2113,24 +2199,31 @@ export component AppWindow inherits Window {
         PlayerBar { }
     }
 
+    PanelResizeHandle { }
+    PanelResizeHandle { right-side: true; }
+
     if State.immersive-player-open : ImmersivePlayerOverlay { width: 100%; height: 100%; }
 
     // Immersive drawer overlay: re-parents the content area with Queue/Audio.
-    if State.immersive-open : Rectangle {
-        x: State.navigation-width * 1px;
-        y: 56px;
-        width: parent.width - State.navigation-width * 1px - (State.right-panel-open ? State.right-panel-width * 1px : 0px);
-        height: parent.height - 56px - 88px;
-        background: Palette.surface;
+    if State.immersive-open && State.immersive-player-open : Rectangle {
+        x: parent.width - self.width - 20px;
+        y: 68px;
+        width: min(State.immersive-kind == "Queue" ? 480px : 780px, parent.width - 40px);
+        height: max(180px, parent.height - 68px - 170px);
+        border-radius: 18px;
+        border-width: 1px;
+        border-color: #ffffff24;
+        background: #171917f2;
+        clip: true;
         VerticalLayout {
             HorizontalLayout {
-                height: 44px;
-                padding-left: 20px;
-                padding-right: 12px;
+                height: 54px;
+                padding-left: 18px;
+                padding-right: 14px;
                 Text {
                     text: State.immersive-kind;
-                    color: Palette.text;
-                    font-size: 15px;
+                    color: #f7f8f6;
+                    font-size: 16px;
                     font-weight: 750;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
@@ -2142,6 +2235,7 @@ export component AppWindow inherits Window {
                     clicked => { Actions.close-immersive(); }
                 }
             }
+            Rectangle { height: 1px; background: #ffffff1c; }
             Rectangle {
                 vertical-stretch: 1;
                 if State.immersive-kind == "Queue" : QueueView { }

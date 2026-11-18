@@ -94,6 +94,17 @@ fn fmt_count(count: u32) -> String {
     grouped.chars().rev().collect()
 }
 
+fn fmt_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 { format!("{} bytes", bytes) } else { format!("{:.1} {}", value, UNITS[unit]) }
+}
+
 fn chrono_fallback_date(secs: i64) -> String {
     // chrono is already a transitive core dependency and is available here.
     chrono::DateTime::from_timestamp(secs, 0)
@@ -308,6 +319,7 @@ struct App {
     eq_dirty: bool,
     tracks_offset: usize,
     groups_offset: usize,
+    queue_display_limit: usize,
     group_total: i64,
     dup_sort: String,
     dup_desc: bool,
@@ -325,6 +337,7 @@ struct App {
     confirm_action: Option<ConfirmAction>,
     add_playlist_track: Option<String>,
     playlists: Vec<PlaylistSummary>,
+    group_items: Vec<GroupItem>,
     log_folder: PathBuf,
     os: Option<os::OsIntegration>,
     os_attached: bool,
@@ -386,6 +399,7 @@ impl App {
             eq_dirty: false,
             tracks_offset: 0,
             groups_offset: 0,
+            queue_display_limit: 200,
             group_total: 0,
             dup_sort: "title".into(),
             dup_desc: false,
@@ -403,6 +417,7 @@ impl App {
             confirm_action: None,
             add_playlist_track: None,
             playlists: Vec::new(),
+            group_items: Vec::new(),
             log_folder,
             os: os::OsIntegration::start(),
             os_attached: false,
@@ -530,7 +545,28 @@ impl App {
                 set.remove(&ext.to_lowercase());
             }
         }
+        for extension in [".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".webm"] {
+            if self.settings.is_extension_enabled(extension) {
+                set.insert(extension.to_string());
+            } else {
+                set.remove(extension);
+            }
+        }
         set
+    }
+
+    fn video_extensions(&self) -> Vec<String> {
+        let defaults = [".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
+        let enabled = self.settings.extension_enabled();
+        let kinds = self.settings.extension_types();
+        let mut extensions: Vec<String> = defaults.iter().map(|ext| (*ext).to_string()).collect();
+        extensions.extend(kinds.iter().filter_map(|(extension, kind)| {
+            kind.eq_ignore_ascii_case("Video").then(|| extension.to_ascii_lowercase())
+        }));
+        extensions.sort();
+        extensions.dedup();
+        extensions.retain(|extension| enabled.get(extension).copied().unwrap_or(true));
+        extensions
     }
 
     fn startup_scan(&mut self) {
@@ -1524,9 +1560,13 @@ impl App {
         let entries = self.coordinator.queue().entries().to_vec();
         let current_index = self.coordinator.queue().current_index();
         let start = current_index.unwrap_or(0);
+        let state = self.ui.global::<State>();
+        let full_queue_view = state.get_view() == "Queue"
+            || state.get_immersive_open() && state.get_immersive_kind() == "Queue";
+        let display_limit = if full_queue_view { self.queue_display_limit } else { 30 };
         let playing_path = self.current.as_ref().map(|t| t.path.clone()).unwrap_or_default();
         let mut items = Vec::new();
-        for (offset, path) in entries.iter().skip(start).take(30).enumerate() {
+        for (offset, path) in entries.iter().skip(start).take(display_limit).enumerate() {
             let is_current = current_index == Some(start + offset);
             let item = match self.store.get_track(path).ok().flatten() {
                 Some(track) => self.queue_item(&track, start + offset, is_current, &playing_path),
@@ -1551,12 +1591,14 @@ impl App {
             };
             items.push(item);
         }
-        let more = entries.len().saturating_sub(start + 30);
-        let state = self.ui.global::<State>();
+        let panel_more = entries.len().saturating_sub(start + 30);
+        let view_more = if full_queue_view { entries.len().saturating_sub(start + display_limit) } else { 0 };
         state.set_queue_items(ui_model(items).into());
         let upcoming = entries.len().saturating_sub(current_index.map(|index| index + 1).unwrap_or(0));
         state.set_queue_count(upcoming as i32);
-        state.set_queue_more_count(more as i32);
+        state.set_queue_current_index(current_index.map(|index| index as i32).unwrap_or(-1));
+        state.set_queue_more_count(view_more as i32);
+        state.set_queue_panel_more_count(panel_more as i32);
         let _ = force;
     }
 
@@ -1569,6 +1611,7 @@ impl App {
         if !status.active {
             let stats = self.store.get_library_stats().unwrap_or(LibraryStats { total_tracks: 0, total_bytes: 0 });
             state.set_library_tracks(stats.total_tracks as i32);
+            state.set_indexed_library_size(ss(fmt_bytes(stats.total_bytes)));
         }
     }
 
@@ -1587,6 +1630,33 @@ impl App {
 
     fn refresh_playlists(&mut self) {
         self.playlists = self.store.get_playlists().unwrap_or_default();
+        let video_extensions = self.video_extensions();
+        let smart_specs = [
+            ("Most Played", "Songs played most often"),
+            ("With Lyrics", "Songs with available lyrics"),
+            ("Recently Played", "Your recent listening history"),
+        ];
+        let mut smart_cards: Vec<PlaylistCardItem> = smart_specs.iter().map(|(view, description)| {
+            let query = match *view {
+                "Most Played" => TrackQuery { most_played: true, sort: TrackSort::PlayCount, descending: true, page_size: 1, ..TrackQuery::default() },
+                "With Lyrics" => TrackQuery { with_lyrics: true, page_size: 1, ..TrackQuery::default() },
+                _ => TrackQuery { recently_played: true, sort: TrackSort::LastPlayed, descending: true, page_size: 1, ..TrackQuery::default() },
+            };
+            let count = self.store.query_track_page(&query).map(|(_, count)| count).unwrap_or(0);
+            PlaylistCardItem {
+                id: ss(view), name: ss(view), track_count: count as i32, is_smart: true,
+                gradient: 1, initials: ss(""), description: ss(description),
+            }
+        }).collect();
+        if !video_extensions.is_empty() {
+            let count = self.store.query_track_page(&TrackQuery {
+                extension_filter: Some(video_extensions), page_size: 1, ..TrackQuery::default()
+            }).map(|(_, count)| count).unwrap_or(0);
+            smart_cards.push(PlaylistCardItem {
+                id: ss("Videos"), name: ss("Videos"), track_count: count as i32, is_smart: true,
+                gradient: 1, initials: ss(""), description: ss("Video files only"),
+            });
+        }
         let mut cards = Vec::new();
         for p in &self.playlists {
             let slot = gradient_slot(&p.name);
@@ -1608,6 +1678,7 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_playlists(ui_model(cards.clone()).into());
         state.set_playlist_rows(ui_model(chunk_playlists(cards)).into());
+        state.set_smart_playlists(ui_model(smart_cards).into());
         state.set_playlist_names(ui_model(names).into());
     }
 
@@ -1617,18 +1688,26 @@ impl App {
         let s = &self.settings;
         let state = self.ui.global::<State>();
         state.set_transparent_window(s.bool_or(k::TRANSPARENT_WINDOW, false));
-        state.set_window_transparency(s.int_or(k::WINDOW_TRANSPARENCY, 40) as i32);
+        state.set_window_transparency(s.int_or(k::WINDOW_TRANSPARENCY, 0) as i32);
+        state.set_accent_color(ss(s.raw(k::ACCENT_COLOR).unwrap_or_else(|| "#b7ff2d".into())));
+        let selection_color = s.raw(k::SELECTION_COLOR).unwrap_or_else(|| "#b7ff2d".into());
+        state.set_selection_color(ss(selection_color.clone()));
+        state.set_selection_color_value(parse_hex_color(&selection_color));
+        state.set_selection_color_ink(contrasting_ink(&selection_color));
+        state.set_selection_color_mode(ss(s.raw(k::SELECTION_COLOR_MODE).unwrap_or_else(|| "Theme".into())));
+        let library_stats = self.store.get_library_stats().unwrap_or(LibraryStats { total_tracks: 0, total_bytes: 0 });
+        state.set_indexed_library_size(ss(fmt_bytes(library_stats.total_bytes)));
         state.set_motion_style(ss(s.raw(k::MOTION_STYLE).unwrap_or_else(|| "Subtle".into())));
         state.set_hide_exact_duplicates(s.bool_or(k::HIDE_DUPLICATES, true));
         state.set_autoplay_similar(s.bool_or(k::AUTOPLAY_SIMILAR, true));
-        state.set_auto_open_side_panel(s.bool_or(k::AUTO_OPEN_PANEL, false));
+        state.set_auto_open_side_panel(s.bool_or(k::AUTO_OPEN_PANEL, true));
         state.set_auto_load_lyrics(s.bool_or(k::AUTO_LOAD_LYRICS, true));
         state.set_seek_from_lyrics(s.bool_or(k::SEEK_FROM_LYRICS, true));
         state.set_show_list_artwork(s.bool_or(k::SHOW_ARTWORK, true));
         state.set_show_list_artist(s.bool_or(k::SHOW_ARTIST, true));
         state.set_show_list_album(s.bool_or(k::SHOW_ALBUM, true));
         state.set_show_list_added(s.bool_or(k::SHOW_ADDED, true));
-        state.set_show_list_year(s.bool_or(k::SHOW_YEAR, true));
+        state.set_show_list_year(s.bool_or(k::SHOW_YEAR, false));
         state.set_show_list_duration(s.bool_or(k::SHOW_DURATION, true));
         state.set_show_list_favorite(s.bool_or(k::SHOW_FAVORITE, true));
         state.set_check_updates(s.bool_or(k::CHECK_UPDATES, true));
@@ -1645,6 +1724,62 @@ impl App {
         ).into());
         self.publish_eq();
         self.publish_exclusions();
+        self.publish_navigation();
+    }
+
+    fn navigation_order(&self) -> Vec<String> {
+        use music_player_core::settings::keys as k;
+        let available = ["Home", "Search", "Favorites", "Songs", "Albums", "Artists", "Genres", "Recently Added", "Playlists", "Folders"];
+        let mut seen = HashSet::new();
+        let mut order = vec!["Home".to_string()];
+        for view in self.settings.string_list(k::NAVIGATION_ORDER) {
+            if view != "Home" && available.contains(&view.as_str()) && seen.insert(view.clone()) {
+                order.push(view);
+            }
+        }
+        for view in available.iter().skip(1) {
+            if seen.insert((*view).to_string()) {
+                order.push((*view).to_string());
+            }
+        }
+        order
+    }
+
+    fn publish_navigation(&self) {
+        use music_player_core::settings::keys as k;
+        let order = self.navigation_order();
+        let hidden: HashSet<String> = self.settings.string_list(k::HIDDEN_PANELS).into_iter().collect();
+        let visible: Vec<&str> = order.iter().map(String::as_str).filter(|view| !hidden.contains(*view)).collect();
+        let group = |view: &str| match view {
+            "Home" | "Search" | "Favorites" => (0, "DISCOVER"),
+            "Songs" | "Albums" | "Artists" | "Genres" | "Recently Added" => (1, "YOUR LIBRARY"),
+            _ => (2, "MANAGE"),
+        };
+        let mut group_positions: [Vec<usize>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for (index, view) in visible.iter().enumerate() {
+            group_positions[group(view).0].push(index);
+        }
+        let headings: [Option<usize>; 3] = std::array::from_fn(|index| {
+            let positions = &group_positions[index];
+            let (Some(first), Some(last)) = (positions.first(), positions.last()) else { return None; };
+            (last - first + 1 == positions.len()).then_some(*first)
+        });
+        let mut nav_items = Vec::new();
+        for (index, view) in visible.iter().enumerate() {
+            let (group_index, header) = group(view);
+            let section_title = if headings[group_index] == Some(index) { header } else { "" };
+            nav_items.push(NavEntry { view: ss(*view), label: ss(*view), section_title: ss(section_title) });
+        }
+        let nav_settings: Vec<NavSettingItem> = order.iter().enumerate().map(|(index, view)| NavSettingItem {
+            view: ss(view),
+            hidden: hidden.contains(view),
+            can_move_up: index > 1,
+            can_move_down: index > 0 && index + 1 < order.len(),
+            always_visible: index == 0,
+        }).collect();
+        let state = self.ui.global::<State>();
+        state.set_navigation_items(ui_model(nav_items).into());
+        state.set_navigation_settings(ui_model(nav_settings).into());
     }
 
     fn coordinator_eq_name(&self) -> String {
@@ -1777,6 +1912,7 @@ impl App {
 
         let playing = self.current.as_ref().map(|t| t.path.clone()).unwrap_or_default();
         let hide_dupes = self.settings.bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        let video_extensions = self.video_extensions();
         let query = TrackQuery {
             favorites: view == "Favorites",
             most_played: view == "Most Played",
@@ -1790,7 +1926,7 @@ impl App {
                 Some(group_value.clone())
             } else { None },
             extension_filter: if view == "Videos" {
-                Some(vec![".mp4".into(), ".m4v".into(), ".mkv".into(), ".avi".into(), ".mov".into(), ".wmv".into(), ".webm".into()])
+                Some(if video_extensions.is_empty() { vec![".__no_video_files__".into()] } else { video_extensions })
             } else { None },
             hide_duplicates: hide_dupes && view == "Songs",
             sort: song_sort(&sort_name, song_sort(&default_sort_for_view(&view).0, TrackSort::Title)),
@@ -1938,11 +2074,15 @@ impl App {
         };
 
         let state = self.ui.global::<State>();
+        let side_width = if state.get_navigation_collapsed() { 0 } else { state.get_navigation_width() };
+        let panel_width = if state.get_right_panel_open() { state.get_right_panel_width() } else { 0 };
+        let home_columns = (((state.get_window_width() - side_width - panel_width - 48 + 16) / 146)
+            .clamp(1, 5)) as usize;
         state.set_home_greeting(ss(greeting));
         state.set_home_subtitle(ss(subtitle));
         state.set_home_quick_rows(ui_model(chunk_home_tracks(quick_items)).into());
-        state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items)).into());
-        state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards)).into());
+        state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items, home_columns)).into());
+        state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards, home_columns)).into());
         state.set_home_library_title(ss(library_title));
         state.set_home_library_view(ss(library_view));
     }
@@ -1990,26 +2130,48 @@ impl App {
             .unwrap_or_default();
         self.group_total = total;
         let items: Vec<GroupItem> = groups.iter().map(group_to_ui).collect();
-        let rows = chunk_groups(items);
+        if self.groups_offset == 0 { self.group_items.clear(); }
+        self.group_items.extend(items);
+        let rows = chunk_groups(self.group_items.clone());
         let state = self.ui.global::<State>();
+        state.set_groups(ui_model(self.group_items.clone()).into());
         state.set_group_rows(ui_model(rows).into());
         state.set_groups_total(total as i32);
     }
 
     fn publish_search_counts(&mut self, search: &str) {
-        if search.trim().is_empty() {
-            return;
-        }
-        let (_, songs) = self.store.query_track_page(&TrackQuery { search: Some(search.into()), page_size: 1, ..TrackQuery::default() }).unwrap_or_default();
-        let (_, albums) = self.store.query_group_page("album", Some(search), 0, 1).unwrap_or_default();
-        let (_, artists) = self.store.query_group_page("artist", Some(search), 0, 1).unwrap_or_default();
+        let (album_groups, albums) = if search.trim().is_empty() {
+            (Vec::new(), 0)
+        } else {
+            self.store.query_group_page("album", Some(search), 0, 60).unwrap_or_default()
+        };
+        let (artist_groups, artists) = if search.trim().is_empty() {
+            (Vec::new(), 0)
+        } else {
+            self.store.query_group_page("artist", Some(search), 0, 60).unwrap_or_default()
+        };
+        let (_, songs) = if search.trim().is_empty() {
+            (Vec::new(), 0)
+        } else {
+            self.store.query_track_page(&TrackQuery { search: Some(search.into()), page_size: 1, ..TrackQuery::default() }).unwrap_or_default()
+        };
+        let search_playlists: Vec<PlaylistCardItem> = if search.trim().is_empty() {
+            Vec::new()
+        } else {
+            self.playlists.iter().filter(|playlist| playlist.name.to_lowercase().contains(&search.to_lowercase())).map(|playlist| PlaylistCardItem {
+                id: ss(&playlist.id), name: ss(&playlist.name), track_count: playlist.track_count as i32,
+                is_smart: false, gradient: gradient_slot(&playlist.name), initials: initials(&playlist.name).into(), description: ss(""),
+            }).collect()
+        };
+        let playlist_count = search_playlists.len();
         let state = self.ui.global::<State>();
+        state.set_search_albums(ui_model(album_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into());
+        state.set_search_artists(ui_model(artist_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into());
+        state.set_search_playlists(ui_model(search_playlists).into());
         state.set_search_song_count(songs as i32);
         state.set_search_album_count(albums as i32);
         state.set_search_artist_count(artists as i32);
-        state.set_search_playlist_count(
-            self.playlists.iter().filter(|p| p.name.to_lowercase().contains(&search.to_lowercase())).count() as i32,
-        );
+        state.set_search_playlist_count(playlist_count as i32);
     }
 
     fn publish_playlist(&mut self, playlist_id: &str, playing: &str) {
@@ -2302,6 +2464,9 @@ impl App {
         state.set_can_go_forward(false);
         self.settings.set_raw(music_player_core::settings::keys::LAST_VIEW_CONTEXT, view);
         self.refresh_view();
+        if view == "Queue" {
+            self.publish_queue(true);
+        }
     }
 
     fn go_back(&mut self) {
@@ -2318,6 +2483,7 @@ impl App {
         }
         self.tracks_offset = 0;
         self.refresh_view();
+        if self.ui.global::<State>().get_view() == "Queue" { self.publish_queue(true); }
     }
 
     fn go_forward(&mut self) {
@@ -2334,6 +2500,7 @@ impl App {
         }
         self.tracks_offset = 0;
         self.refresh_view();
+        if self.ui.global::<State>().get_view() == "Queue" { self.publish_queue(true); }
     }
 
     // ---- Playlists ----------------------------------------------------------
@@ -2516,6 +2683,11 @@ impl App {
             _ => name,
         };
         let state = self.ui.global::<State>();
+        if name == "reset" {
+            state.set_reset_appearance(true);
+            state.set_reset_playback(true);
+            state.set_reset_library(true);
+        }
         state.set_modal(ss(name));
         state.set_modal_title(ss(title));
     }
@@ -2825,7 +2997,11 @@ impl App {
             "accent-mode" => "accentMode",
             "accent-manual" => "accentManual",
             "accent-color" => "accentColor",
+            "selection-color-mode" => "selectionColorMode",
+            "selection-color" => "selectionColor",
             "window-transparency" => "windowTransparency",
+            "navigation-width" => "navigationWidth",
+            "browse-width" => "browseWidth",
             "motion-style" => "motionStyle",
             "transparent-window" => "transparentWindow",
             "hide-exact-duplicates" => "hideDuplicates",
@@ -2854,6 +3030,7 @@ impl App {
         };
         match web_name {
             "theme" | "accentMode" | "accentManual" | "accentColor" | "windowTransparency"
+            | "selectionColorMode" | "selectionColor" | "navigationWidth" | "browseWidth"
             | "motionStyle" | "transparentWindow" | "hideDuplicates"
             | "autoplaySimilar" | "autoOpenPanel" | "autoLoadLyrics" | "seekFromLyrics"
             | "showArtwork" | "showArtist" | "showAlbum" | "showAdded" | "showYear"
@@ -2873,13 +3050,39 @@ impl App {
         self.refresh_view();
     }
 
+    fn move_navigation(&mut self, view: &str, delta: i32) {
+        use music_player_core::settings::keys as k;
+        let mut order = self.navigation_order();
+        let Some(index) = order.iter().position(|entry| entry == view) else { return; };
+        let target = index as i32 + delta;
+        if index == 0 || target <= 0 || target >= order.len() as i32 {
+            return;
+        }
+        order.swap(index, target as usize);
+        self.settings.set_string_list(k::NAVIGATION_ORDER, &order[1..]);
+        self.publish_navigation();
+    }
+
+    fn toggle_navigation(&mut self, view: &str) {
+        use music_player_core::settings::keys as k;
+        if view == "Home" { return; }
+        let mut hidden = self.settings.string_list(k::HIDDEN_PANELS);
+        if hidden.iter().any(|entry| entry == view) {
+            hidden.retain(|entry| entry != view);
+        } else {
+            hidden.push(view.to_string());
+        }
+        self.settings.set_string_list(k::HIDDEN_PANELS, &hidden);
+        self.publish_navigation();
+    }
+
     fn set_crossfade_label(&mut self, label: &str) {
         let seconds = match label {
-            "2 s" => 2,
-            "3 s" => 3,
-            "5 s" => 5,
-            "8 s" => 8,
-            "10 s" => 10,
+            "2 s" | "2 seconds" => 2,
+            "3 s" | "3 seconds" => 3,
+            "5 s" | "5 seconds" => 5,
+            "8 s" | "8 seconds" => 8,
+            "10 s" | "10 seconds" => 10,
             _ => 0,
         };
         self.settings.set_raw(music_player_core::settings::keys::CROSSFADE_SECONDS, &seconds.to_string());
@@ -2926,6 +3129,20 @@ impl App {
         self.ui
             .global::<State>()
             .set_recent_searches(ui_model(Vec::<SharedString>::new()).into());
+    }
+
+    fn remove_recent_search(&mut self, term: &str) {
+        let mut searches = self.settings.recent_searches();
+        searches.retain(|item| !item.eq_ignore_ascii_case(term));
+        self.settings.set_string_list(music_player_core::settings::keys::RECENT_SEARCHES, &searches);
+        self.ui.global::<State>().set_recent_searches(ui_model(searches.into_iter().map(ss).collect::<Vec<_>>()).into());
+    }
+
+    fn save_recent_search(&mut self, term: &str) {
+        if term.trim().is_empty() { return; }
+        self.settings.save_recent_search(term);
+        let searches = self.settings.recent_searches().into_iter().map(ss).collect::<Vec<_>>();
+        self.ui.global::<State>().set_recent_searches(ui_model(searches).into());
     }
 
     fn check_updates_if_enabled(&mut self) {
@@ -3185,21 +3402,24 @@ fn chunk_groups(groups: Vec<GroupItem>) -> Vec<GroupRowItem> {
     rows
 }
 
-fn chunk_home_cards(cards: Vec<HomeCardItem>) -> Vec<HomeCardRow> {
+fn chunk_home_cards(cards: Vec<HomeCardItem>, columns: usize) -> Vec<HomeCardRow> {
     let mut rows = Vec::new();
     let mut iter = cards.into_iter();
+    let columns = columns.clamp(1, 5);
     loop {
         let Some(a) = iter.next() else { break; };
-        let b = iter.next();
-        let c = iter.next();
-        let d = iter.next();
-        let filled = 1 + [&b, &c, &d].iter().filter(|item| item.is_some()).count() as i32;
+        let b = if columns >= 2 { iter.next() } else { None };
+        let c = if columns >= 3 { iter.next() } else { None };
+        let d = if columns >= 4 { iter.next() } else { None };
+        let e = if columns >= 5 { iter.next() } else { None };
+        let filled = 1 + [&b, &c, &d, &e].iter().filter(|item| item.is_some()).count() as i32;
         let spare = a.clone();
         rows.push(HomeCardRow {
             a,
             b: b.unwrap_or_else(|| spare.clone()),
             c: c.unwrap_or_else(|| spare.clone()),
-            d: d.unwrap_or(spare),
+            d: d.unwrap_or_else(|| spare.clone()),
+            e: e.unwrap_or(spare),
             filled,
         });
     }
@@ -3284,7 +3504,11 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let a = app.clone();
         ui.global::<Actions>().on_set_view(move |view, search, group, playlist_id| {
-            a.borrow_mut().set_view(&view, &search, &group, &playlist_id);
+            let mut app = a.borrow_mut();
+            if view == "Search" && search.is_empty() {
+                app.ui.global::<State>().set_search_filter(ss("all"));
+            }
+            app.set_view(&view, &search, &group, &playlist_id);
         });
     }
     {
@@ -3303,18 +3527,44 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_search(move |query, filter| {
             let mut app = a.borrow_mut();
-            let view = if filter == "all" { "Search".to_string() } else { filter.to_string() };
-            app.set_view(&view, &query, "", "");
+            let filter = if matches!(filter.as_str(), "song" | "album" | "artist" | "playlist") { filter } else { "all".into() };
+            app.ui.global::<State>().set_search_filter(ss(&filter));
+            app.set_view("Search", &query, "", "");
+            app.save_recent_search(&query);
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_search_input(move |query| {
             let mut app = a.borrow_mut();
-            app.ui.global::<State>().set_view_search(ss(&query));
-            let current = app.ui.global::<State>().get_view().to_string();
+            let state = app.ui.global::<State>();
+            state.set_view_search(ss(&query));
+            let current = state.get_view().to_string();
+            if current == "Settings" {
+                app.search_debounce = None;
+                let words = query.to_lowercase();
+                let matches = |terms: &[&str]| terms.iter().any(|term| words.contains(term));
+                let section = if matches(&["update", "release", "version", "license", "privacy", "repository"]) {
+                    Some("About")
+                } else if matches(&["sidebar", "navigation", "tray", "logs", "diagnostic", "default app", "export"]) {
+                    Some("Advanced")
+                } else if matches(&["folder", "library", "scan", "index", "duplicate", "column", "artwork", "artist", "album size"]) {
+                    Some("Library")
+                } else if matches(&["playback", "autoplay", "lyrics", "seek", "queue", "crossfade", "music output", "equalizer", "volume"]) {
+                    Some("Playback")
+                } else if matches(&["theme", "appearance", "accent", "color", "colour", "transparen", "motion", "selection"]) {
+                    Some("Appearance")
+                } else {
+                    None
+                };
+                if let Some(section) = section {
+                    state.set_settings_section(ss(section));
+                }
+                return;
+            }
             if current != "Search" {
-                app.ui.global::<State>().set_view(ss("Search"));
+                state.set_search_filter(ss("all"));
+                state.set_view(ss("Search"));
             }
             app.search_debounce = Some((Instant::now() + Duration::from_millis(150), query.to_string()));
         });
@@ -3322,15 +3572,16 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let a = app.clone();
         ui.global::<Actions>().on_save_recent_search(move |term| {
-            let app = a.borrow_mut();
-            app.settings.save_recent_search(&term);
-            let searches: Vec<SharedString> = app.settings.recent_searches().into_iter().map(ss).collect();
-            app.ui.global::<State>().set_recent_searches(ui_model(searches).into());
+            a.borrow_mut().save_recent_search(&term);
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_clear_recent_searches(move || a.borrow_mut().clear_recent_searches());
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_remove_recent_search(move |term| a.borrow_mut().remove_recent_search(&term));
     }
 
     // Playback.
@@ -3649,6 +3900,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
     {
         let a = app.clone();
+        ui.global::<Actions>().on_load_more_queue(move || {
+            let mut app = a.borrow_mut();
+            app.queue_display_limit = app.queue_display_limit.saturating_add(200);
+            app.publish_queue(true);
+        });
+    }
+    {
+        let a = app.clone();
         ui.global::<Actions>().on_add_to_queue(move |id| {
             let mut app = a.borrow_mut();
             if let Some(track) = app.track_by_id(&id) {
@@ -3673,7 +3932,22 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_scan_library(move || {
             let roots = a.borrow().settings.library_roots();
-            a.borrow_mut().start_scan(&roots, false);
+            if roots.is_empty() {
+                if let Some(path) = pick_folder() { a.borrow_mut().add_root(&path); }
+            } else {
+                a.borrow_mut().start_scan(&roots, false);
+            }
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_rebuild_library_index(move || {
+            let roots = a.borrow().settings.library_roots();
+            if roots.is_empty() {
+                if let Some(path) = pick_folder() { a.borrow_mut().add_root(&path); }
+            } else {
+                a.borrow_mut().start_scan(&roots, true);
+            }
         });
     }
     {
@@ -4043,11 +4317,50 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             );
         });
     }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_refresh_audio_devices(move || {
+            a.borrow_mut().publish_eq();
+        });
+    }
 
     // Settings.
     {
         let a = app.clone();
         ui.global::<Actions>().on_set_setting(move |name, value| a.borrow_mut().set_setting(&name, &value));
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_move_navigation(move |view, delta| a.borrow_mut().move_navigation(&view, delta));
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_navigation(move |view| a.borrow_mut().toggle_navigation(&view));
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_export_logs(move || {
+            let Some(path) = save_file("music-player-logs.zip", "ZIP log archive (*.zip)|*.zip") else { return; };
+            let result = LocalAppLog::shared().export_to(Path::new(&path));
+            let app = a.borrow_mut();
+            match result {
+                Ok(()) => app.show_notice("Logs exported. Review the ZIP for local paths before sharing.", NoticeSeverity::Informational),
+                Err(error) => app.show_notice(format!("Could not export logs: {error}"), NoticeSeverity::Error),
+            }
+        });
+    }
+    {
+        ui.global::<Actions>().on_open_default_apps(move || open_url("ms-settings:defaultapps"));
+    }
+    {
+        ui.global::<Actions>().on_open_url(move |url| {
+            let allowed = [
+                "https://github.com/kalabhaftu/music-player",
+                "https://github.com/kalabhaftu/music-player/blob/main/LICENSE",
+                "https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md",
+            ];
+            if allowed.contains(&url.as_str()) { open_url(&url); }
+        });
     }
     {
         let a = app.clone();
@@ -4314,17 +4627,22 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let a = app.clone();
         ui.global::<Actions>().on_toggle_immersive(move |kind| {
-            let app = a.borrow_mut();
+            let mut app = a.borrow_mut();
             let state = app.ui.global::<State>();
             let open = state.get_immersive_open();
+            let same_view = state.get_immersive_kind() == kind;
+            state.set_immersive_open(!(open && same_view));
             state.set_immersive_kind(ss(&kind));
-            state.set_immersive_open(!open);
+            drop(state);
+            app.publish_queue(true);
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive(move || {
-            a.borrow().ui.global::<State>().set_immersive_open(false);
+            let mut app = a.borrow_mut();
+            app.ui.global::<State>().set_immersive_open(false);
+            app.publish_queue(true);
         });
     }
     {

@@ -78,6 +78,7 @@ export struct HomeCardRow {
     b: HomeCardItem,
     c: HomeCardItem,
     d: HomeCardItem,
+    e: HomeCardItem,
     filled: int,
 }
 
@@ -140,8 +141,15 @@ export struct LyricResultItem {
 export struct NavEntry {
     view: string,
     label: string,
-    icon: string,
-    badge: string,
+    section-title: string,
+}
+
+export struct NavSettingItem {
+    view: string,
+    hidden: bool,
+    can-move-up: bool,
+    can-move-down: bool,
+    always-visible: bool,
 }
 
 // Card grids are laid out three tiles per row (the original auto-fill grid);

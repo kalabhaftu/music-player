@@ -2,7 +2,7 @@
 // The Actions callbacks mirror the WebUiCommandRouter command allowlist and the
 // State properties mirror the native -> JS event catalog payloads.
 
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem } from "models.slint";
 
 export global State {
     // ---- Routing ----
@@ -15,6 +15,7 @@ export global State {
     in-out property <string> view-playlist-id: "";
     in-out property <string> view-sort: "Title";
     in-out property <bool> view-descending: false;
+    in-out property <int> window-width: 1280;
     in-out property <string> search-filter: "all";
     in-out property <bool> can-go-back: false;
     in-out property <bool> can-go-forward: false;
@@ -23,9 +24,14 @@ export global State {
 
     // ---- Library models ----
     in property <[TrackItem]> tracks;
+    in property <[GroupItem]> groups;
     in property <[GroupRowItem]> group-rows;
     in property <int> groups-total: 0;
     in property <[PlaylistCardItem]> playlists;
+    in property <[PlaylistCardItem]> smart-playlists;
+    in property <[GroupItem]> search-albums;
+    in property <[GroupItem]> search-artists;
+    in property <[PlaylistCardItem]> search-playlists;
     in property <[HomeTrackRow]> home-quick-rows;
     in property <[HomeCardRow]> home-recent-album-rows;
     in property <[HomeCardRow]> home-library-card-rows;
@@ -41,6 +47,7 @@ export global State {
     in property <bool> can-load-more: false;
     in property <[FolderRootItem]> folder-roots;
     in property <[PlaylistRowItem]> playlist-rows;
+    in property <[NavEntry]> navigation-items;
 
     // ---- Scan state ----
     in property <bool> scan-active: false;
@@ -95,6 +102,7 @@ export global State {
     // ---- Queue / right panel ----
     in property <[QueueItem]> queue-items;
     in property <int> queue-count: 0;
+    in property <int> queue-current-index: -1;
     in property <bool> right-panel-open: true;
     in property <string> right-panel-tab: "queue";
     in property <string> info-album: "";
@@ -105,6 +113,7 @@ export global State {
     in property <string> info-quality: "";
     in property <string> info-location: "";
     in property <int> queue-more-count: 0;
+    in property <int> queue-panel-more-count: 0;
 
     // ---- Lyrics ----
     in property <[LyricLineItem]> lyrics-lines;
@@ -199,25 +208,33 @@ export global State {
     in-out property <bool> immersive-fullscreen: false;
     in-out property <bool> immersive-lyrics-open: false;
     in-out property <bool> transparent-window: false;
-    in-out property <int> window-transparency: 40;
+    in-out property <int> window-transparency: 0;
+    in-out property <string> accent-color: "#b7ff2d";
+    in-out property <string> selection-color: "#b7ff2d";
+    in-out property <color> selection-color-value: #b7ff2d;
+    in-out property <color> selection-color-ink: #101210;
+    in-out property <string> selection-color-mode: "Theme";
+    in-out property <string> indexed-library-size: "0 bytes";
+    in-out property <string> settings-section: "Appearance";
+    in property <[NavSettingItem]> navigation-settings;
     in-out property <string> motion-style: "Subtle";
     in-out property <bool> hide-exact-duplicates: true;
     in-out property <bool> autoplay-similar: true;
-    in-out property <bool> auto-open-side-panel: false;
+    in-out property <bool> auto-open-side-panel: true;
     in-out property <bool> auto-load-lyrics: true;
     in-out property <bool> seek-from-lyrics: true;
     in-out property <bool> show-list-artwork: true;
     in-out property <bool> show-list-artist: true;
     in-out property <bool> show-list-album: true;
     in-out property <bool> show-list-added: true;
-    in-out property <bool> show-list-year: true;
+    in-out property <bool> show-list-year: false;
     in-out property <bool> show-list-duration: true;
     in-out property <bool> show-list-favorite: true;
     in-out property <bool> check-updates: true;
     in-out property <bool> minimize-to-tray: false;
-    in-out property <int> navigation-width: 250;
-    in-out property <int> browse-width: 320;
-    in-out property <int> right-panel-width: 340;
+    in-out property <int> navigation-width: 232;
+    in-out property <int> browse-width: 280;
+    in-out property <int> right-panel-width: 294;
     in property <[DetailRowItem]> about-rows;
 
     // ---- Context menu ----
@@ -273,6 +290,7 @@ export global Actions {
     callback search(string, string); // query, filter
     callback save-recent-search(string);
     callback clear-recent-searches();
+    callback remove-recent-search(string);
 
     // ---- Playback ----
     callback play-track(string);
@@ -303,6 +321,7 @@ export global Actions {
     // ---- Queue ----
     callback queue-move(int, int);
     callback queue-remove(int);
+    callback load-more-queue();
     callback clear-queue();
     callback add-to-queue(string);
     callback play-next-in-queue(string);
@@ -354,11 +373,18 @@ export global Actions {
     callback set-eq-preset(string);
     callback save-eq-preset(string);
     callback set-output-device(string);
+    callback refresh-audio-devices();
 
     // ---- Settings ----
     callback set-setting(string, string);
     callback set-accent-preset(string);
     callback set-crossfade-label(string);
+    callback move-navigation(string, int);
+    callback toggle-navigation(string);
+    callback rebuild-library-index();
+    callback export-logs();
+    callback open-default-apps();
+    callback open-url(string);
     callback reset-settings(string); // groups csv
     callback open-settings();
 
