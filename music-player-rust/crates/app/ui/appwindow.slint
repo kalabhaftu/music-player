@@ -143,16 +143,18 @@ component NavRail inherits Rectangle {
 // Now Playing panel resize handles.
 component PanelResizeHandle inherits Rectangle {
     in property <bool> right-side: false;
+    in property <length> available-width;
+    in property <length> available-height;
     in-out property <bool> drag-active: false;
     in-out property <int> drag-start-x: 0;
     in-out property <int> drag-start-width: 0;
 
     x: root.right-side
-        ? parent.width - State.right-panel-width * 1px - 4px
+        ? root.available-width - State.right-panel-width * 1px - 4px
         : State.navigation-width * 1px - 4px;
     y: 0px;
     width: 8px;
-    height: parent.height - 88px;
+    height: root.available-height;
     visible: !State.immersive-player-open && (root.right-side ? State.right-panel-open : !State.navigation-collapsed);
     background: root.drag-active || divider.has-hover ? State.accent.with-alpha(0.28) : #00000000;
 
@@ -231,8 +233,6 @@ component TopBar inherits Rectangle {
                 }
                 LineEdit {
                     horizontal-stretch: 1;
-                    selection-background-color: Palette.selection;
-                    selection-foreground-color: Palette.selection-ink;
                     placeholder-text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
                     text <=> State.view-search;
                     edited(text) => { Actions.search-input(text); }
@@ -997,8 +997,6 @@ component ModalField inherits Rectangle {
         }
         LineEdit {
             height: 30px;
-            selection-background-color: Palette.selection;
-            selection-foreground-color: Palette.selection-ink;
             text: root.text;
             edited(value) => { root.changed(value); }
         }
@@ -1075,16 +1073,12 @@ component TagsModal inherits Rectangle {
                     LineEdit {
                         width: 140px;
                         height: 26px;
-                        selection-background-color: Palette.selection;
-                        selection-foreground-color: Palette.selection-ink;
                         text: field.key;
                         edited(v) => { Actions.tags-custom-key-changed(index, v); }
                     }
                     LineEdit {
                         horizontal-stretch: 1;
                         height: 26px;
-                        selection-background-color: Palette.selection;
-                        selection-foreground-color: Palette.selection-ink;
                         text: field.value;
                         edited(v) => { Actions.tags-custom-value-changed(index, v); }
                     }
@@ -1126,8 +1120,6 @@ component TagsModal inherits Rectangle {
                     LineEdit {
                         horizontal-stretch: 1;
                         height: 26px;
-                        selection-background-color: Palette.selection;
-                        selection-foreground-color: Palette.selection-ink;
                         text: field.value;
                         edited(v) => { Actions.tags-field-changed(index, v); }
                     }
@@ -1380,8 +1372,6 @@ component EditLyricsModal inherits Rectangle {
             TextEdit {
                 width: parent.width;
                 height: parent.height;
-                selection-background-color: Palette.selection;
-                selection-foreground-color: Palette.selection-ink;
                 text <=> State.edit-lyrics-text;
                 font-size: 12px;
             }
@@ -1523,8 +1513,6 @@ component ExclusionsModal inherits Rectangle {
             LineEdit {
                 width: 130px;
                 height: 30px;
-                selection-background-color: Palette.selection;
-                selection-foreground-color: Palette.selection-ink;
                 placeholder-text: ".mkv";
                 text <=> State.exclusion-new-extension;
             }
@@ -1625,8 +1613,6 @@ component NameModal inherits Rectangle {
 
         LineEdit {
             height: 34px;
-            selection-background-color: Palette.selection;
-            selection-foreground-color: Palette.selection-ink;
             placeholder-text: root.placeholder;
             text <=> State.modal-text;
             accepted(text) => { root.submit(text); }
@@ -1896,7 +1882,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
                 spacing: 14px;
                 horizontal-stretch: State.immersive-lyrics-open ? 0.85 : 1;
                 Rectangle {
-                    width: min(parent.height * (State.immersive-lyrics-open ? 0.38 : 0.44), State.immersive-lyrics-open ? 380px : 440px);
+                    width: min(State.window-width * 1px * (State.immersive-lyrics-open ? 0.28 : 0.36), State.immersive-lyrics-open ? 330px : 420px);
                     height: self.width;
                     border-radius: 14px;
                     clip: true;
@@ -2118,7 +2104,7 @@ export component AppWindow inherits Window {
     preferred-height: 800px;
     background: Palette.canvas;
 
-    changed width => { State.set_window_width(round(self.width / 1px)); }
+    changed width => { State.window-width = round(self.width / 1px); }
 
     init => { Actions.ui-ready(); }
 
@@ -2199,8 +2185,8 @@ export component AppWindow inherits Window {
         PlayerBar { }
     }
 
-    PanelResizeHandle { }
-    PanelResizeHandle { right-side: true; }
+    PanelResizeHandle { available-width: parent.width; available-height: parent.height - 88px; }
+    PanelResizeHandle { right-side: true; available-width: parent.width; available-height: parent.height - 88px; }
 
     if State.immersive-player-open : ImmersivePlayerOverlay { width: 100%; height: 100%; }
 

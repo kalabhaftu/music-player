@@ -146,32 +146,26 @@ component HomeLibraryTile inherits Rectangle {
 
 component HomeCardRowView inherits Rectangle {
     in property <HomeCardRow> card-row;
-    GridLayout {
-        width: 100%;
+    HorizontalLayout {
         spacing: 14px;
         if root.card-row.filled >= 1 : HomeLibraryTile {
-            col: 0;
-            row: 0;
+            horizontal-stretch: 1;
             item: root.card-row.a;
         }
         if root.card-row.filled >= 2 : HomeLibraryTile {
-            col: 1 % max(1, min(5, round(root.width / 150px)));
-            row: 1 / max(1, min(5, round(root.width / 150px)));
+            horizontal-stretch: 1;
             item: root.card-row.b;
         }
         if root.card-row.filled >= 3 : HomeLibraryTile {
-            col: 2 % max(1, min(5, round(root.width / 150px)));
-            row: 2 / max(1, min(5, round(root.width / 150px)));
+            horizontal-stretch: 1;
             item: root.card-row.c;
         }
         if root.card-row.filled >= 4 : HomeLibraryTile {
-            col: 3 % max(1, min(5, round(root.width / 150px)));
-            row: 3 / max(1, min(5, round(root.width / 150px)));
+            horizontal-stretch: 1;
             item: root.card-row.d;
         }
         if root.card-row.filled >= 5 : HomeLibraryTile {
-            col: 4 % max(1, min(5, round(root.width / 150px)));
-            row: 4 / max(1, min(5, round(root.width / 150px)));
+            horizontal-stretch: 1;
             item: root.card-row.e;
         }
     }
@@ -457,8 +451,8 @@ component FoldersView inherits Rectangle {
                     spacing: max(10px, min(20px, State.browse-width * 1px * 0.05));
                     for item[index] in State.groups : FolderTile {
                         item: item;
-                        col: index % min(6, max(1, round(root.width / 150px)));
-                        row: index / min(6, max(1, round(root.width / 150px)));
+                        col: Math.mod(index, min(6, max(1, Math.round(root.width / 150px))));
+                        row: index / min(6, max(1, Math.round(root.width / 150px)));
                     }
                 }
             }
@@ -673,8 +667,8 @@ component PlaylistsList inherits Rectangle {
         spacing: 14px;
         for card[index] in State.search-playlists : PlaylistTile {
             card: card;
-            col: index % min(6, max(1, round(root.width / 150px)));
-            row: index / min(6, max(1, round(root.width / 150px)));
+            col: Math.mod(index, min(6, max(1, Math.round(root.width / 150px))));
+            row: index / min(6, max(1, Math.round(root.width / 150px)));
         }
     }
 }
@@ -716,7 +710,7 @@ component PlaylistsView inherits Rectangle {
                         spacing: 8px;
                         for card[index] in State.smart-playlists : SmartPlaylistTile {
                             card: card;
-                            col: index % 3;
+                            col: Math.mod(index, 3);
                             row: index / 3;
                         }
                     }
@@ -732,8 +726,8 @@ component PlaylistsView inherits Rectangle {
                         spacing: 14px;
                         for card[index] in State.playlists : PlaylistTile {
                             card: card;
-                            col: index % min(6, max(1, round(root.width / 150px)));
-                            row: index / min(6, max(1, round(root.width / 150px)));
+                            col: Math.mod(index, min(6, max(1, Math.round(root.width / 150px))));
+                            row: index / min(6, max(1, Math.round(root.width / 150px)));
                         }
                     }
                 }
@@ -1598,8 +1592,6 @@ component SettingColorRow inherits Rectangle {
         }
         LineEdit {
             width: 100px;
-            selection-background-color: Palette.selection;
-            selection-foreground-color: Palette.selection-ink;
             text: root.value;
             enabled: root.enabled;
             accepted(value) => { Actions.set-setting(root.setting, value); }
@@ -1689,10 +1681,10 @@ component SettingsView inherits Rectangle {
 
         Rectangle {
             height: 48px;
-            padding: 5px;
             border-radius: 8px;
             background: Palette.panel;
             HorizontalLayout {
+                padding: 5px;
                 spacing: 3px;
                 SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
                 SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }

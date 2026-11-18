@@ -1560,9 +1560,11 @@ impl App {
         let entries = self.coordinator.queue().entries().to_vec();
         let current_index = self.coordinator.queue().current_index();
         let start = current_index.unwrap_or(0);
-        let state = self.ui.global::<State>();
-        let full_queue_view = state.get_view() == "Queue"
-            || state.get_immersive_open() && state.get_immersive_kind() == "Queue";
+        let full_queue_view = {
+            let state = self.ui.global::<State>();
+            state.get_view() == "Queue"
+                || state.get_immersive_open() && state.get_immersive_kind() == "Queue"
+        };
         let display_limit = if full_queue_view { self.queue_display_limit } else { 30 };
         let playing_path = self.current.as_ref().map(|t| t.path.clone()).unwrap_or_default();
         let mut items = Vec::new();
@@ -1593,6 +1595,7 @@ impl App {
         }
         let panel_more = entries.len().saturating_sub(start + 30);
         let view_more = if full_queue_view { entries.len().saturating_sub(start + display_limit) } else { 0 };
+        let state = self.ui.global::<State>();
         state.set_queue_items(ui_model(items).into());
         let upcoming = entries.len().saturating_sub(current_index.map(|index| index + 1).unwrap_or(0));
         state.set_queue_count(upcoming as i32);
@@ -1644,8 +1647,8 @@ impl App {
             };
             let count = self.store.query_track_page(&query).map(|(_, count)| count).unwrap_or(0);
             PlaylistCardItem {
-                id: ss(view), name: ss(view), track_count: count as i32, is_smart: true,
-                gradient: 1, initials: ss(""), description: ss(description),
+                id: ss(*view), name: ss(*view), track_count: count as i32, is_smart: true,
+                gradient: 1, initials: ss(""), description: ss(*description),
             }
         }).collect();
         if !video_extensions.is_empty() {
@@ -3537,9 +3540,8 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_search_input(move |query| {
             let mut app = a.borrow_mut();
-            let state = app.ui.global::<State>();
-            state.set_view_search(ss(&query));
-            let current = state.get_view().to_string();
+            app.ui.global::<State>().set_view_search(ss(&query));
+            let current = app.ui.global::<State>().get_view().to_string();
             if current == "Settings" {
                 app.search_debounce = None;
                 let words = query.to_lowercase();
@@ -3558,11 +3560,12 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
                     None
                 };
                 if let Some(section) = section {
-                    state.set_settings_section(ss(section));
+                    app.ui.global::<State>().set_settings_section(ss(section));
                 }
                 return;
             }
             if current != "Search" {
+                let state = app.ui.global::<State>();
                 state.set_search_filter(ss("all"));
                 state.set_view(ss("Search"));
             }
@@ -4342,7 +4345,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         ui.global::<Actions>().on_export_logs(move || {
             let Some(path) = save_file("music-player-logs.zip", "ZIP log archive (*.zip)|*.zip") else { return; };
             let result = LocalAppLog::shared().export_to(Path::new(&path));
-            let app = a.borrow_mut();
+            let mut app = a.borrow_mut();
             match result {
                 Ok(()) => app.show_notice("Logs exported. Review the ZIP for local paths before sharing.", NoticeSeverity::Informational),
                 Err(error) => app.show_notice(format!("Could not export logs: {error}"), NoticeSeverity::Error),

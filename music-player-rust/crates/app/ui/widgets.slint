@@ -2,7 +2,7 @@
 
 import { State, Actions } from "state.slint";
 import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 
 // Gradient classes c1..c10 from the original components.css.
 export global Palette {
@@ -667,8 +667,8 @@ export component GroupGrid inherits Rectangle {
                 for item[index] in root.items : CardTile {
                     item: item;
                     round: root.round;
-                    col: index % min(6, max(1, round(root.width / 150px)));
-                    row: index / min(6, max(1, round(root.width / 150px)));
+                    col: Math.mod(index, min(6, max(1, Math.round(root.width / 150px))));
+                    row: index / min(6, max(1, Math.round(root.width / 150px)));
                     play => { Actions.play-group("", item.name); }
                     open => { Actions.open-group("", item.name); }
                 }
