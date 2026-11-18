@@ -7,6 +7,7 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
     COINIT_APARTMENTTHREADED,
 };
+use windows::Win32::Graphics::Gdi::{GetSysColor, COLOR_WINDOW};
 use windows::Win32::UI::Shell::{
     Common::COMDLG_FILTERSPEC, FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog,
     FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, ShellExecuteW, SIGDN_FILESYSPATH,
@@ -32,6 +33,14 @@ impl Drop for ComApartment {
     fn drop(&mut self) {
         unsafe { CoUninitialize() };
     }
+}
+
+pub fn prefers_light_theme() -> bool {
+    let color = unsafe { GetSysColor(COLOR_WINDOW) };
+    let red = (color & 0xff) as f32;
+    let green = ((color >> 8) & 0xff) as f32;
+    let blue = ((color >> 16) & 0xff) as f32;
+    (0.2126 * red + 0.7152 * green + 0.0722 * blue) >= 128.0
 }
 
 fn display_path(item: windows::Win32::UI::Shell::IShellItem) -> Option<String> {
@@ -165,6 +174,7 @@ pub fn open_folder(path: &Path) {
 pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     let bytes = std::fs::read(path).ok()?;
     let dyn_img = image::load_from_memory(&bytes).ok()?;
+    let dyn_img = dyn_img.thumbnail(384, 384);
     let rgba = dyn_img.to_rgba8();
     let (width, height) = rgba.dimensions();
     if width == 0 || height == 0 {

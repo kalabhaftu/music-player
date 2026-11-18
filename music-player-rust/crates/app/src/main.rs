@@ -8,6 +8,7 @@
 mod native_io;
 mod os;
 mod os_shell;
+mod splash;
 
 use chrono::Timelike;
 use music_player_core::audio::coordinator::{
@@ -136,6 +137,29 @@ fn parse_hex_color(s: &str) -> slint::Color {
         slint::Color::from_rgb_u8(r, g, b)
     } else {
         slint::Color::from_rgb_u8(183, 255, 45)
+    }
+}
+
+fn contrasting_ink(hex: &str) -> slint::Color {
+    let value = hex.trim_start_matches('#');
+    let Some((r, g, b)) = (|| {
+        Some((
+            u8::from_str_radix(value.get(0..2)?, 16).ok()?,
+            u8::from_str_radix(value.get(2..4)?, 16).ok()?,
+            u8::from_str_radix(value.get(4..6)?, 16).ok()?,
+        ))
+    })() else {
+        return parse_hex_color("#101210");
+    };
+    let linear = |channel: u8| {
+        let value = channel as f64 / 255.0;
+        if value <= 0.04045 { value / 12.92 } else { ((value + 0.055) / 1.055).powf(2.4) }
+    };
+    let luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    if (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) {
+        parse_hex_color("#101210")
+    } else {
+        parse_hex_color("#ffffff")
     }
 }
 
@@ -390,6 +414,63 @@ impl App {
         self.check_updates_if_enabled();
     }
 
+    fn publish_appearance(&self) {
+        use music_player_core::settings::keys as k;
+        let theme = self.settings.raw(k::THEME).unwrap_or_else(|| "System".into());
+        let light = match theme.as_str() {
+            "Light" => true,
+            "Dark" => false,
+            _ => native_io::prefers_light_theme(),
+        };
+        let accent_mode = self.settings.raw(k::ACCENT_MODE).unwrap_or_else(|| "Artwork".into());
+        let manual = self.settings.bool_or(k::ACCENT_MANUAL, false);
+        let manual_hex = self.settings.raw(k::ACCENT_COLOR).unwrap_or_else(|| "#b7ff2d".into());
+        let artwork_palette = if accent_mode == "Artwork" {
+            self.current
+                .as_ref()
+                .and_then(|track| track.artwork_path.as_deref())
+                .filter(|path| Path::new(path).is_file())
+                .map(|path| music_player_core::extract_palette(Path::new(path)))
+        } else {
+            None
+        };
+        let native_accent = if light { "#548c00" } else { "#b7ff2d" };
+        let accent_hex = if manual {
+            manual_hex
+        } else {
+            artwork_palette
+                .as_ref()
+                .map(|palette| palette.accent.hex())
+                .unwrap_or_else(|| native_accent.to_string())
+        };
+        let state = self.ui.global::<State>();
+        state.set_theme(ss(theme));
+        state.set_light_theme(light);
+        state.set_accent_mode(ss(accent_mode));
+        state.set_accent_manual_enabled(manual);
+        state.set_accent_manual(parse_hex_color(&self.settings.raw(k::ACCENT_COLOR).unwrap_or_else(|| "#b7ff2d".into())));
+        state.set_artwork_palette(artwork_palette.is_some());
+        if let Some(palette) = &artwork_palette {
+            state.set_art_background(parse_hex_color(&palette.background.hex()));
+            state.set_art_sidebar(parse_hex_color(&palette.sidebar.hex()));
+            state.set_art_main(parse_hex_color(&palette.main.hex()));
+            state.set_art_panel(parse_hex_color(&palette.panel.hex()));
+            state.set_art_raised(parse_hex_color(&palette.raised.hex()));
+            state.set_art_hover(parse_hex_color(&palette.hover.hex()));
+            state.set_art_control(parse_hex_color(&palette.control.hex()));
+        }
+        state.set_accent(parse_hex_color(&accent_hex));
+        state.set_accent_ink(contrasting_ink(&accent_hex));
+        let accent_preset = match accent_hex.to_ascii_lowercase().as_str() {
+            "#4ab8ff" => "Sky",
+            "#b48cff" => "Violet",
+            "#ff7ba6" => "Rose",
+            "#ffc24a" => "Amber",
+            _ => "Lime",
+        };
+        state.set_accent_preset_name(ss(accent_preset));
+    }
+
     fn load_roots(&mut self) {
         let mut roots = self.settings.library_roots();
         let configured = self.settings.roots_configured();
@@ -511,19 +592,14 @@ impl App {
         }
 
         // Secondary-instance activation files.
-        let activation_files = os::poll_activations();
-        if !activation_files.is_empty() {
-            for path in &activation_files {
-                if let Ok(Some(track)) = self.store.get_track(path) {
-                    self.coordinator.queue_mut().append_one(track.path);
-                }
+        for payload in os::poll_activations() {
+            if payload.verb == "addtoqueue" {
+                self.add_external_files_to_queue(&payload.paths);
+            } else if payload.verb == "createplaylist" {
+                self.create_playlist_with_external_files(&payload.paths);
+            } else {
+                self.play_external_files(&payload.paths);
             }
-            if let Some(first) = activation_files.first() {
-                if let Ok(Some(track)) = self.store.get_track(first) {
-                    self.play_track(track, false, None);
-                }
-            }
-            self.publish_queue(true);
         }
         let position = self.engine.position_ms().max(0);
         let duration = self.engine.duration_ms().max(0);
@@ -1307,14 +1383,8 @@ impl App {
             .and_then(|p| native_io::load_artwork_image(Path::new(p)))
             .unwrap_or_default();
         state.set_current_cover(cover);
-        let accent = track
-            .artwork_path
-            .as_deref()
-            .map(|p| music_player_core::extract_palette(Path::new(p)))
-            .map(|p| p.accent)
-            .map(|c| slint::Color::from_rgb_u8(c.r, c.g, c.b))
-            .unwrap_or_else(|| parse_hex_color("#b7ff2d"));
-        state.set_accent(accent);
+        drop(state);
+        self.publish_appearance();
         self.publish_info(track);
         self.load_lyrics(track);
     }
@@ -1505,11 +1575,9 @@ impl App {
 
     fn publish_settings(&mut self) {
         use music_player_core::settings::keys as k;
+        self.publish_appearance();
         let s = &self.settings;
         let state = self.ui.global::<State>();
-        state.set_theme(ss(s.raw(k::THEME).unwrap_or_else(|| "Dark".into())));
-        state.set_accent_mode(ss(s.raw(k::ACCENT_MODE).unwrap_or_else(|| "Artwork".into())));
-        state.set_accent_manual(parse_hex_color(&s.raw(k::ACCENT_MANUAL).unwrap_or_else(|| "#b7ff2d".into())));
         state.set_transparent_window(s.bool_or(k::TRANSPARENT_WINDOW, false));
         state.set_window_transparency(s.int_or(k::WINDOW_TRANSPARENCY, 40) as i32);
         state.set_motion_style(ss(s.raw(k::MOTION_STYLE).unwrap_or_else(|| "Subtle".into())));
@@ -1528,6 +1596,7 @@ impl App {
         state.set_check_updates(s.bool_or(k::CHECK_UPDATES, true));
         state.set_minimize_to_tray(s.bool_or(k::MINIMIZE_TO_TRAY, false));
         state.set_navigation_width(s.int_or(k::NAVIGATION_WIDTH, 232) as i32);
+        state.set_navigation_collapsed(s.bool_or(k::SIDEBAR_COLLAPSED, false));
         state.set_browse_width(s.int_or(k::BROWSE_WIDTH, 280) as i32);
         state.set_right_panel_width(s.int_or(k::RIGHT_PANEL_WIDTH, 294) as i32);
         state.set_right_panel_open(s.raw(k::RIGHT_PANEL_OPEN).map(|v| v != "false").unwrap_or(true));
@@ -2620,6 +2689,9 @@ impl App {
         let web_name = match name {
             "theme" => "theme",
             "accent-mode" => "accentMode",
+            "accent-manual" => "accentManual",
+            "accent-color" => "accentColor",
+            "window-transparency" => "windowTransparency",
             "motion-style" => "motionStyle",
             "transparent-window" => "transparentWindow",
             "hide-exact-duplicates" => "hideDuplicates",
@@ -2647,7 +2719,8 @@ impl App {
             json!(value)
         };
         match web_name {
-            "theme" | "accentMode" | "motionStyle" | "transparentWindow" | "hideDuplicates"
+            "theme" | "accentMode" | "accentManual" | "accentColor" | "windowTransparency"
+            | "motionStyle" | "transparentWindow" | "hideDuplicates"
             | "autoplaySimilar" | "autoOpenPanel" | "autoLoadLyrics" | "seekFromLyrics"
             | "showArtwork" | "showArtist" | "showAlbum" | "showAdded" | "showYear"
             | "showDuration" | "showFavorite" | "checkUpdates" | "minimizeToTray"
@@ -2658,9 +2731,8 @@ impl App {
             }
             _ => self.settings.set_raw(name, value),
         }
-        // Re-publish affected UI state.
-        let state = self.ui.global::<State>();
-        state.set_transparent_window(self.settings.bool_or(music_player_core::settings::keys::TRANSPARENT_WINDOW, false));
+        // Keep the live UI in sync with settings without waiting for restart.
+        self.publish_settings();
         if name == "check-updates" {
             self.check_updates_if_enabled();
         }
@@ -2805,6 +2877,116 @@ impl App {
         }
         self.close_modal();
     }
+
+    fn read_external_tracks(&mut self, paths: &[String]) -> Vec<Track> {
+        let mut tracks = Vec::new();
+        for path in paths {
+            let p = Path::new(path);
+            if !music_player_core::is_supported_audio(p) {
+                continue;
+            }
+            if let Ok(Some(existing)) = self.store.get_track(path) {
+                if let Ok(meta) = std::fs::metadata(p) {
+                    if existing.file_size == meta.len() {
+                        tracks.push(existing);
+                        continue;
+                    }
+                }
+            }
+            let extracted = music_player_core::read_tags_in_cache(p, &artwork_cache_dir());
+            let meta = std::fs::metadata(p).ok();
+            let file_size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = meta.and_then(|m| m.modified().ok()).map(chrono::DateTime::from).unwrap_or_else(chrono::Utc::now);
+            let title = extracted.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| file_stem(path));
+            let track = Track {
+                path: path.clone(),
+                title,
+                artist: extracted.artist.unwrap_or_default(),
+                album: extracted.album.unwrap_or_default(),
+                album_artist: extracted.album_artist.unwrap_or_default(),
+                genre: extracted.genre.unwrap_or_default(),
+                year: extracted.year,
+                track_number: extracted.track_number,
+                duration_ms: extracted.duration_ms,
+                file_size,
+                modified_utc: modified,
+                added_utc: chrono::Utc::now(),
+                artwork_path: extracted.artwork_path,
+                has_lyrics: extracted.has_lyrics || read_sidecar(path).is_some(),
+                rating: 0,
+                favorite: false,
+                play_count: 0,
+                last_played_utc: None,
+                unavailable: false,
+            };
+            let _ = self.store.upsert_tracks(&[track.clone()]);
+            tracks.push(track);
+        }
+        tracks
+    }
+
+    fn play_external_files(&mut self, paths: &[String]) {
+        let tracks = self.read_external_tracks(paths);
+        if tracks.is_empty() {
+            self.show_notice("No supported audio files could be opened.", NoticeSeverity::Warning);
+            return;
+        }
+        let opened_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+        let current_path = self.current.as_ref().map(|t| t.path.as_str());
+        let existing_queue: Vec<String> = self.coordinator.queue().entries().to_vec();
+        let current_idx = self.coordinator.queue().current_index().map(|i| i as i64).unwrap_or(0);
+        let new_queue = music_player_core::audio::queue::build_external_open_queue(
+            &opened_paths,
+            current_path,
+            &existing_queue,
+            current_idx,
+        );
+        self.coordinator.queue_mut().replace(new_queue, Some(0));
+        self.play_track(tracks[0].clone(), false, Some(0));
+        self.publish_queue(true);
+        if tracks.len() > 1 {
+            self.show_notice(
+                format!("Playing {}; {} more selected tracks follow, then the previous track and queue.", tracks[0].title, tracks.len() - 1),
+                NoticeSeverity::Informational,
+            );
+        }
+    }
+
+    fn add_external_files_to_queue(&mut self, paths: &[String]) {
+        let tracks = self.read_external_tracks(paths);
+        if tracks.is_empty() {
+            self.show_notice("No supported audio files could be added.", NoticeSeverity::Warning);
+            return;
+        }
+        let track_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+        let retained = self.current.as_ref().map(|t| t.path.as_str());
+        self.coordinator.queue_mut().insert_next_range(&track_paths, retained);
+        self.publish_queue(true);
+        self.show_notice(
+            format!("Added {} {} to the queue.", tracks.len(), if tracks.len() == 1 { "track" } else { "tracks" }),
+            NoticeSeverity::Informational,
+        );
+    }
+
+    fn create_playlist_with_external_files(&mut self, paths: &[String]) {
+        let tracks = self.read_external_tracks(paths);
+        if tracks.is_empty() {
+            self.show_notice("No supported audio files could be added.", NoticeSeverity::Warning);
+            return;
+        }
+        let track_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+        let name = Path::new(&tracks[0].path)
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "New playlist".to_string());
+        let id = self.new_playlist_id();
+        let _ = self.store.create_playlist(&id, &name);
+        let _ = self.store.add_tracks_to_playlist(&id, &track_paths);
+        self.refresh_playlists();
+        self.show_notice(format!("Created playlist “{}”.", name), NoticeSeverity::Success);
+        self.set_view("Playlist", "", "", &id);
+    }
 }
 
 // Stand-in for the small preset tables in core's EqualizerState.
@@ -2910,19 +3092,22 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     if !os::acquire_single_instance(&cli_args) {
         return Ok(());
     }
+    let startup = splash::Splash::try_show();
+    if let Some(splash) = &startup {
+        splash.set_status("Preparing your library…");
+    }
     let ui = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new(ui.clone_strong())));
 
     if !cli_args.is_empty() {
-        let a = app.clone();
-        for path in &cli_args {
-            if let Ok(Some(track)) = a.borrow().store.get_track(path) {
-                a.borrow_mut().coordinator.queue_mut().append_one(track.path);
-            }
-        }
-        if let Some(first) = cli_args.first() {
-            if let Ok(Some(track)) = a.borrow().store.get_track(first) {
-                a.borrow_mut().play_track(track, false, None);
+        let (verb, paths) = os::parse_activation_args(&cli_args);
+        if !paths.is_empty() {
+            if verb == "addtoqueue" {
+                app.borrow_mut().add_external_files_to_queue(&paths);
+            } else if verb == "createplaylist" {
+                app.borrow_mut().create_playlist_with_external_files(&paths);
+            } else {
+                app.borrow_mut().play_external_files(&paths);
             }
         }
     }
@@ -3703,8 +3888,10 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
                 "Sky" => "#4ab8ff", "Violet" => "#b48cff", "Rose" => "#ff7ba6", "Amber" => "#ffc24a",
                 _ => "#b7ff2d",
             };
-            a.borrow().settings.set_raw(music_player_core::settings::keys::ACCENT_COLOR, color);
-            a.borrow().ui.global::<State>().set_accent(parse_hex_color(color));
+            let mut app = a.borrow_mut();
+            app.settings.set_raw(music_player_core::settings::keys::ACCENT_COLOR, color);
+            app.settings.set_raw(music_player_core::settings::keys::ACCENT_MANUAL, "true");
+            app.publish_settings();
         });
     }
     {
@@ -3985,6 +4172,78 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
     {
         let a = app.clone();
+        ui.global::<Actions>().on_toggle_tools_menu(move || {
+            let app = a.borrow();
+            let state = app.ui.global::<State>();
+            state.set_tools_menu_open(!state.get_tools_menu_open());
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_scan_details(move || {
+            let app = a.borrow();
+            let state = app.ui.global::<State>();
+            state.set_scan_details_open(!state.get_scan_details_open());
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_sidebar(move || {
+            let app = a.borrow();
+            let state = app.ui.global::<State>();
+            let collapsed = !state.get_navigation_collapsed();
+            state.set_navigation_collapsed(collapsed);
+            app.settings.set_raw(music_player_core::settings::keys::SIDEBAR_COLLAPSED, &collapsed.to_string());
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_open_immersive_player(move || {
+            let app = a.borrow();
+            let state = app.ui.global::<State>();
+            state.set_immersive_player_open(true);
+            state.set_immersive_lyrics_open(false);
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_close_immersive_player(move || {
+            let app = a.borrow();
+            if app.ui.window().is_fullscreen() {
+                app.ui.window().set_fullscreen(false);
+            }
+            let state = app.ui.global::<State>();
+            state.set_immersive_fullscreen(false);
+            state.set_immersive_player_open(false);
+            state.set_immersive_lyrics_open(false);
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_immersive_fullscreen(move || {
+            let app = a.borrow();
+            let fullscreen = !app.ui.window().is_fullscreen();
+            app.ui.window().set_fullscreen(fullscreen);
+            app.ui.global::<State>().set_immersive_fullscreen(fullscreen);
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_immersive_lyrics(move || {
+            let mut app = a.borrow_mut();
+            let state = app.ui.global::<State>();
+            let open = !state.get_immersive_lyrics_open();
+            state.set_immersive_lyrics_open(open);
+            drop(state);
+            if open {
+                if let Some(track) = app.current.clone() {
+                    app.load_lyrics(&track);
+                }
+            }
+        });
+    }
+    {
+        let a = app.clone();
         ui.global::<Actions>().on_set_right_tab(move |tab| {
             a.borrow().ui.global::<State>().set_right_panel_tab(ss(&tab));
         });
@@ -4009,6 +4268,9 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
 
     // Startup and the 250 ms engine-room clock.
+    if let Some(splash) = &startup {
+        splash.set_status("Opening Music Player…");
+    }
     app.borrow_mut().startup();
     let clock = Timer::default();
     {
@@ -4018,6 +4280,8 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         });
     }
 
+    ui.show()?;
+    drop(startup);
     ui.run()?;
     os_shell::detach();
     app.borrow_mut().save_session();

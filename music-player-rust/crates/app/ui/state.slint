@@ -69,6 +69,16 @@ export global State {
     in property <bool> current-favorite: false;
     in property <image> current-cover;
     in property <color> accent: #b7ff2d;
+    in property <color> accent-ink: #101210;
+    in property <bool> light-theme: false;
+    in property <bool> artwork-palette: false;
+    in property <color> art-background: #070807;
+    in property <color> art-sidebar: #090a09;
+    in property <color> art-main: #090a09;
+    in property <color> art-panel: #0e100f;
+    in property <color> art-raised: #171917;
+    in property <color> art-hover: #212421;
+    in property <color> art-control: #242724;
 
     // ---- Detail hero ----
     in property <string> hero-subtitle: "";
@@ -175,6 +185,13 @@ export global State {
     in-out property <string> theme: "Dark";
     in-out property <string> accent-mode: "Artwork";
     in-out property <color> accent-manual: #b7ff2d;
+    in-out property <bool> accent-manual-enabled: false;
+    in-out property <bool> tools-menu-open: false;
+    in-out property <bool> navigation-collapsed: false;
+    in-out property <bool> scan-details-open: false;
+    in-out property <bool> immersive-player-open: false;
+    in-out property <bool> immersive-fullscreen: false;
+    in-out property <bool> immersive-lyrics-open: false;
     in-out property <bool> transparent-window: false;
     in-out property <int> window-transparency: 40;
     in-out property <string> motion-style: "Subtle";
@@ -378,6 +395,13 @@ export global Actions {
     callback minimize-window();
     callback toggle-immersive(string);
     callback close-immersive();
+    callback open-immersive-player();
+    callback close-immersive-player();
+    callback toggle-immersive-fullscreen();
+    callback toggle-immersive-lyrics();
+    callback toggle-tools-menu();
+    callback toggle-sidebar();
+    callback toggle-scan-details();
     callback toggle-right-panel();
     callback set-right-tab(string);
     callback ui-ready();

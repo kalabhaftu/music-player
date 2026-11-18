@@ -6,6 +6,28 @@ import { ListView } from "std-widgets.slint";
 
 // Gradient classes c1..c10 from the original components.css.
 export global Palette {
+    in property <color> canvas: State.artwork-palette ? State.art-background : (State.light-theme ? #f0f2ef : #070807);
+    in property <color> surface: State.artwork-palette ? State.art-sidebar : (State.light-theme ? #e7eae6 : #090a09);
+    in property <color> main: State.artwork-palette ? State.art-main : (State.light-theme ? #f0f2ef : #090a09);
+    in property <color> panel: State.artwork-palette ? State.art-panel : (State.light-theme ? #e7eae6 : #0e100f);
+    in property <color> panel-2: State.artwork-palette ? State.art-panel : (State.light-theme ? #dfe3de : #131614);
+    in property <color> raised: State.artwork-palette ? State.art-raised : (State.light-theme ? #e3e6e2 : #171917);
+    in property <color> hover: State.artwork-palette ? State.art-hover : (State.light-theme ? #d9ded8 : #212421);
+    in property <color> control: State.artwork-palette ? State.art-control : (State.light-theme ? #dfe3de : #242724);
+    in property <color> text: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f7f8f6);
+    in property <color> text-strong: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f2f4f1);
+    in property <color> text-subtle: State.artwork-palette ? #e0dfd8 : (State.light-theme ? #343b34 : #cdd2cc);
+    in property <color> muted: State.artwork-palette ? #d1d0c9 : (State.light-theme ? #545c54 : #a0a79f);
+    in property <color> muted-2: State.artwork-palette ? #aaa9a2 : (State.light-theme ? #747c74 : #717970);
+    in property <color> icon-muted: State.light-theme && !State.artwork-palette ? #727a72 : #939a93;
+    in property <color> disabled: State.light-theme && !State.artwork-palette ? #aab2aa : #3a403a;
+    in property <color> border: State.light-theme && !State.artwork-palette ? #1219121f : #ffffff14;
+    in property <color> border-soft: State.light-theme && !State.artwork-palette ? #12191214 : #ffffff0d;
+    in property <color> border-hover: State.light-theme && !State.artwork-palette ? #1219122b : #ffffff22;
+    in property <color> overlay: State.light-theme && !State.artwork-palette ? #0000000d : #ffffff12;
+    in property <color> overlay-strong: State.light-theme && !State.artwork-palette ? #00000018 : #ffffff1c;
+    in property <color> accent-ink: State.accent-ink;
+
     public pure function ga(index: int) -> color {
         if (index <= 1) { return #1b1d26; }
         if (index == 2) { return #162124; }
@@ -47,8 +69,8 @@ export global Palette {
 
 export component IcBtn inherits Rectangle {
     in property <image> icon;
-    in property <color> tint: #a0a79f;
-    in property <color> hover-tint: #f7f8f6;
+    in property <color> tint: Palette.muted;
+    in property <color> hover-tint: Palette.text;
     in property <length> icon-size: 16px;
     in property <bool> active: false;
     callback clicked();
@@ -56,7 +78,7 @@ export component IcBtn inherits Rectangle {
     width: 32px;
     height: 32px;
     border-radius: 16px;
-    background: area.pressed ? #ffffff18 : (area.has-hover ? #ffffff12 : transparent);
+    background: area.pressed ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : transparent);
     animate background { duration: 100ms; }
 
     area := TouchArea {
@@ -85,7 +107,7 @@ export component TextBtn inherits Rectangle {
     border-radius: 6px;
     border-width: root.primary || root.danger ? 1px : 0px;
     border-color: root.danger ? #ff5b7455 : State.accent;
-    background: area.pressed ? #ffffff0a : (root.primary ? State.accent : (area.has-hover ? #ffffff10 : #131614));
+    background: area.pressed ? Palette.border-soft : (root.primary ? State.accent : (area.has-hover ? Palette.overlay : Palette.panel-2));
     animate background { duration: 100ms; }
 
     area := TouchArea {
@@ -94,7 +116,7 @@ export component TextBtn inherits Rectangle {
 
     Text {
         text: root.label;
-        color: root.primary ? #101210 : (root.danger ? #ff5b74 : (area.has-hover ? #f7f8f6 : #cdd2cc));
+        color: root.primary ? Palette.accent-ink : (root.danger ? #ff5b74 : (area.has-hover ? Palette.text : Palette.text-subtle));
         font-size: 12px;
         font-weight: 700;
         vertical-alignment: center;
@@ -111,7 +133,7 @@ export component HeaderCell inherits TouchArea {
 
     Text {
         text: root.active ? (root.descending ? "\{root.label} \u{25BE}" : "\{root.label}") : root.label;
-        color: root.active ? State.accent : #717970;
+        color: root.active ? State.accent : Palette.muted-2;
         font-size: 10px;
         font-weight: 700;
         vertical-alignment: center;
@@ -133,24 +155,24 @@ export component TrackRow inherits Rectangle {
 
     callback play();
     callback favorite();
-    callback context();
+    callback context(int, int);
     callback remove();
 
     height: 58px;
-    background: area.pressed ? #191c19 : (area.has-hover ? #131613 : (root.track.is-playing ? #151a15 : transparent));
+    background: area.pressed ? Palette.hover : (area.has-hover ? Palette.panel-2 : (root.track.is-playing ? Palette.panel-2 : transparent));
     animate background { duration: 120ms; }
 
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: #ffffff13;
+        background: Palette.border-soft;
     }
 
     area := TouchArea {
         clicked => { root.play(); }
         pointer-event(event) => {
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
-                root.context();
+                root.context(round((root.absolute-position.x + area.mouse-x) / 1px), round((root.absolute-position.y + area.mouse-y) / 1px));
             }
         }
     }
@@ -168,7 +190,7 @@ export component TrackRow inherits Rectangle {
                 height: 14px;
                 y: (parent.height - self.height) / 2;
                 x: (parent.width - self.width) / 2;
-                colorize: #f7f8f6;
+                colorize: Palette.text;
             }
             if !area.has-hover && root.track.is-playing : Image {
                 source: @image-url("../assets/icons/music.svg");
@@ -180,7 +202,7 @@ export component TrackRow inherits Rectangle {
             }
             if !area.has-hover && !root.track.is-playing : Text {
                 text: "\{root.index}";
-                color: root.track.unavailable ? #ff5b74 : #717970;
+                color: root.track.unavailable ? #ff5b74 : Palette.muted-2;
                 font-size: 11px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
@@ -196,7 +218,7 @@ export component TrackRow inherits Rectangle {
             background: root.track.badge-bg;
             Text {
                 text: root.track.initials;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 13px;
                 font-weight: 700;
                 vertical-alignment: center;
@@ -211,7 +233,7 @@ export component TrackRow inherits Rectangle {
 
             Text {
                 text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
-                color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : #f2f4f1);
+                color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
                 font-size: 12px;
                 font-weight: 650;
                 overflow: elide;
@@ -219,7 +241,7 @@ export component TrackRow inherits Rectangle {
             }
             if State.show-list-artist : Text {
                 text: root.track.artist;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 10px;
                 overflow: elide;
             }
@@ -227,7 +249,7 @@ export component TrackRow inherits Rectangle {
 
         if root.show-album && State.show-list-album : Text {
             text: root.track.album;
-            color: #cdd2cc;
+            color: Palette.text-subtle;
             font-size: 11px;
             overflow: elide;
             width: 25%;
@@ -235,7 +257,7 @@ export component TrackRow inherits Rectangle {
 
         if State.show-list-added && root.show-added : Text {
             text: root.track.added;
-            color: #cdd2cc;
+            color: Palette.text-subtle;
             font-size: 11px;
             overflow: elide;
             width: 100px;
@@ -243,21 +265,21 @@ export component TrackRow inherits Rectangle {
 
         if State.show-list-year && root.show-year : Text {
             text: root.track.year;
-            color: #cdd2cc;
+            color: Palette.text-subtle;
             font-size: 11px;
             width: 70px;
         }
 
         if root.show-plays : Text {
             text: "\{root.track.play-count}";
-            color: #cdd2cc;
+            color: Palette.text-subtle;
             font-size: 11px;
             width: 60px;
         }
 
         if State.show-list-duration : Text {
             text: root.track.duration;
-            color: #a0a79f;
+            color: Palette.muted;
             font-size: 11px;
             width: 64px;
             horizontal-alignment: right;
@@ -271,24 +293,24 @@ export component TrackRow inherits Rectangle {
 
                 if State.show-list-favorite : IcBtn {
                     icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
-                    tint: root.track.is-favorite ? State.accent : #717970;
-                    hover-tint: root.track.is-favorite ? State.accent : #f7f8f6;
+                    tint: root.track.is-favorite ? State.accent : Palette.muted-2;
+                    hover-tint: root.track.is-favorite ? State.accent : Palette.text;
                     icon-size: 14px;
                     clicked => { root.favorite(); }
                 }
                 if root.show-remove : IcBtn {
                     icon: @image-url("../assets/icons/close.svg");
-                    tint: #717970;
+                    tint: Palette.muted-2;
                     hover-tint: #ff5b74;
                     icon-size: 13px;
                     clicked => { root.remove(); }
                 }
                 IcBtn {
                     icon: @image-url("../assets/icons/more.svg");
-                    tint: #717970;
-                    hover-tint: #f7f8f6;
+                    tint: Palette.muted-2;
+                    hover-tint: Palette.text;
                     icon-size: 14px;
-                    clicked => { root.context(); }
+                    clicked => { root.context(round((root.absolute-position.x + root.width - 10px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
                 }
             }
         }
@@ -424,7 +446,7 @@ export component TrackTable inherits Rectangle {
                     alignment: center;
                     Text {
                         text: root.empty-text;
-                        color: #717970;
+                        color: Palette.muted-2;
                         font-size: 13px;
                         horizontal-alignment: center;
                     }
@@ -481,7 +503,7 @@ export component CardTile inherits Rectangle {
 
             if !root.item.has-cover : Text {
                 text: root.item.initials;
-                color: #ffffffe0;
+                color: Palette.text;
                 font-size: 24px;
                 font-weight: 900;
                 vertical-alignment: center;
@@ -504,7 +526,7 @@ export component CardTile inherits Rectangle {
                     height: 15px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    colorize: #101210;
+                    colorize: Palette.accent-ink;
                 }
 
                 TouchArea {
@@ -517,14 +539,14 @@ export component CardTile inherits Rectangle {
             spacing: 3px;
             Text {
                 text: root.item.name;
-                color: #f2f4f1;
+                color: Palette.text-strong;
                 font-size: 12px;
                 font-weight: 650;
                 overflow: elide;
             }
             Text {
                 text: root.item.subtitle;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 10px;
                 overflow: elide;
             }
@@ -545,7 +567,7 @@ export component GroupGrid inherits Rectangle {
                 alignment: center;
                 Text {
                     text: root.empty-text;
-                    color: #717970;
+                    color: Palette.muted-2;
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
@@ -602,7 +624,7 @@ export component HeroDetail inherits Rectangle {
 
     height: 210px;
     border-radius: 8px;
-    background: @linear-gradient(110deg, #ffffff1c 0%, #ffffff05 45%, #ffffff00 100%);
+    background: @linear-gradient(110deg, Palette.overlay-strong 0%, Palette.border-soft 45%, #ffffff00 100%);
 
     HorizontalLayout {
         padding: 20px;
@@ -613,7 +635,7 @@ export component HeroDetail inherits Rectangle {
             width: 190px;
             border-radius: 6px;
             clip: true;
-            background: #182219;
+            background: Palette.panel-2;
             if !root.has-cover : Text {
                 text: root.title;
                 color: #ffffff88;
@@ -643,14 +665,14 @@ export component HeroDetail inherits Rectangle {
             }
             Text {
                 text: root.title;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 28px;
                 font-weight: 800;
                 overflow: elide;
             }
             Text {
                 text: root.subtitle;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 12px;
             }
         }
@@ -667,7 +689,7 @@ export component EmptyState inherits Rectangle {
         spacing: 12px;
         Text {
             text: root.text;
-            color: #a0a79f;
+            color: Palette.muted;
             font-size: 13px;
             horizontal-alignment: center;
         }
@@ -686,7 +708,7 @@ export component SectionTitle inherits Rectangle {
     height: 26px;
     Text {
         text: root.text;
-        color: #f2f4f1;
+        color: Palette.text-strong;
         font-size: 15px;
         font-weight: 750;
         vertical-alignment: center;
@@ -701,14 +723,14 @@ export component Chip inherits Rectangle {
     height: 28px;
     min-width: 40px;
     border-radius: 14px;
-    background: root.active ? #ffffff1a : #131614;
+    background: root.active ? Palette.overlay-strong : Palette.panel-2;
     animate background { duration: 100ms; }
 
     area := TouchArea { clicked => { root.clicked(); } }
 
     Text {
         text: root.label;
-        color: root.active ? #f7f8f6 : #a0a79f;
+        color: root.active ? Palette.text : Palette.muted;
         font-size: 10px;
         font-weight: 700;
         vertical-alignment: center;

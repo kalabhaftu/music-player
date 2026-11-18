@@ -78,7 +78,30 @@ struct TrayState {
     hook: HHOOK,
 }
 
-pub fn write_activation_handoff(paths: &[String]) {
+#[derive(Debug, Clone)]
+pub struct ActivationPayload {
+    pub verb: String,
+    pub paths: Vec<String>,
+}
+
+pub fn parse_activation_args(args: &[String]) -> (String, Vec<String>) {
+    let mut verb = "play".to_string();
+    let mut paths = Vec::new();
+    for arg in args {
+        let lower = arg.to_lowercase();
+        if lower == "--add-to-queue" || lower == "addtoqueue" {
+            verb = "addtoqueue".to_string();
+        } else if lower == "--create-playlist" || lower == "createplaylist" {
+            verb = "createplaylist".to_string();
+        } else if !arg.starts_with("--") {
+            paths.push(arg.clone());
+        }
+    }
+    (verb, paths)
+}
+
+pub fn write_activation_handoff(args: &[String]) {
+    let (verb, paths) = parse_activation_args(args);
     if paths.is_empty() {
         return;
     }
@@ -89,13 +112,13 @@ pub fn write_activation_handoff(paths: &[String]) {
     let id = format!("{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), std::process::id());
     let file_path = base.join(format!("{}.json", id));
     let json = serde_json::json!({
-        "verb": "play",
+        "verb": verb,
         "paths": paths,
     });
     let _ = std::fs::write(file_path, json.to_string());
 }
 
-pub fn poll_activations() -> Vec<String> {
+pub fn poll_activations() -> Vec<ActivationPayload> {
     let base = directories::BaseDirs::new()
         .map(|dirs| dirs.data_local_dir().join("MusicPlayer").join("Activations"))
         .unwrap_or_else(|| std::path::PathBuf::from("activations"));
@@ -109,12 +132,17 @@ pub fn poll_activations() -> Vec<String> {
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        let verb = val.get("verb").and_then(|v| v.as_str()).unwrap_or("play").to_string();
+                        let mut paths = Vec::new();
                         if let Some(arr) = val.get("paths").and_then(|p| p.as_array()) {
                             for item in arr {
                                 if let Some(s) = item.as_str() {
-                                    collected.push(s.to_string());
+                                    paths.push(s.to_string());
                                 }
                             }
+                        }
+                        if !paths.is_empty() {
+                            collected.push(ActivationPayload { verb, paths });
                         }
                     }
                 }

@@ -27,7 +27,7 @@ component HomeView inherits Rectangle {
 
             Text {
                 text: State.home-greeting;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 26px;
                 font-weight: 800;
             }
@@ -57,7 +57,7 @@ component HomeView inherits Rectangle {
                     show-album: true;
                     play => { Actions.play-track(row.id); }
                     favorite => { Actions.toggle-favorite(row.id); }
-                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                 }
             }
 
@@ -72,7 +72,7 @@ component HomeView inherits Rectangle {
                     show-album: true;
                     play => { Actions.play-track(row.id); }
                     favorite => { Actions.toggle-favorite(row.id); }
-                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                 }
             }
 
@@ -87,7 +87,7 @@ component HomeView inherits Rectangle {
                     show-album: true;
                     play => { Actions.play-track(row.id); }
                     favorite => { Actions.toggle-favorite(row.id); }
-                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                 }
             }
         }
@@ -103,7 +103,7 @@ component SongsView inherits Rectangle {
 
         Text {
             text: State.view-title;
-            color: #f7f8f6;
+            color: Palette.text;
             font-size: 22px;
             font-weight: 800;
         }
@@ -128,7 +128,7 @@ component GridView inherits Rectangle {
 
         Text {
             text: root.title;
-            color: #f7f8f6;
+            color: Palette.text;
             font-size: 22px;
             font-weight: 800;
         }
@@ -154,7 +154,7 @@ component FolderTile inherits Rectangle {
         folder-card := Rectangle {
             height: folder-card.width;
             border-radius: 6px;
-            background: #131614;
+            background: Palette.panel-2;
             Image {
                 source: @image-url("../assets/icons/folder.svg");
                 width: 26px;
@@ -168,14 +168,14 @@ component FolderTile inherits Rectangle {
             spacing: 3px;
             Text {
                 text: root.item.name;
-                color: #f2f4f1;
+                color: Palette.text-strong;
                 font-size: 12px;
                 font-weight: 650;
                 overflow: elide;
             }
             Text {
                 text: root.item.subtitle;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 10px;
                 overflow: elide;
             }
@@ -191,7 +191,7 @@ component FoldersView inherits Rectangle {
 
             Text {
                 text: "Folders";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
             }
@@ -211,19 +211,19 @@ component FoldersView inherits Rectangle {
                     height: 8px;
                     border-radius: 4px;
                     y: 6px;
-                    background: State.scan-active ? State.accent : (State.scan-paused ? #ffb04a : #3a403a);
+                    background: State.scan-active ? State.accent : (State.scan-paused ? #ffb04a : Palette.disabled);
                 }
                 Text {
                     text: State.scan-active
                         ? (State.scan-paused ? "Scan paused" : "Scanning library")
                         : (State.scan-cancelling ? "Cancelling scan" : "Library up to date");
-                    color: State.scan-active ? #f2f4f1 : #a0a79f;
+                    color: State.scan-active ? Palette.text-strong : Palette.muted;
                     font-size: 12px;
                     vertical-alignment: center;
                 }
                 if State.scan-path != "" : Text {
                     text: "\{State.scan-path} · \{State.library-tracks} tracks · \{State.library-folders} folders";
-                    color: #717970;
+                    color: Palette.muted-2;
                     font-size: 10px;
                     vertical-alignment: center;
                     overflow: elide;
@@ -260,7 +260,7 @@ component FoldersView inherits Rectangle {
             for rootEntry in State.folder-roots : Rectangle {
                 height: 56px;
                 border-radius: 6px;
-                background: #131614;
+                background: Palette.panel-2;
                 HorizontalLayout {
                     padding-left: 12px;
                     padding-right: 12px;
@@ -278,13 +278,13 @@ component FoldersView inherits Rectangle {
                         horizontal-stretch: 1;
                         Text {
                             text: rootEntry.path;
-                            color: #f2f4f1;
+                            color: Palette.text-strong;
                             font-size: 12px;
                             overflow: elide;
                         }
                         Text {
                             text: rootEntry.is-available ? "Available" : "Reconnect this drive, then rescan the library.";
-                            color: rootEntry.is-available ? #717970 : #ffb04a;
+                            color: rootEntry.is-available ? Palette.muted-2 : #ffb04a;
                             font-size: 9px;
                         }
                     }
@@ -340,7 +340,7 @@ component PlaylistTile inherits Rectangle {
             background: @linear-gradient(150deg, root.card.is-smart ? #1b1d26 : Palette.ga(root.card.gradient) 0%, root.card.is-smart ? #4e373c : Palette.gb(root.card.gradient) 100%);
             Text {
                 text: root.card.initials;
-                color: #ffffffe0;
+                color: Palette.text;
                 font-size: 24px;
                 font-weight: 900;
                 vertical-alignment: center;
@@ -360,7 +360,7 @@ component PlaylistTile inherits Rectangle {
                     height: 15px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    colorize: #101210;
+                    colorize: Palette.accent-ink;
                 }
                 TouchArea {
                     clicked => { Actions.play-playlist(root.card.id); }
@@ -371,14 +371,14 @@ component PlaylistTile inherits Rectangle {
             spacing: 3px;
             Text {
                 text: root.card.name;
-                color: #f2f4f1;
+                color: Palette.text-strong;
                 font-size: 12px;
                 font-weight: 650;
                 overflow: elide;
             }
             Text {
                 text: "\{root.card.track-count} songs";
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 10px;
             }
         }
@@ -406,7 +406,7 @@ component PlaylistsView inherits Rectangle {
             spacing: 10px;
             Text {
                 text: "Playlists";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
                 horizontal-stretch: 1;
@@ -448,7 +448,7 @@ component PlaylistView inherits Rectangle {
             spacing: 10px;
             Text {
                 text: State.playlist-name;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
                 horizontal-stretch: 1;
@@ -480,7 +480,7 @@ component PlaylistView inherits Rectangle {
 
         if State.playlist-empty-message != "" : Text {
             text: State.playlist-empty-message;
-            color: #717970;
+            color: Palette.muted-2;
             font-size: 11px;
         }
 
@@ -600,7 +600,7 @@ component SearchView inherits Rectangle {
             spacing: 6px;
             Text {
                 text: "Recent:";
-                color: #717970;
+                color: Palette.muted-2;
                 font-size: 10px;
                 vertical-alignment: center;
             }
@@ -646,14 +646,14 @@ component QueueRow inherits Rectangle {
 
     height: 52px;
     border-radius: 6px;
-    background: row-area.has-hover ? #131613 : (root.item.is-current ? #ffffff0d : transparent);
+    background: row-area.has-hover ? Palette.panel-2 : (root.item.is-current ? Palette.border-soft : transparent);
     animate background { duration: 100ms; }
 
     row-area := TouchArea {
         clicked => { root.play(); }
         pointer-event(event) => {
             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
-                Actions.open-context-menu(root.item.id, 0, 0);
+                Actions.open-context-menu(root.item.id, round((root.absolute-position.x + row-area.mouse-x) / 1px), round((root.absolute-position.y + row-area.mouse-y) / 1px));
             }
         }
     }
@@ -671,7 +671,7 @@ component QueueRow inherits Rectangle {
             y: (parent.height - self.height) / 2;
             Text {
                 text: root.item.initials;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 12px;
                 font-weight: 700;
                 vertical-alignment: center;
@@ -685,13 +685,13 @@ component QueueRow inherits Rectangle {
             horizontal-stretch: 1;
             Text {
                 text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
-                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : #f2f4f1);
+                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : Palette.text-strong);
                 font-size: 11px;
                 overflow: elide;
             }
             Text {
                 text: root.item.artist;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 10px;
                 overflow: elide;
             }
@@ -699,7 +699,7 @@ component QueueRow inherits Rectangle {
 
         Text {
             text: root.item.duration;
-            color: #a0a79f;
+            color: Palette.muted;
             font-size: 10px;
             width: 48px;
             horizontal-alignment: right;
@@ -715,19 +715,19 @@ component QueueRow inherits Rectangle {
                 IcBtn {
                     icon: @image-url("../assets/icons/chevron-left.svg");
                     icon-size: 12px;
-                    tint: #717970;
+                    tint: Palette.muted-2;
                     clicked => { root.move-up(); }
                 }
                 IcBtn {
                     icon: @image-url("../assets/icons/chevron-right.svg");
                     icon-size: 12px;
-                    tint: #717970;
+                    tint: Palette.muted-2;
                     clicked => { root.move-down(); }
                 }
                 IcBtn {
                     icon: @image-url("../assets/icons/close.svg");
                     icon-size: 12px;
-                    tint: #717970;
+                    tint: Palette.muted-2;
                     hover-tint: #ff5b74;
                     clicked => { root.remove(); }
                 }
@@ -745,7 +745,7 @@ export component QueueView inherits Rectangle {
             spacing: 10px;
             Text {
                 text: "Queue";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
                 horizontal-stretch: 1;
@@ -786,7 +786,7 @@ component NowPlayingView inherits Rectangle {
                 height: 320px;
                 border-radius: 8px;
                 clip: true;
-                background: #131614;
+                background: Palette.panel-2;
                 Image {
                     source: State.current-cover;
                     width: parent.width;
@@ -809,20 +809,20 @@ component NowPlayingView inherits Rectangle {
             }
             Text {
                 text: State.current-title;
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 30px;
                 font-weight: 800;
                 overflow: elide;
             }
             Text {
                 text: State.current-artist;
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 14px;
                 overflow: elide;
             }
             Text {
                 text: State.current-album;
-                color: #717970;
+                color: Palette.muted-2;
                 font-size: 12px;
                 overflow: elide;
             }
@@ -832,7 +832,7 @@ component NowPlayingView inherits Rectangle {
                 alignment: start;
                 IcBtn {
                     icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
-                    tint: State.current-favorite ? State.accent : #a0a79f;
+                    tint: State.current-favorite ? State.accent : Palette.muted;
                     clicked => { Actions.toggle-favorite(State.current-id); }
                 }
                 TextBtn {
@@ -865,14 +865,14 @@ component LyricsView inherits Rectangle {
             spacing: 10px;
             Text {
                 text: "Lyrics";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 20px;
                 font-weight: 800;
                 horizontal-stretch: 1;
             }
             Text {
                 text: State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded audio tags" : "");
-                color: #717970;
+                color: Palette.muted-2;
                 font-size: 10px;
                 vertical-alignment: center;
             }
@@ -910,7 +910,7 @@ component LyricsView inherits Rectangle {
                         }
                         Text {
                             text: line.text;
-                            color: line.is-active ? State.accent : (line.is-past ? #717970 : #f2f4f1);
+                            color: line.is-active ? State.accent : (line.is-past ? Palette.muted-2 : Palette.text-strong);
                             font-size: line.is-active ? 15px : 13px;
                             font-weight: line.is-active ? 750 : 500;
                             vertical-alignment: center;
@@ -940,7 +940,7 @@ export component AudioView inherits Rectangle {
 
         Text {
             text: "Audio";
-            color: #f7f8f6;
+            color: Palette.text;
             font-size: 22px;
             font-weight: 800;
         }
@@ -950,7 +950,7 @@ export component AudioView inherits Rectangle {
             alignment: start;
             Text {
                 text: "Preset";
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 11px;
                 vertical-alignment: center;
             }
@@ -973,7 +973,7 @@ export component AudioView inherits Rectangle {
                 spacing: 4px;
                 Text {
                     text: "Preamp";
-                    color: #a0a79f;
+                    color: Palette.muted;
                     font-size: 10px;
                     horizontal-alignment: center;
                 }
@@ -994,7 +994,7 @@ export component AudioView inherits Rectangle {
                         text: "\{round(State.eq-preamp)}dB";
                         y: parent.height - 16px;
                         width: parent.width;
-                        color: #717970;
+                        color: Palette.muted-2;
                         font-size: 9px;
                         horizontal-alignment: center;
                     }
@@ -1006,7 +1006,7 @@ export component AudioView inherits Rectangle {
                     spacing: 4px;
                     Text {
                         text: band.label;
-                        color: #a0a79f;
+                        color: Palette.muted;
                         font-size: 9px;
                         horizontal-alignment: center;
                     }
@@ -1027,7 +1027,7 @@ export component AudioView inherits Rectangle {
                             text: "\{round(band.value)}";
                             y: parent.height - 16px;
                             width: parent.width;
-                            color: #717970;
+                            color: Palette.muted-2;
                             font-size: 9px;
                             horizontal-alignment: center;
                         }
@@ -1041,7 +1041,7 @@ export component AudioView inherits Rectangle {
             alignment: start;
             Text {
                 text: "Output device";
-                color: #a0a79f;
+                color: Palette.muted;
                 font-size: 11px;
                 vertical-alignment: center;
             }
@@ -1066,13 +1066,13 @@ component SettingRow inherits Rectangle {
         spacing: 3px;
         Text {
             text: root.label;
-            color: #f2f4f1;
+            color: Palette.text-strong;
             font-size: 11px;
             font-weight: 650;
         }
         if root.description != "" : Text {
             text: root.description;
-            color: #a0a79f;
+            color: Palette.muted;
             font-size: 9px;
             overflow: elide;
         }
@@ -1104,7 +1104,7 @@ component SettingSwitchRow inherits Rectangle {
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: #ffffff13;
+        background: Palette.border-soft;
     }
 }
 
@@ -1136,7 +1136,7 @@ component SettingComboRow inherits Rectangle {
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: #ffffff13;
+        background: Palette.border-soft;
     }
 }
 
@@ -1148,7 +1148,7 @@ component SettingsView inherits Rectangle {
 
             Text {
                 text: "Settings";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
             }
@@ -1305,14 +1305,14 @@ component SettingsView inherits Rectangle {
                     spacing: 12px;
                     Text {
                         text: row.label;
-                        color: #717970;
+                        color: Palette.muted-2;
                         font-size: 11px;
                         width: 130px;
                         vertical-alignment: center;
                     }
                     Text {
                         text: row.value;
-                        color: #cdd2cc;
+                        color: Palette.text-subtle;
                         font-size: 11px;
                         horizontal-stretch: 1;
                         overflow: elide;
@@ -1346,7 +1346,7 @@ component DuplicatesView inherits Rectangle {
             spacing: 10px;
             Text {
                 text: "Duplicates";
-                color: #f7f8f6;
+                color: Palette.text;
                 font-size: 22px;
                 font-weight: 800;
                 horizontal-stretch: 1;
@@ -1373,7 +1373,7 @@ component DuplicatesView inherits Rectangle {
                 ListView {
                     for row[index] in State.duplicates : Rectangle {
                         height: 48px;
-                        background: dup-area.has-hover ? #131613 : transparent;
+                        background: dup-area.has-hover ? Palette.panel-2 : transparent;
                         dup-area := TouchArea {
                             clicked => { Actions.open-duplicate-files(row.first-id); }
                         }
@@ -1383,7 +1383,7 @@ component DuplicatesView inherits Rectangle {
                             spacing: 12px;
                             Text {
                                 text: row.title;
-                                color: #f2f4f1;
+                                color: Palette.text-strong;
                                 font-size: 12px;
                                 overflow: elide;
                                 horizontal-stretch: 3;
@@ -1391,7 +1391,7 @@ component DuplicatesView inherits Rectangle {
                             }
                             Text {
                                 text: row.artist;
-                                color: #a0a79f;
+                                color: Palette.muted;
                                 font-size: 11px;
                                 overflow: elide;
                                 horizontal-stretch: 3;
@@ -1399,7 +1399,7 @@ component DuplicatesView inherits Rectangle {
                             }
                             Text {
                                 text: "\{row.copies}";
-                                color: #cdd2cc;
+                                color: Palette.text-subtle;
                                 font-size: 11px;
                                 width: 60px;
                                 horizontal-alignment: right;
@@ -1407,7 +1407,7 @@ component DuplicatesView inherits Rectangle {
                             }
                             Text {
                                 text: row.locations;
-                                color: #717970;
+                                color: Palette.muted-2;
                                 font-size: 10px;
                                 overflow: elide;
                                 width: 220px;
@@ -1427,7 +1427,7 @@ component DuplicatesView inherits Rectangle {
                 }
                 Text {
                     text: "Page \{State.duplicates-page + 1} of \{State.duplicates-pages}";
-                    color: #a0a79f;
+                    color: Palette.muted;
                     font-size: 11px;
                     vertical-alignment: center;
                 }
@@ -1448,7 +1448,7 @@ component DuplicatesView inherits Rectangle {
                 }
                 Text {
                     text: State.duplicate-group-title;
-                    color: #f7f8f6;
+                    color: Palette.text;
                     font-size: 16px;
                     font-weight: 750;
                     overflow: elide;
@@ -1472,7 +1472,7 @@ component VideosView inherits Rectangle {
         spacing: 12px;
         Text {
             text: "Videos";
-            color: #f7f8f6;
+            color: Palette.text;
             font-size: 22px;
             font-weight: 800;
         }
