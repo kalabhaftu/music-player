@@ -1,0 +1,413 @@
+//! Windows OS integration (Wave 5): single-instance guard, system-tray icon
+//! with the original menu strings, and global media-key handling.
+//!
+//! Everything runs on a dedicated native-message thread; commands are handed
+//! back to the Slint UI thread through a channel drained by the 250 ms clock.
+
+use std::cell::RefCell;
+use std::ptr;
+use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread::JoinHandle;
+
+use windows_sys::Win32::Foundation::{
+    GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM, ERROR_ALREADY_EXISTS,
+};
+use windows_sys::Win32::System::Threading::CreateMutexW;
+use windows_sys::Win32::UI::Shell::{
+    Shell_NotifyIconW, NOTIFYICONDATAW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
+    DestroyIcon, DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, HHOOK, HICON, HWND_MESSAGE,
+    IDI_APPLICATION, LoadIconW,
+    PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW, SendMessageTimeoutW,
+    SetForegroundWindow, SetTimer, SetWindowsHookExW, TrackPopupMenu, TranslateMessage,
+    UnhookWindowsHookEx, HC_ACTION, HWND_BROADCAST,
+    MF_SEPARATOR, MF_STRING, SMTO_ABORTIFHUNG, TPM_LEFTALIGN, TPM_RETURNCMD,
+    WH_KEYBOARD_LL, WM_APP, WM_CLOSE, WM_COMMAND,
+    WM_CREATE, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER,
+    WNDCLASSEXW,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaCommand {
+    Open,
+    Previous,
+    PlayPause,
+    Next,
+    Quit,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TrayStatus {
+    pub title: String,
+    pub artist: String,
+    pub playing: bool,
+}
+
+const VK_MEDIA_NEXT_TRACK: u32 = 0xB0;
+const VK_MEDIA_PREV_TRACK: u32 = 0xB1;
+const VK_MEDIA_PLAY_PAUSE: u32 = 0xB3;
+
+const WM_TRAY: u32 = WM_APP + 1;
+const WM_TRAY_TIMER: usize = 1;
+const TM_OPEN: usize = 1;
+const TM_PREVIOUS: usize = 2;
+const TM_PLAY_PAUSE: usize = 3;
+const TM_NEXT: usize = 4;
+const TM_QUIT: usize = 5;
+
+thread_local! {
+    static TRAY: RefCell<TrayState> = RefCell::new(TrayState::default());
+}
+
+#[derive(Default)]
+struct TrayState {
+    hwnd: HWND,
+    icon: HICON,
+    commands: Option<Sender<MediaCommand>>,
+    status_rx: Option<Receiver<TrayStatus>>,
+    status: TrayStatus,
+    show_message: u32,
+    hook: HHOOK,
+}
+
+/// Returns `false` when another instance owns the named mutex. In that case a
+/// "show window" broadcast is sent so the running instance is restored.
+pub fn acquire_single_instance() -> bool {
+    unsafe {
+        let name: Vec<u16> = "Local\\MusicPlayer.SingleInstance\0".encode_utf16().collect();
+        let mutex = CreateMutexW(ptr::null(), 1, name.as_ptr());
+        if mutex.is_null() || GetLastError() == ERROR_ALREADY_EXISTS {
+            let show_name: Vec<u16> = "MusicPlayer.ShowMainWindow\0".encode_utf16().collect();
+            let message = RegisterWindowMessageW(show_name.as_ptr());
+            if message != 0 {
+                let mut result: usize = 0;
+                SendMessageTimeoutW(
+                    HWND_BROADCAST,
+                    message,
+                    0,
+                    0,
+                    SMTO_ABORTIFHUNG,
+                    300,
+                    &mut result,
+                );
+            }
+            return false;
+        }
+        // The mutex and its handle deliberately live for the process lifetime.
+        if mutex.is_null() {
+            // No duplicate detected, but the guard could not be created; allow
+            // startup rather than blocking the user.
+            return true;
+        }
+        true
+    }
+}
+
+pub struct OsIntegration {
+    commands: Receiver<MediaCommand>,
+    status_tx: Sender<TrayStatus>,
+    tray_hwnd: std::sync::Arc<AtomicIsize>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl OsIntegration {
+    pub fn start() -> Option<Self> {
+        if !cfg!(windows) {
+            return None;
+        }
+        let (command_tx, commands) = mpsc::channel();
+        let (status_tx, status_rx) = mpsc::channel();
+        let show_name: Vec<u16> = "MusicPlayer.ShowMainWindow\0".encode_utf16().collect();
+        let show_message = unsafe { RegisterWindowMessageW(show_name.as_ptr()) };
+        let tray_hwnd = std::sync::Arc::new(AtomicIsize::new(0));
+        let thread_hwnd = tray_hwnd.clone();
+        let thread = std::thread::Builder::new()
+            .name("music-player-tray".into())
+            .spawn(move || unsafe {
+                run_tray_thread(command_tx, status_rx, show_message, thread_hwnd);
+            })
+            .ok()?;
+        Some(Self {
+            commands,
+            status_tx,
+            tray_hwnd,
+            thread: Some(thread),
+        })
+    }
+
+    pub fn try_command(&self) -> Option<MediaCommand> {
+        self.commands.try_recv().ok()
+    }
+
+    pub fn set_status(&self, status: TrayStatus) {
+        let _ = self.status_tx.send(status);
+    }
+}
+
+impl Drop for OsIntegration {
+    fn drop(&mut self) {
+        let hwnd = self.tray_hwnd.load(Ordering::SeqCst);
+        if hwnd != 0 {
+            unsafe {
+                PostMessageW(hwnd as HWND, WM_CLOSE, 0, 0);
+            }
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+unsafe fn run_tray_thread(
+    commands: Sender<MediaCommand>,
+    status_rx: Receiver<TrayStatus>,
+    show_message: u32,
+    hwnd_slot: std::sync::Arc<AtomicIsize>,
+) {
+    let class_name: Vec<u16> = "MusicPlayerTrayClass\0".encode_utf16().collect();
+    let window_name: Vec<u16> = "Music Player Tray\0".encode_utf16().collect();
+    let class = WNDCLASSEXW {
+        cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+        style: 0,
+        lpfnWndProc: Some(tray_wnd_proc),
+        cbClsExtra: 0,
+        cbWndExtra: 0,
+        hInstance: std::ptr::null_mut(),
+        hIcon: std::ptr::null_mut(),
+        hCursor: std::ptr::null_mut(),
+        hbrBackground: std::ptr::null_mut(),
+        lpszMenuName: ptr::null(),
+        lpszClassName: class_name.as_ptr(),
+        hIconSm: std::ptr::null_mut(),
+    };
+    let atom = RegisterClassExW(&class);
+    if atom == 0 {
+        return;
+    }
+    let hwnd = CreateWindowExW(
+        0,
+        atom as *const u16,
+        window_name.as_ptr(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        HWND_MESSAGE,
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null(),
+    );
+    if hwnd.is_null() {
+        return;
+    }
+    hwnd_slot.store(hwnd as isize, Ordering::SeqCst);
+
+    let icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
+    TRAY.with(|cell| {
+        let mut state = cell.borrow_mut();
+        state.hwnd = hwnd;
+        state.icon = icon;
+        state.commands = Some(commands);
+        state.status_rx = Some(status_rx);
+        state.show_message = show_message;
+    });
+
+    let data = notify_data(hwnd, icon, "Music Player");
+    let added = Shell_NotifyIconW(NIM_ADD, &data);
+    if added != 0 {
+        SetTimer(hwnd, WM_TRAY_TIMER, 500, None);
+    }
+
+    // Global media-key hook. The hook owner must pump messages on this thread.
+    TRAY.with(|cell| {
+        let mut state = cell.borrow_mut();
+        state.hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), std::ptr::null_mut(), 0);
+    });
+
+    let mut message = std::mem::zeroed::<windows_sys::Win32::UI::WindowsAndMessaging::MSG>();
+    while GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) > 0 {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+
+    if added != 0 {
+        Shell_NotifyIconW(NIM_DELETE, &data);
+    }
+    TRAY.with(|cell| {
+        let mut state = cell.borrow_mut();
+        if !state.hook.is_null() {
+            UnhookWindowsHookEx(state.hook);
+            state.hook = std::ptr::null_mut();
+        }
+        if !state.icon.is_null() {
+            DestroyIcon(state.icon);
+        }
+    });
+}
+
+fn notify_data(hwnd: HWND, icon: HICON, tip: &str) -> NOTIFYICONDATAW {
+    let mut data: NOTIFYICONDATAW = unsafe { std::mem::zeroed() };
+    data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+    data.hWnd = hwnd;
+    data.uID = 1;
+    data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    data.uCallbackMessage = WM_TRAY;
+    data.hIcon = icon;
+    for (slot, ch) in data.szTip.iter_mut().zip(tip.encode_utf16()) {
+        *slot = ch;
+    }
+    data
+}
+
+unsafe extern "system" fn tray_wnd_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    match message {
+        WM_CREATE => 0,
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            0
+        }
+        WM_TIMER if wparam == WM_TRAY_TIMER => {
+            let pending: Vec<TrayStatus> = TRAY.with(|cell| {
+                let mut state = cell.borrow_mut();
+                let mut items = Vec::new();
+                // The receiver is moved into the WM_TIMER handler via a channel
+                // stored on the thread state below.
+                if let Some(rx) = state.status_rx.take() {
+                    while let Ok(status) = rx.try_recv() {
+                        items.push(status);
+                    }
+                    state.status_rx = Some(rx);
+                }
+                items
+            });
+            if let Some(status) = pending.last() {
+                TRAY.with(|cell| {
+                    let mut state = cell.borrow_mut();
+                    state.status = status.clone();
+                    let data = notify_data(state.hwnd, state.icon, "Music Player");
+                    Shell_NotifyIconW(NIM_MODIFY, &data);
+                });
+            }
+            0
+        }
+        WM_TRAY => match lparam as u32 {
+            WM_LBUTTONUP | WM_LBUTTONDBLCLK => {
+                send(MediaCommand::Open);
+                0
+            }
+            WM_RBUTTONUP => {
+                show_tray_menu(hwnd);
+                0
+            }
+            _ => DefWindowProcW(hwnd, message, wparam, lparam),
+        },
+        WM_COMMAND => {
+            match (wparam & 0xffff) as usize {
+                TM_OPEN => send(MediaCommand::Open),
+                TM_PREVIOUS => send(MediaCommand::Previous),
+                TM_PLAY_PAUSE => send(MediaCommand::PlayPause),
+                TM_NEXT => send(MediaCommand::Next),
+                TM_QUIT => send(MediaCommand::Quit),
+                _ => {}
+            }
+            0
+        }
+        // Deferred menu cleanup: posted by show_tray_menu after the
+        // TrackPopupMenu call returns.
+        _ if message == WM_APP + 2 => {
+            if wparam != 0 {
+                DestroyMenu(wparam as _);
+            }
+            0
+        }
+        _ if TRAY.with(|cell| cell.borrow().show_message) == message => {
+            send(MediaCommand::Open);
+            0
+        }
+        _ => DefWindowProcW(hwnd, message, wparam, lparam),
+    }
+}
+
+fn send(command: MediaCommand) {
+    TRAY.with(|cell| {
+        if let Some(sender) = &cell.borrow().commands {
+            let _ = sender.send(command);
+        }
+    });
+}
+
+unsafe fn show_tray_menu(hwnd: HWND) {
+    let menu = CreatePopupMenu();
+    if menu.is_null() {
+        return;
+    }
+    let (title, playing) = TRAY.with(|cell| {
+        let state = cell.borrow();
+        (state.status.clone(), state.status.playing)
+    });
+    let header = if title.title.is_empty() {
+        "Music Player".to_string()
+    } else if title.artist.is_empty() {
+        title.title.clone()
+    } else {
+        format!("{} — {}", title.title, title.artist)
+    };
+    let header_wide: Vec<u16> = header.encode_utf16().chain(std::iter::once(0)).collect();
+    let open: Vec<u16> = "Open Music Player\0".encode_utf16().collect();
+    let previous: Vec<u16> = "Previous\0".encode_utf16().collect();
+    let play: Vec<u16> = "Play\0".encode_utf16().collect();
+    let pause: Vec<u16> = "Pause\0".encode_utf16().collect();
+    let next: Vec<u16> = "Next\0".encode_utf16().collect();
+    let quit: Vec<u16> = "Quit Music Player\0".encode_utf16().collect();
+
+    AppendMenuW(menu, MF_STRING, 0, header_wide.as_ptr());
+    AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
+    AppendMenuW(menu, MF_STRING, TM_OPEN, open.as_ptr());
+    AppendMenuW(menu, MF_STRING, TM_PREVIOUS, previous.as_ptr());
+    AppendMenuW(
+        menu,
+        MF_STRING,
+        TM_PLAY_PAUSE,
+        if playing { pause.as_ptr() } else { play.as_ptr() },
+    );
+    AppendMenuW(menu, MF_STRING, TM_NEXT, next.as_ptr());
+    AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
+    AppendMenuW(menu, MF_STRING, TM_QUIT, quit.as_ptr());
+
+    let mut point = std::mem::zeroed::<POINT>();
+    GetCursorPos(&mut point);
+    SetForegroundWindow(hwnd);
+    TrackPopupMenu(
+        menu,
+        TPM_LEFTALIGN | TPM_RETURNCMD,
+        point.x,
+        point.y,
+        0,
+        hwnd,
+        ptr::null(),
+    );
+    // The selected id arrives as WM_COMMAND; DestroyMenu after the loop turn.
+    PostMessageW(hwnd, WM_APP + 2, menu as WPARAM, 0);
+}
+
+unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let key = (*(lparam as *const windows_sys::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT)).vkCode;
+        let command = match key {
+            VK_MEDIA_PLAY_PAUSE => Some(MediaCommand::PlayPause),
+            VK_MEDIA_NEXT_TRACK => Some(MediaCommand::Next),
+            VK_MEDIA_PREV_TRACK => Some(MediaCommand::Previous),
+            _ => None,
+        };
+        if let Some(command) = command {
+            send(command);
+            return 1; // swallow the key so other players do not react
+        }
+    }
+    CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
+}

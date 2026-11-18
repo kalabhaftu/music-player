@@ -5,6 +5,8 @@
 //! original DispatcherTimer loop. The `core` crate remains headless.
 #![allow(deprecated)]
 
+mod os;
+
 use chrono::Timelike;
 use music_player_core::audio::coordinator::{
     Notice, NoticeSeverity, PlaybackCommandKind, PlaybackCommandResult,
@@ -364,6 +366,7 @@ struct App {
     add_playlist_track: Option<String>,
     playlists: Vec<PlaylistSummary>,
     log_folder: PathBuf,
+    os: Option<os::OsIntegration>,
 }
 
 impl App {
@@ -430,6 +433,7 @@ impl App {
             add_playlist_track: None,
             playlists: Vec::new(),
             log_folder,
+            os: os::OsIntegration::start(),
         }
     }
 
@@ -705,6 +709,57 @@ impl App {
         }
         self.poll_scan();
         self.poll_lyrics_search();
+        self.poll_os_commands();
+    }
+
+    /// Commands from the system tray / global media keys (Wave 5).
+    fn poll_os_commands(&mut self) {
+        let Some(os) = &self.os else { return };
+        let mut commands = Vec::new();
+        while let Some(command) = os.try_command() {
+            commands.push(command);
+        }
+        for command in commands {
+            match command {
+                os::MediaCommand::Open => {
+                    let _ = self.ui.show();
+                }
+                os::MediaCommand::Previous => {
+                    self.cancel_crossfade();
+                    let position = self.engine.position_ms();
+                    let current = self.current.clone();
+                    let resolver = self.resolver();
+                    let result = self.coordinator.previous(current.as_ref(), position, &resolver);
+                    self.apply_result(result);
+                }
+                os::MediaCommand::PlayPause => {
+                    if self.current.is_none() {
+                        let paths = self.view_paths.clone();
+                        if let Some(path) = paths.first() {
+                            if let Some(track) = self.store.get_track(path).ok().flatten() {
+                                self.coordinator.queue_mut().replace(paths, Some(0));
+                                self.play_track(track, false, Some(0));
+                            }
+                        }
+                    } else {
+                        let current = self.current.clone();
+                        let result = if self.engine.is_playing() {
+                            self.cancel_crossfade();
+                            self.coordinator.pause(current.as_ref())
+                        } else {
+                            self.coordinator.resume(current.as_ref())
+                        };
+                        self.apply_result(result);
+                    }
+                }
+                os::MediaCommand::Next => self.advance_queue(false),
+                os::MediaCommand::Quit => {
+                    self.save_session();
+                    let _ = self.store.checkpoint_wal();
+                    let _ = self.ui.hide();
+                }
+            }
+        }
     }
 
     fn poll_scan(&mut self) {
@@ -1168,6 +1223,13 @@ impl App {
     // ---- State publication --------------------------------------------------
 
     fn publish_playback(&mut self) {
+        if let Some(os) = &self.os {
+            os.set_status(os::TrayStatus {
+                title: self.current.as_ref().map(|t| t.title.clone()).unwrap_or_default(),
+                artist: self.current.as_ref().map(|t| t.artist.clone()).unwrap_or_default(),
+                playing: self.engine.is_playing(),
+            });
+        }
         let position = self.engine.position_ms();
         let duration = self.engine.duration_ms();
         let progress = if duration > 0 {
@@ -2781,6 +2843,11 @@ fn crossfade_label(seconds: i64) -> String {
 }
 
 fn main() -> std::result::Result<(), slint::PlatformError> {
+    // Single instance: a duplicate launch asks the running instance to show
+    // its window and exits instead of opening a second library connection.
+    if !os::acquire_single_instance() {
+        return Ok(());
+    }
     let ui = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new(ui.clone_strong())));
 
