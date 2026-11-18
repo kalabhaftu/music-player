@@ -5,13 +5,16 @@
 //! back to the Slint UI thread through a channel drained by the 250 ms clock.
 
 use std::cell::RefCell;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::ptr;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
 
 use windows_sys::Win32::Foundation::{
-    GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM, ERROR_ALREADY_EXISTS,
+    CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM,
+    ERROR_ALREADY_EXISTS,
 };
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::{
@@ -61,6 +64,7 @@ const TM_PREVIOUS: usize = 2;
 const TM_PLAY_PAUSE: usize = 3;
 const TM_NEXT: usize = 4;
 const TM_QUIT: usize = 5;
+static ACTIVATION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     static TRAY: RefCell<TrayState> = RefCell::new(TrayState::default());
@@ -109,13 +113,33 @@ pub fn write_activation_handoff(args: &[String]) {
         .map(|dirs| dirs.data_local_dir().join("MusicPlayer").join("Activations"))
         .unwrap_or_else(|| std::path::PathBuf::from("activations"));
     let _ = std::fs::create_dir_all(&base);
-    let id = format!("{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), std::process::id());
-    let file_path = base.join(format!("{}.json", id));
+    let id = format!(
+        "{}_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        std::process::id(),
+        ACTIVATION_SEQUENCE.fetch_add(1, Ordering::Relaxed),
+    );
+    let temporary_path = base.join(format!("{}.tmp", id));
+    let final_path = base.join(format!("{}.json", id));
     let json = serde_json::json!({
         "verb": verb,
         "paths": paths,
     });
-    let _ = std::fs::write(file_path, json.to_string());
+    let write_result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)?;
+        file.write_all(json.to_string().as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&temporary_path, &final_path)
+    })();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(temporary_path);
+    }
 }
 
 pub fn poll_activations() -> Vec<ActivationPayload> {
@@ -159,8 +183,13 @@ pub fn poll_activations() -> Vec<ActivationPayload> {
 pub fn acquire_single_instance(args: &[String]) -> bool {
     unsafe {
         let name: Vec<u16> = "Local\\MusicPlayer.SingleInstance\0".encode_utf16().collect();
+        SetLastError(0);
         let mutex = CreateMutexW(ptr::null(), 1, name.as_ptr());
-        if mutex.is_null() || GetLastError() == ERROR_ALREADY_EXISTS {
+        if mutex.is_null() {
+            // Keep the application usable if Windows cannot allocate the guard.
+            return true;
+        }
+        if GetLastError() == ERROR_ALREADY_EXISTS {
             if !args.is_empty() {
                 write_activation_handoff(args);
             }
@@ -178,14 +207,10 @@ pub fn acquire_single_instance(args: &[String]) -> bool {
                     &mut result,
                 );
             }
+            CloseHandle(mutex);
             return false;
         }
         // The mutex and its handle deliberately live for the process lifetime.
-        if mutex.is_null() {
-            // No duplicate detected, but the guard could not be created; allow
-            // startup rather than blocking the user.
-            return true;
-        }
         true
     }
 }
