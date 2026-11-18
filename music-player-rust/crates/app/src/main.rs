@@ -20,8 +20,8 @@ use music_player_core::metadata::tag_reader::{read_additional_standard_fields, r
 use music_player_core::scanner::scan::default_roots;
 use music_player_core::metadata::tag_backups_dir;
 use music_player_core::{
-    artwork_cache_dir, format_lrc, inspect_file, parse_lrc,
-    read_sidecar, write_sidecar, ExactDuplicateGroup,
+    artwork_cache_dir, inspect_file, parse_lrc, read_sidecar, read_tags,
+    write_sidecar, ExactDuplicateGroup,
     IndexResult, LibraryFileWatcher, LibraryScanCoordinator, LibraryStats, LibraryStore,
     LocalAppLog,
     PlaybackSession, PlayerSettings, PlaylistSummary, QueueCoordinator,
@@ -1831,10 +1831,8 @@ impl App {
         self.lyrics_active = -1;
         let (text, source) = if let Some(sidecar) = read_sidecar(&track.path) {
             (Some(sidecar), "sidecar")
-        } else if track.has_lyrics {
-            // Embedded text is exposed as a flag by core; the Edit dialog can
-            // write it back. Sidecar/find-lyrics remain the display sources.
-            (None, "embedded")
+        } else if let Some(embedded) = read_tags(&track.path).lyrics {
+            (Some(embedded), "embedded")
         } else {
             (None, "none")
         };
@@ -2483,12 +2481,8 @@ impl App {
         self.edit_target = Some(path.clone());
         let (text, source) = if let Some(sidecar) = read_sidecar(&path) {
             (sidecar, "sidecar file")
-        } else if self.ui.global::<State>().get_lyrics_timed() {
-            self.lyrics_doc
-                .as_ref()
-                .map(format_lrc)
-                .unwrap_or_default()
-                .pipe(|s| (s, "embedded tags"))
+        } else if let Some(embedded) = read_tags(&path).lyrics {
+            (embedded, "embedded tags")
         } else {
             (String::new(), "no existing lyrics")
         };
@@ -2763,10 +2757,6 @@ impl EqualizerStatePreset {
     fn electronic() -> [f32; 10] { [3.0, 2.0, 0.0, -1.0, 0.0, 2.0, 3.0, 2.0, 1.0, 0.0] }
 }
 
-trait Pipe: Sized {
-    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T { f(self) }
-}
-impl<T> Pipe for T {}
 
 fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
     let slot = gradient_slot(&group.name);

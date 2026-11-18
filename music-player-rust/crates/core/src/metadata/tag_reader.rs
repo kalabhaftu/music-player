@@ -23,6 +23,8 @@ pub struct ExtractedTags {
     pub duration_ms: u64,
     pub artwork_path: Option<String>,
     pub has_lyrics: bool,
+    /// Embedded USLT/SYLT (ID3) or WM/Lyrics (ASF) text when present.
+    pub lyrics: Option<String>,
 }
 
 /// `TrackInformation.Read` result (TrackDetails record).
@@ -664,6 +666,7 @@ fn tags_from_id3(view: &Id3View) -> ExtractedTags {
         duration_ms: 0,
         artwork_path: None,
         has_lyrics,
+        lyrics,
     }
 }
 
@@ -1702,6 +1705,7 @@ struct AsfView {
 fn read_asf_file(path: &Path, _sink: ArtSink<'_>) -> Option<ExtractedTags> {
     let data = std::fs::read(path).ok()?;
     let (view, quality) = parse_asf(&data)?;
+    let lyrics = asf_lookup(&view, "WM/Lyrics").filter(|l| has_usable_lyrics(l));
     let tags = ExtractedTags {
         title: view.title.clone(),
         artist: view.author.clone(),
@@ -1717,7 +1721,8 @@ fn read_asf_file(path: &Path, _sink: ArtSink<'_>) -> Option<ExtractedTags> {
             .unwrap_or(0),
         duration_ms: quality.duration_ms,
         artwork_path: None,
-        has_lyrics: asf_lookup(&view, "WM/Lyrics").map(|l| has_usable_lyrics(&l)).unwrap_or(false),
+        has_lyrics: lyrics.is_some(),
+        lyrics,
     };
     Some(tags)
 }

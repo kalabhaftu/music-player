@@ -1207,6 +1207,7 @@ fn writer_mp3_standard_composites_custom_and_preservation() {
     assert_eq!(tags.year, 1985);
     assert_eq!(tags.track_number, 3);
     assert!(tags.has_lyrics);
+    assert_eq!(tags.lyrics.as_deref(), Some("Some lyrics"));
 
     // Untouched custom frames survive a custom_fields = None edit.
     let custom1 = read_custom_fields(&file);
