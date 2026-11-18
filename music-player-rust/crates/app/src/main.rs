@@ -5,7 +5,9 @@
 //! original DispatcherTimer loop. The `core` crate remains headless.
 #![allow(deprecated)]
 
+mod native_io;
 mod os;
+mod os_shell;
 
 use chrono::Timelike;
 use music_player_core::audio::coordinator::{
@@ -29,6 +31,7 @@ use music_player_core::{
     TrackSort, EQUALIZER_BANDS,
 };
 use serde_json::json;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{ComponentHandle, Image, SharedString, Timer, TimerMode, VecModel};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -193,88 +196,7 @@ fn file_stem(path: &str) -> String {
         .unwrap_or_else(|| file_name(path))
 }
 
-fn ps_quote(s: &str) -> String {
-    s.replace('\'', "''")
-}
-
-/// Native dialogs without new crates (the original used WinRT pickers). The
-/// project already shells out to PowerShell for LRCLIB, so this keeps the
-/// offline dependency set fixed while preserving native picker behavior.
-fn powershell(script: &str) -> Option<String> {
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
-}
-
-fn pick_folder() -> Option<String> {
-    powershell(
-        "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Select music folder'; if($d.ShowDialog() -eq 'OK'){ Write-Output $d.SelectedPath }",
-    )
-}
-
-fn pick_file(filter: &str) -> Option<String> {
-    powershell(&format!(
-        "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='{}'; if($d.ShowDialog() -eq 'OK'){{ Write-Output $d.FileName }}",
-        ps_quote(filter)
-    ))
-}
-
-fn save_file(default_name: &str, filter: &str) -> Option<String> {
-    powershell(&format!(
-        "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.SaveFileDialog; $d.FileName='{}'; $d.Filter='{}'; if($d.ShowDialog() -eq 'OK'){{ Write-Output $d.FileName }}",
-        ps_quote(default_name),
-        ps_quote(filter)
-    ))
-}
-
-fn open_in_explorer(path: &str) {
-    if path.is_empty() {
-        return;
-    }
-    let _ = std::process::Command::new("explorer")
-        .arg(format!("/select,\"{}\"", path))
-        .spawn();
-}
-
-fn open_folder(path: &Path) {
-    let _ = std::process::Command::new("explorer").arg(path).spawn();
-}
-
-fn open_url(url: &str) {
-    // Allowlist: only the project's GitHub release pages are opened.
-    if !url.starts_with("https://github.com/kalabhaftu/music-player") {
-        return;
-    }
-    let _ = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!("Start-Process '{}'", ps_quote(url)),
-        ])
-        .spawn();
-}
-
-fn set_clipboard(text: &str) {
-    let _ = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!("Set-Clipboard -Value '{}'", ps_quote(text)),
-        ])
-        .spawn();
-}
+use native_io::{open_folder, open_in_explorer, open_url, pick_file, pick_folder, save_file, set_clipboard};
 
 #[derive(Clone)]
 struct NavContext {
@@ -367,6 +289,9 @@ struct App {
     playlists: Vec<PlaylistSummary>,
     log_folder: PathBuf,
     os: Option<os::OsIntegration>,
+    os_attached: bool,
+    audio_devices: Vec<os_shell::AudioOutputDevice>,
+    search_debounce: Option<(Instant, String)>,
 }
 
 impl App {
@@ -381,13 +306,21 @@ impl App {
         let coordinator = PlaybackCoordinator::with_crossfade_ms(QueueCoordinator::new(), crossfade_ms);
         let eq_bands = settings.eq_bands().unwrap_or([0.0; 10]);
         let eq_preamp = settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP);
+        let mut engine = music_player_core::AudioEngine::new();
+        let selected_device = settings
+            .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
+            .unwrap_or_default();
+        if !selected_device.trim().is_empty() {
+            let direct_sound = os_shell::direct_sound_device_id(&selected_device).unwrap_or_default();
+            let _ = engine.set_audio_output_device(&direct_sound);
+        }
         let now = Instant::now();
         Self {
             ui,
             availability: TrackAvailabilityService::new(&store).with_artwork_directory(artwork_cache_dir()),
             store,
             settings,
-            engine: music_player_core::AudioEngine::new(),
+            engine,
             coordinator,
             listening: PlaybackListeningTracker::new(),
             scan,
@@ -434,6 +367,9 @@ impl App {
             playlists: Vec::new(),
             log_folder,
             os: os::OsIntegration::start(),
+            os_attached: false,
+            audio_devices: Vec::new(),
+            search_debounce: None,
         }
     }
 
@@ -564,6 +500,31 @@ impl App {
     // ---- The 250 ms clock (port of MainWindow.Playback.Clock_Tick) ---------
 
     fn tick(&mut self) {
+        self.attach_os();
+
+        // Search debouncing (150 ms).
+        if let Some((when, query)) = self.search_debounce.clone() {
+            if Instant::now() >= when {
+                self.search_debounce = None;
+                self.set_view("Search", &query, "", "");
+            }
+        }
+
+        // Secondary-instance activation files.
+        let activation_files = os::poll_activations();
+        if !activation_files.is_empty() {
+            for path in &activation_files {
+                if let Ok(Some(track)) = self.store.get_track(path) {
+                    self.coordinator.queue_mut().append_one(track.path);
+                }
+            }
+            if let Some(first) = activation_files.first() {
+                if let Ok(Some(track)) = self.store.get_track(first) {
+                    self.play_track(track, false, None);
+                }
+            }
+            self.publish_queue(true);
+        }
         let position = self.engine.position_ms().max(0);
         let duration = self.engine.duration_ms().max(0);
 
@@ -579,7 +540,7 @@ impl App {
             }
         }
 
-        // A track counts as a play once half of it has been heard.
+        // A track counts as a play once half of it has been heard (silent background update).
         if let Some(track) = self.current.clone() {
             if self
                 .listening
@@ -587,10 +548,6 @@ impl App {
             {
                 let path = track.path.clone();
                 let _ = self.store.record_play(&path);
-                self.show_notice(
-                    format!("Play count recorded for {}.", track.title),
-                    NoticeSeverity::Informational,
-                );
             }
         }
 
@@ -712,6 +669,36 @@ impl App {
         self.poll_os_commands();
     }
 
+    /// Attaches SMTC/taskbar once the Slint window has a native handle. The
+    /// handle only exists after the event loop has started.
+    fn attach_os(&mut self) {
+        if self.os_attached {
+            return;
+        }
+        let Some(os) = &self.os else {
+            self.os_attached = true;
+            return;
+        };
+        let hwnd = self
+            .ui
+            .window()
+            .window_handle()
+            .window_handle()
+            .ok()
+            .and_then(|handle| match handle.as_raw() {
+                RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+                _ => None,
+            });
+        let Some(hwnd) = hwnd else {
+            return;
+        };
+        let smtc = os_shell::attach_main_window(hwnd, os.command_sender());
+        if smtc {
+            os.disable_media_key_hook();
+        }
+        self.os_attached = true;
+    }
+
     /// Commands from the system tray / global media keys (Wave 5).
     fn poll_os_commands(&mut self) {
         let Some(os) = &self.os else { return };
@@ -749,6 +736,29 @@ impl App {
                         } else {
                             self.coordinator.resume(current.as_ref())
                         };
+                        self.apply_result(result);
+                    }
+                }
+                os::MediaCommand::Play => {
+                    if self.current.is_none() {
+                        let paths = self.view_paths.clone();
+                        if let Some(path) = paths.first() {
+                            if let Some(track) = self.store.get_track(path).ok().flatten() {
+                                self.coordinator.queue_mut().replace(paths, Some(0));
+                                self.play_track(track, false, Some(0));
+                            }
+                        }
+                    } else if !self.engine.is_playing() {
+                        let current = self.current.clone();
+                        let result = self.coordinator.resume(current.as_ref());
+                        self.apply_result(result);
+                    }
+                }
+                os::MediaCommand::Pause => {
+                    if self.engine.is_playing() {
+                        let current = self.current.clone();
+                        self.cancel_crossfade();
+                        let result = self.coordinator.pause(current.as_ref());
                         self.apply_result(result);
                     }
                 }
@@ -1223,22 +1233,35 @@ impl App {
     // ---- State publication --------------------------------------------------
 
     fn publish_playback(&mut self) {
+        let position = self.engine.position_ms();
+        let duration = self.engine.duration_ms();
+        let playing = self.engine.is_playing();
         if let Some(os) = &self.os {
             os.set_status(os::TrayStatus {
                 title: self.current.as_ref().map(|t| t.title.clone()).unwrap_or_default(),
                 artist: self.current.as_ref().map(|t| t.artist.clone()).unwrap_or_default(),
-                playing: self.engine.is_playing(),
+                playing,
             });
         }
-        let position = self.engine.position_ms();
-        let duration = self.engine.duration_ms();
+        os_shell::update_playback(
+            self.current.as_ref().map(|t| t.title.as_str()).unwrap_or(""),
+            self.current.as_ref().map(|t| t.artist.as_str()).unwrap_or(""),
+            self.current.as_ref().map(|t| t.album.as_str()).unwrap_or(""),
+            self.current
+                .as_ref()
+                .and_then(|t| t.artwork_path.as_deref()),
+            self.current.is_some() || !self.coordinator.queue().entries().is_empty(),
+            playing,
+            position,
+            duration,
+        );
         let progress = if duration > 0 {
             (position as f32 / duration as f32).clamp(0.0, 1.0)
         } else {
             0.0
         };
         let state = self.ui.global::<State>();
-        state.set_is_playing(self.engine.is_playing());
+        state.set_is_playing(playing);
         state.set_progress(progress);
         state.set_current_time(ss(fmt_time(position)));
         state.set_total_time(ss(fmt_time(duration)));
@@ -1281,7 +1304,7 @@ impl App {
         let cover = track
             .artwork_path
             .as_deref()
-            .and_then(|p| Image::load_from_path(Path::new(p)).ok())
+            .and_then(|p| native_io::load_artwork_image(Path::new(p)))
             .unwrap_or_default();
         state.set_current_cover(cover);
         let accent = track
@@ -1537,16 +1560,44 @@ impl App {
         let mut presets: Vec<String> = vec!["Off".into()];
         presets.extend(self.engine.built_in_preset_names());
         presets.extend(self.settings.saved_eq_preset_names());
+        let mut devices: Vec<String> = vec!["System default".into()];
+        self.audio_devices = os_shell::audio_output_devices();
+        for device in &self.audio_devices {
+            devices.push(device.name.clone());
+        }
+        let stored_id = self
+            .settings
+            .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
+            .unwrap_or_default();
+        let mut selected_name = self
+            .settings
+            .raw(music_player_core::settings::keys::AUDIO_OUTPUT_NAME)
+            .unwrap_or_else(|| "System default".into());
+        if !stored_id.trim().is_empty()
+            && !self
+                .audio_devices
+                .iter()
+                .any(|device| device.id.eq_ignore_ascii_case(&stored_id))
+        {
+            // The saved endpoint disappeared; fall back exactly like the
+            // original AudioSettingsAsync path.
+            self.settings.set_raw(
+                music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE,
+                "",
+            );
+            self.settings.set_raw(
+                music_player_core::settings::keys::AUDIO_OUTPUT_NAME,
+                "System default",
+            );
+            let _ = self.engine.set_audio_output_device("");
+            selected_name = "System default".into();
+        }
         let state = self.ui.global::<State>();
         state.set_eq_bands(ui_model(bands).into());
         state.set_eq_preamp(self.eq_preamp);
         state.set_eq_presets(ui_model(presets.into_iter().map(ss).collect::<Vec<_>>()).into());
-        state.set_output_devices(ui_model(vec![ss("System default")]).into());
-        state.set_output_device(ss(
-            self.settings
-                .raw(music_player_core::settings::keys::AUDIO_OUTPUT_NAME)
-                .unwrap_or_else(|| "System default".into()),
-        ));
+        state.set_output_devices(ui_model(devices.into_iter().map(ss).collect::<Vec<_>>()).into());
+        state.set_output_device(ss(selected_name));
     }
 
     fn publish_exclusions(&mut self) {
@@ -1802,7 +1853,7 @@ impl App {
             if let Some(g) = groups.iter().find(|g| g.name.eq_ignore_ascii_case(value)) {
                 subtitle = format!("{} song{}", g.track_count, if g.track_count == 1 { "" } else { "s" });
                 if let Some(art) = &g.artwork_path {
-                    if let Ok(image) = Image::load_from_path(Path::new(art)) {
+                    if let Some(image) = native_io::load_artwork_image(Path::new(art)) {
                         cover = image;
                         has_cover = true;
                     }
@@ -2195,15 +2246,23 @@ impl App {
             4 => {
                 if let Some(t) = self.track_by_id(&id) {
                     let name = t.title.clone();
-                    self.create_playlist(&format!("{} Mix", name));
-                    self.add_playlist_track = Some(id.clone());
+                    let new_id = self.new_playlist_id();
+                    if self.store.create_playlist(&new_id, &format!("{} Mix", name)).is_ok() {
+                        let _ = self.store.add_tracks_to_playlist(&new_id, &[t.path.clone()]);
+                        self.refresh_playlists();
+                        self.set_view("Playlist", "", "", &new_id);
+                        self.show_notice("Created playlist with this song.", NoticeSeverity::Success);
+                    }
                 }
             }
             5 => self.toggle_favorite(&id),
             6 => { self.ui.global::<State>().set_modal(ss("rating")); self.ui.global::<State>().set_rate_value(0); }
             8 => self.set_view("Lyrics", "", "", ""),
             9 => self.open_find_lyrics(&id),
-            10 => self.open_edit_lyrics(),
+            10 => {
+                self.edit_target = self.track_by_id(&id).map(|t| t.path.clone());
+                self.open_edit_lyrics();
+            }
             11 => self.open_tags(&id),
             12 => {
                 if let Some(t) = self.track_by_id(&id) {
@@ -2767,12 +2826,23 @@ fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
     } else {
         format!("{} song{}", group.track_count, if group.track_count == 1 { "" } else { "s" })
     };
+    let (has_cover, cover) = if let Some(art) = &group.artwork_path {
+        if let Some(img) = native_io::load_artwork_image(Path::new(art)) {
+            (true, img)
+        } else {
+            (false, Image::default())
+        }
+    } else {
+        (false, Image::default())
+    };
     GroupItem {
         name: ss(&group.name),
         subtitle: ss(subtitle),
         initials: ss(initials(&group.name)),
         gradient: slot,
         track_count: group.track_count as i32,
+        has_cover,
+        cover,
     }
 }
 
@@ -2787,6 +2857,7 @@ fn chunk_groups(groups: Vec<GroupItem>) -> Vec<GroupRowItem> {
         if filled == 0 { break; }
         let empty = GroupItem {
             name: ss(""), subtitle: ss(""), initials: ss(""), gradient: 1, track_count: 0,
+            has_cover: false, cover: Image::default(),
         };
         rows.push(GroupRowItem {
             a: a.unwrap_or_else(|| empty.clone()),
@@ -2834,12 +2905,27 @@ fn crossfade_label(seconds: i64) -> String {
 
 fn main() -> std::result::Result<(), slint::PlatformError> {
     // Single instance: a duplicate launch asks the running instance to show
-    // its window and exits instead of opening a second library connection.
-    if !os::acquire_single_instance() {
+    // its window and exits, handing off any files passed via CLI.
+    let cli_args: Vec<String> = std::env::args().skip(1).collect();
+    if !os::acquire_single_instance(&cli_args) {
         return Ok(());
     }
     let ui = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new(ui.clone_strong())));
+
+    if !cli_args.is_empty() {
+        let a = app.clone();
+        for path in &cli_args {
+            if let Ok(Some(track)) = a.borrow().store.get_track(path) {
+                a.borrow_mut().coordinator.queue_mut().append_one(track.path);
+            }
+        }
+        if let Some(first) = cli_args.first() {
+            if let Ok(Some(track)) = a.borrow().store.get_track(first) {
+                a.borrow_mut().play_track(track, false, None);
+            }
+        }
+    }
 
     // Navigation.
     {
@@ -2872,13 +2958,12 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_search_input(move |query| {
             let mut app = a.borrow_mut();
+            app.ui.global::<State>().set_view_search(ss(&query));
             let current = app.ui.global::<State>().get_view().to_string();
-            if current == "Search" {
-                app.ui.global::<State>().set_view_search(ss(&query));
-                app.set_view("Search", &query, "", "");
-            } else {
-                app.set_view("Search", &query, "", "");
+            if current != "Search" {
+                app.ui.global::<State>().set_view(ss("Search"));
             }
+            app.search_debounce = Some((Instant::now() + Duration::from_millis(150), query.to_string()));
         });
     }
     {
@@ -3562,7 +3647,47 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let a = app.clone();
         ui.global::<Actions>().on_set_output_device(move |name| {
-            a.borrow().settings.set_raw(music_player_core::settings::keys::AUDIO_OUTPUT_NAME, &name);
+            let mut app = a.borrow_mut();
+            let mut id = app
+                .audio_devices
+                .iter()
+                .find(|device| device.name == name.as_str())
+                .map(|device| device.id.clone())
+                .unwrap_or_default();
+            let mut selected_name = if name == "System default" { "System default".to_string() } else { name.to_string() };
+            app.cancel_crossfade();
+            let direct_sound = if id.is_empty() {
+                String::new()
+            } else {
+                os_shell::direct_sound_device_id(&id).unwrap_or_default()
+            };
+            if !id.is_empty() && direct_sound.is_empty() {
+                // The endpoint could not be mapped; keep the system default,
+                // matching SelectAudioOutputDevice's fallback.
+                id.clear();
+                selected_name = "System default".into();
+            }
+            if let Err(error) = app.engine.set_audio_output_device(&direct_sound) {
+                music_player_core::LocalAppLog::shared().warning(
+                    "audio-devices",
+                    &format!("Could not change the audio output device ({error})."),
+                );
+            }
+            app.settings.set_raw(
+                music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE,
+                &id,
+            );
+            app.settings.set_raw(
+                music_player_core::settings::keys::AUDIO_OUTPUT_NAME,
+                &selected_name,
+            );
+            app.ui
+                .global::<State>()
+                .set_output_device(ss(&selected_name));
+            app.show_notice(
+                format!("Audio output: {}.", selected_name),
+                NoticeSeverity::Informational,
+            );
         });
     }
 
@@ -3894,6 +4019,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
 
     ui.run()?;
+    os_shell::detach();
     app.borrow_mut().save_session();
     Ok(())
 }

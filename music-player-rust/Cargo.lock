@@ -2817,9 +2817,11 @@ dependencies = [
  "directories",
  "image",
  "music-player-core",
+ "raw-window-handle",
  "serde_json",
  "slint",
  "slint-build",
+ "windows",
  "windows-sys 0.60.2",
 ]
 
@@ -4254,6 +4256,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "pin-weak",
+ "raw-window-handle",
  "slint-macros",
  "unicode-segmentation",
  "vtable",

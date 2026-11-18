@@ -170,6 +170,9 @@ struct VlcContext {
     fn_player_is_playing: unsafe extern "C" fn(*mut c_void) -> i32,
     fn_player_get_state: unsafe extern "C" fn(*mut c_void) -> i32,
     fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32,
+    fn_audio_output_set: Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> i32>,
+    fn_audio_output_device_set:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char)>,
     fn_event_manager: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
     fn_event_attach:
         unsafe extern "C" fn(*mut c_void, i32, VlcEventCallback, *mut c_void) -> i32,
@@ -254,6 +257,8 @@ pub struct AudioEngine {
     equalizer_preset: Option<String>,
     equalizer_bands: Option<[f32; 10]>,
     equalizer_preamp: f32,
+    /// DirectSound device GUID selected in Settings (empty = system default).
+    audio_output_device: String,
     /// Flags used when LibVLC is unavailable and playback runs through MCI.
     fallback_flags: EventFlags,
     mci_last_position: AtomicU64,
@@ -281,6 +286,7 @@ impl AudioEngine {
             equalizer_preset: None,
             equalizer_bands: None,
             equalizer_preamp: NEUTRAL_EQUALIZER_PREAMP,
+            audio_output_device: String::new(),
             fallback_flags: EventFlags::default(),
             mci_last_position: AtomicU64::new(0),
         }
@@ -359,6 +365,18 @@ impl AudioEngine {
                 *lib.get(b"libvlc_media_player_get_state").ok()?;
             let fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32 =
                 *lib.get(b"libvlc_audio_set_volume").ok()?;
+            let fn_audio_output_set: Option<
+                unsafe extern "C" fn(*mut c_void, *const c_char) -> i32,
+            > = lib
+                .get(b"libvlc_audio_output_set")
+                .ok()
+                .map(|symbol| *symbol);
+            let fn_audio_output_device_set: Option<
+                unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char),
+            > = lib
+                .get(b"libvlc_audio_output_device_set")
+                .ok()
+                .map(|symbol| *symbol);
             let fn_event_manager: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
                 *lib.get(b"libvlc_media_player_event_manager").ok()?;
             let fn_event_attach:
@@ -417,6 +435,8 @@ impl AudioEngine {
                 fn_player_is_playing,
                 fn_player_get_state,
                 fn_audio_set_volume,
+                fn_audio_output_set,
+                fn_audio_output_device_set,
                 fn_event_manager,
                 fn_event_attach,
                 fn_event_detach,
@@ -432,6 +452,20 @@ impl AudioEngine {
                 fn_equalizer_band_count,
                 fn_equalizer_band_frequency,
             })
+        }
+    }
+
+    /// Applies the DirectSound output/device selection to a freshly created
+    /// player, mirroring PlaybackService.ConfigureAudioOutputCore.
+    unsafe fn apply_audio_output(vlc: &VlcContext, player: *mut c_void, device: &str) {
+        if let Some(output_set) = vlc.fn_audio_output_set {
+            let name = CString::new("directsound").unwrap();
+            let _ = (output_set)(player, name.as_ptr());
+        }
+        if let Some(device_set) = vlc.fn_audio_output_device_set {
+            let module = CString::new("directx").unwrap();
+            let device = CString::new(device).unwrap_or_default();
+            (device_set)(player, module.as_ptr(), device.as_ptr());
         }
     }
 
@@ -529,6 +563,7 @@ impl AudioEngine {
                 };
                 handle.flags.generation.store(generation, Ordering::SeqCst);
 
+                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
                 (vlc.fn_audio_set_volume)(handle.player, volume as i32);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
 
@@ -582,6 +617,70 @@ impl AudioEngine {
             self.status = PlaybackStatus::Playing;
             Ok(())
         }
+    }
+
+    /// Selects the LibVLC DirectSound render endpoint (`""` = system default).
+    /// DirectSound picks the endpoint when the stream is created, so an active
+    /// song is reopened at the same position (port of PlaybackService.
+    /// SelectAudioOutputDevice).
+    pub fn set_audio_output_device(&mut self, device_id: &str) -> Result<(), String> {
+        let device_id = device_id.trim().to_string();
+        if self.audio_output_device == device_id {
+            return Ok(());
+        }
+        self.audio_output_device = device_id.clone();
+        if self.vlc.is_none() || self.current_path.is_none() {
+            return Ok(());
+        }
+
+        let position = self.position_ms();
+        let was_playing = self.is_playing();
+        self.cancel_crossfade_core();
+        self.media_generation += 1;
+        let generation = self.media_generation;
+        let volume = self.volume;
+        let eq_preset = self.equalizer_preset.clone();
+        let eq_bands = self.equalizer_bands;
+        let eq_preamp = self.equalizer_preamp;
+        let path = self.current_path.clone().unwrap_or_default();
+
+        let Some(vlc) = self.vlc.as_mut() else {
+            return Ok(());
+        };
+        let device = self.audio_output_device.clone();
+        unsafe {
+            vlc.active = None;
+            let media = Self::create_media(vlc, &path)?;
+            let handle = match Self::create_player_handle(vlc, media) {
+                Some(handle) => handle,
+                None => {
+                    (vlc.fn_media_release)(media);
+                    return Err("Failed to create LibVLC media player".into());
+                }
+            };
+            handle.flags.generation.store(generation, Ordering::SeqCst);
+            Self::apply_audio_output(vlc, handle.player, &device);
+            (vlc.fn_audio_set_volume)(handle.player, volume as i32);
+            Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
+
+            if (vlc.fn_player_play)(handle.player) != 0 {
+                self.status = PlaybackStatus::Stopped;
+                return Err("LibVLC could not reopen audio on the selected output".into());
+            }
+            if !was_playing {
+                (vlc.fn_player_set_pause)(handle.player, 1);
+            }
+            if position > 0 {
+                (vlc.fn_player_set_time)(handle.player, position as i64);
+            }
+            vlc.active = Some(handle);
+        }
+        self.status = if was_playing {
+            PlaybackStatus::Playing
+        } else {
+            PlaybackStatus::Paused
+        };
+        Ok(())
     }
 
     pub fn pause(&mut self) -> Result<(), String> {
@@ -1069,6 +1168,7 @@ impl AudioEngine {
                 self.media_generation += 1;
                 handle.flags.generation.store(self.media_generation, Ordering::SeqCst);
                 (vlc.fn_player_stop)(handle.player);
+                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
                 (vlc.fn_audio_set_volume)(handle.player, 0);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
                 if (vlc.fn_player_play)(handle.player) != 0 {

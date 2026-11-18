@@ -668,8 +668,8 @@ component ContextMenuOverlay inherits Rectangle {
     }
 
     Rectangle {
-        x: State.context-x;
-        y: State.context-y;
+        x: min(max(8px, State.context-x), parent.width - 240px);
+        y: min(max(8px, State.context-y), parent.height - self.height - 8px);
         width: 230px;
         height: State.context-items.length * 30px + 16px;
         border-radius: 8px;
@@ -1445,17 +1445,37 @@ component RatingModal inherits Rectangle {
         spacing: 12px;
 
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 8px;
             alignment: start;
             Chip {
                 label: "Unrated";
                 active: State.rate-value == 0;
                 clicked => { Actions.rate-track(0); }
             }
-            for star in 5 : Chip {
-                label: "\{star} ★";
-                active: State.rate-value >= star;
-                clicked => { Actions.rate-track(star); }
+            Chip {
+                label: "1 ★";
+                active: State.rate-value >= 1;
+                clicked => { Actions.rate-track(1); }
+            }
+            Chip {
+                label: "2 ★";
+                active: State.rate-value >= 2;
+                clicked => { Actions.rate-track(2); }
+            }
+            Chip {
+                label: "3 ★";
+                active: State.rate-value >= 3;
+                clicked => { Actions.rate-track(3); }
+            }
+            Chip {
+                label: "4 ★";
+                active: State.rate-value >= 4;
+                clicked => { Actions.rate-track(4); }
+            }
+            Chip {
+                label: "5 ★";
+                active: State.rate-value >= 5;
+                clicked => { Actions.rate-track(5); }
             }
         }
     }
@@ -1645,6 +1665,62 @@ export component AppWindow inherits Window {
     background: #070807;
 
     init => { Actions.ui-ready(); }
+
+    forward-focus: key-handler;
+
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                if (State.context-visible) {
+                    Actions.close-context-menu();
+                    return accept;
+                }
+                if (State.modal != "") {
+                    Actions.close-modal();
+                    return accept;
+                }
+                if (State.immersive-open) {
+                    Actions.close-immersive();
+                    return accept;
+                }
+            }
+            if (State.modal == "" && !State.context-visible) {
+                if (event.text == " ") {
+                    Actions.toggle-play();
+                    return accept;
+                }
+                if (event.text == Key.LeftArrow) {
+                    Actions.seek-fraction(max(0.0, State.progress - 0.05));
+                    return accept;
+                }
+                if (event.text == Key.RightArrow) {
+                    Actions.seek-fraction(min(1.0, State.progress + 0.05));
+                    return accept;
+                }
+                if (event.text == Key.UpArrow) {
+                    Actions.volume-changed(min(100.0, State.volume + 5.0));
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    Actions.volume-changed(max(0.0, State.volume - 5.0));
+                    return accept;
+                }
+                if (event.text == "m" || event.text == "M") {
+                    Actions.set-volume-muted();
+                    return accept;
+                }
+                if (event.text == "s" || event.text == "S") {
+                    Actions.toggle-shuffle();
+                    return accept;
+                }
+                if (event.text == "r" || event.text == "R") {
+                    Actions.cycle-repeat();
+                    return accept;
+                }
+            }
+            reject
+        }
+    }
 
     VerticalLayout {
         HorizontalLayout {

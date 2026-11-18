@@ -895,25 +895,31 @@ component LyricsView inherits Rectangle {
 
         Rectangle {
             vertical-stretch: 1;
-            ListView {
-                for line[index] in State.lyrics-lines : TouchArea {
-                    height: 40px;
-                    clicked => {
-                        if (State.lyrics-timed && State.seek-from-lyrics) {
-                            Actions.seek-to-lyric(index);
+            clip: true;
+            Flickable {
+                content-y: min(0px, - State.lyrics-active-line * 40px + parent.height * 0.35);
+                animate content-y { duration: 250ms; easing: ease-out; }
+
+                VerticalLayout {
+                    for line[index] in State.lyrics-lines : TouchArea {
+                        height: 40px;
+                        clicked => {
+                            if (State.lyrics-timed && State.seek-from-lyrics) {
+                                Actions.seek-to-lyric(index);
+                            }
                         }
-                    }
-                    Text {
-                        text: line.text;
-                        color: line.is-active ? State.accent : (line.is-past ? #717970 : #f2f4f1);
-                        font-size: line.is-active ? 15px : 13px;
-                        font-weight: line.is-active ? 750 : 500;
-                        vertical-alignment: center;
-                        horizontal-alignment: left;
-                        x: 12px;
-                        width: parent.width - 24px;
-                        overflow: elide;
-                        animate color { duration: 200ms; }
+                        Text {
+                            text: line.text;
+                            color: line.is-active ? State.accent : (line.is-past ? #717970 : #f2f4f1);
+                            font-size: line.is-active ? 15px : 13px;
+                            font-weight: line.is-active ? 750 : 500;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            x: 12px;
+                            width: parent.width - 24px;
+                            overflow: elide;
+                            animate color { duration: 200ms; }
+                        }
                     }
                 }
             }

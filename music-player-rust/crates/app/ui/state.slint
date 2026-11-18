@@ -97,6 +97,10 @@ export global State {
     in property <bool> lyrics-timed: false;
     in property <int> lyrics-active-line: -1;
     in property <bool> lyrics-scroll-paused: false;
+    // Two-way with the lyrics ScrollView. Rust moves it when the active line
+    // changes; mouse-wheel scrolling writes the user's position back here.
+    in-out property <length> lyrics-scroll-y: 0px;
+    in-out property <length> lyrics-view-height: 0px;
 
     // ---- Duplicates ----
     in property <[DuplicateItem]> duplicates;

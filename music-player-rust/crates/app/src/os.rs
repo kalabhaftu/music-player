@@ -35,6 +35,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 pub enum MediaCommand {
     Open,
     Previous,
+    Play,
+    Pause,
     PlayPause,
     Next,
     Quit,
@@ -53,6 +55,7 @@ const VK_MEDIA_PLAY_PAUSE: u32 = 0xB3;
 
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_TRAY_TIMER: usize = 1;
+const WM_DISABLE_MEDIA_KEYS: u32 = WM_APP + 3;
 const TM_OPEN: usize = 1;
 const TM_PREVIOUS: usize = 2;
 const TM_PLAY_PAUSE: usize = 3;
@@ -71,16 +74,68 @@ struct TrayState {
     status_rx: Option<Receiver<TrayStatus>>,
     status: TrayStatus,
     show_message: u32,
+    taskbar_created_msg: u32,
     hook: HHOOK,
 }
 
+pub fn write_activation_handoff(paths: &[String]) {
+    if paths.is_empty() {
+        return;
+    }
+    let base = directories::BaseDirs::new()
+        .map(|dirs| dirs.data_local_dir().join("MusicPlayer").join("Activations"))
+        .unwrap_or_else(|| std::path::PathBuf::from("activations"));
+    let _ = std::fs::create_dir_all(&base);
+    let id = format!("{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), std::process::id());
+    let file_path = base.join(format!("{}.json", id));
+    let json = serde_json::json!({
+        "verb": "play",
+        "paths": paths,
+    });
+    let _ = std::fs::write(file_path, json.to_string());
+}
+
+pub fn poll_activations() -> Vec<String> {
+    let base = directories::BaseDirs::new()
+        .map(|dirs| dirs.data_local_dir().join("MusicPlayer").join("Activations"))
+        .unwrap_or_else(|| std::path::PathBuf::from("activations"));
+    if !base.is_dir() {
+        return Vec::new();
+    }
+    let mut collected = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&base) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(arr) = val.get("paths").and_then(|p| p.as_array()) {
+                            for item in arr {
+                                if let Some(s) = item.as_str() {
+                                    collected.push(s.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    collected
+}
+
 /// Returns `false` when another instance owns the named mutex. In that case a
-/// "show window" broadcast is sent so the running instance is restored.
-pub fn acquire_single_instance() -> bool {
+/// "show window" broadcast is sent so the running instance is restored, and any
+/// command-line files are handed off via `%LOCALAPPDATA%\MusicPlayer\Activations`.
+pub fn acquire_single_instance(args: &[String]) -> bool {
     unsafe {
         let name: Vec<u16> = "Local\\MusicPlayer.SingleInstance\0".encode_utf16().collect();
         let mutex = CreateMutexW(ptr::null(), 1, name.as_ptr());
         if mutex.is_null() || GetLastError() == ERROR_ALREADY_EXISTS {
+            if !args.is_empty() {
+                write_activation_handoff(args);
+            }
             let show_name: Vec<u16> = "MusicPlayer.ShowMainWindow\0".encode_utf16().collect();
             let message = RegisterWindowMessageW(show_name.as_ptr());
             if message != 0 {
@@ -109,6 +164,7 @@ pub fn acquire_single_instance() -> bool {
 
 pub struct OsIntegration {
     commands: Receiver<MediaCommand>,
+    command_tx: Sender<MediaCommand>,
     status_tx: Sender<TrayStatus>,
     tray_hwnd: std::sync::Arc<AtomicIsize>,
     thread: Option<JoinHandle<()>>,
@@ -125,14 +181,16 @@ impl OsIntegration {
         let show_message = unsafe { RegisterWindowMessageW(show_name.as_ptr()) };
         let tray_hwnd = std::sync::Arc::new(AtomicIsize::new(0));
         let thread_hwnd = tray_hwnd.clone();
+        let thread_commands = command_tx.clone();
         let thread = std::thread::Builder::new()
             .name("music-player-tray".into())
             .spawn(move || unsafe {
-                run_tray_thread(command_tx, status_rx, show_message, thread_hwnd);
+                run_tray_thread(thread_commands, status_rx, show_message, thread_hwnd);
             })
             .ok()?;
         Some(Self {
             commands,
+            command_tx,
             status_tx,
             tray_hwnd,
             thread: Some(thread),
@@ -141,6 +199,21 @@ impl OsIntegration {
 
     pub fn try_command(&self) -> Option<MediaCommand> {
         self.commands.try_recv().ok()
+    }
+
+    /// Cloneable sender used by the window-proc/SMTC integrations.
+    pub fn command_sender(&self) -> Sender<MediaCommand> {
+        self.command_tx.clone()
+    }
+
+    /// Drops the low-level keyboard hook once SMTC owns media keys.
+    pub fn disable_media_key_hook(&self) {
+        let hwnd = self.tray_hwnd.load(Ordering::SeqCst);
+        if hwnd != 0 {
+            unsafe {
+                PostMessageW(hwnd as HWND, WM_DISABLE_MEDIA_KEYS, 0, 0);
+            }
+        }
     }
 
     pub fn set_status(&self, status: TrayStatus) {
@@ -208,6 +281,9 @@ unsafe fn run_tray_thread(
     hwnd_slot.store(hwnd as isize, Ordering::SeqCst);
 
     let icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
+    let taskbar_created_name: Vec<u16> = "TaskbarCreated\0".encode_utf16().collect();
+    let taskbar_created_msg = RegisterWindowMessageW(taskbar_created_name.as_ptr());
+
     TRAY.with(|cell| {
         let mut state = cell.borrow_mut();
         state.hwnd = hwnd;
@@ -215,6 +291,7 @@ unsafe fn run_tray_thread(
         state.commands = Some(commands);
         state.status_rx = Some(status_rx);
         state.show_message = show_message;
+        state.taskbar_created_msg = taskbar_created_msg;
     });
 
     let data = notify_data(hwnd, icon, "Music Player");
@@ -325,8 +402,26 @@ unsafe extern "system" fn tray_wnd_proc(hwnd: HWND, message: u32, wparam: WPARAM
             }
             0
         }
+        _ if message == WM_DISABLE_MEDIA_KEYS => {
+            TRAY.with(|cell| {
+                let mut state = cell.borrow_mut();
+                if !state.hook.is_null() {
+                    UnhookWindowsHookEx(state.hook);
+                    state.hook = std::ptr::null_mut();
+                }
+            });
+            0
+        }
         _ if TRAY.with(|cell| cell.borrow().show_message) == message => {
             send(MediaCommand::Open);
+            0
+        }
+        _ if TRAY.with(|cell| cell.borrow().taskbar_created_msg) == message && message != 0 => {
+            TRAY.with(|cell| {
+                let state = cell.borrow();
+                let data = notify_data(state.hwnd, state.icon, "Music Player");
+                Shell_NotifyIconW(NIM_ADD, &data);
+            });
             0
         }
         _ => DefWindowProcW(hwnd, message, wparam, lparam),
@@ -382,7 +477,7 @@ unsafe fn show_tray_menu(hwnd: HWND) {
     let mut point = std::mem::zeroed::<POINT>();
     GetCursorPos(&mut point);
     SetForegroundWindow(hwnd);
-    TrackPopupMenu(
+    let cmd_id = TrackPopupMenu(
         menu,
         TPM_LEFTALIGN | TPM_RETURNCMD,
         point.x,
@@ -391,8 +486,15 @@ unsafe fn show_tray_menu(hwnd: HWND) {
         hwnd,
         ptr::null(),
     );
-    // The selected id arrives as WM_COMMAND; DestroyMenu after the loop turn.
-    PostMessageW(hwnd, WM_APP + 2, menu as WPARAM, 0);
+    match cmd_id as usize {
+        TM_OPEN => send(MediaCommand::Open),
+        TM_PREVIOUS => send(MediaCommand::Previous),
+        TM_PLAY_PAUSE => send(MediaCommand::PlayPause),
+        TM_NEXT => send(MediaCommand::Next),
+        TM_QUIT => send(MediaCommand::Quit),
+        _ => {}
+    }
+    DestroyMenu(menu);
 }
 
 unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

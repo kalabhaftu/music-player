@@ -472,7 +472,14 @@ export component CardTile inherits Rectangle {
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
 
-            Text {
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+
+            if !root.item.has-cover : Text {
                 text: root.item.initials;
                 color: #ffffffe0;
                 font-size: 24px;
