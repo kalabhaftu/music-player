@@ -2813,9 +2813,11 @@ dependencies = [
 name = "music-player-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "directories",
  "image",
  "music-player-core",
+ "serde_json",
  "slint",
  "slint-build",
 ]

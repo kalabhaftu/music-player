@@ -335,4 +335,20 @@ impl LibraryStore {
         conn.execute("PRAGMA wal_checkpoint(PASSIVE)", [])?;
         Ok(())
     }
+
+    /// Builds the exact-duplicate fingerprint table. Used by the Duplicates view.
+    pub fn prepare_duplicate_fingerprints(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        crate::duplicates::DuplicateDetector::prepare_fingerprints(&conn)
+    }
+
+    /// One page of exact-duplicate groups.
+    pub fn get_duplicate_groups(
+        &self,
+        offset: usize,
+        page_size: usize,
+    ) -> Result<Vec<crate::duplicates::ExactDuplicateGroup>> {
+        let conn = self.conn.lock().unwrap();
+        crate::duplicates::DuplicateDetector::get_duplicate_groups(&conn, offset, page_size)
+    }
 }

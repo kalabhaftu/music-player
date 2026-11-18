@@ -11,6 +11,24 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
         .unwrap_or(0);
     let _ = user_version;
 
+    // CREATE TABLE IF NOT EXISTS never adds columns to a database written by an
+    // older build. Add the newer columns *before* their indexes are created, or
+    // `CREATE INDEX ... ON tracks(unavailable)` fails on an existing library.db.
+    if table_has_column(conn, "tracks", "path")? {
+        for (column, declaration) in [
+            ("artwork_path", "artwork_path TEXT NULL"),
+            ("has_lyrics", "has_lyrics INTEGER NOT NULL DEFAULT -1"),
+            ("unavailable", "unavailable INTEGER NOT NULL DEFAULT 0"),
+        ] {
+            if !table_has_column(conn, "tracks", column)? {
+                conn.execute(
+                    &format!("ALTER TABLE tracks ADD COLUMN {}", declaration),
+                    [],
+                )?;
+            }
+        }
+    }
+
     conn.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;
@@ -227,4 +245,13 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
     super::functions::register_query_functions(conn);
 
     Ok(())
+}
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT count(*) FROM pragma_table_info(?1) WHERE name = ?2",
+        [table, column],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }

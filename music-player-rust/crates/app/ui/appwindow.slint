@@ -1,37 +1,37 @@
-import { ListView } from "std-widgets.slint";
+// Root window: navigation rail, top bar, content area, right panel, player
+// bar, global context menu, toasts and every modal.
 
-export struct TrackItem {
-    id: int,
-    title: string,
-    artist: string,
-    album: string,
-    duration: string,
-    initials: string,
-    badge_bg: color,
-    is_favorite: bool,
-    accent: color,
-}
+import { State, Actions } from "state.slint";
+import {
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem,
+    TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem,
+    BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem,
+} from "models.slint";
+import { ListView, Slider, ComboBox, LineEdit, Switch, TextEdit, CheckBox, ScrollView } from "std-widgets.slint";
+import { Palette, IcBtn, TextBtn, TrackRow, EmptyState, Chip, SectionTitle } from "widgets.slint";
+import { ContentArea, QueueView, AudioView } from "views.slint";
 
-export struct LyricLineItem {
-    text: string,
-    is_active: bool,
-}
+// Export globals and DTO structs to the Rust host.
+export { State, Actions } from "state.slint";
+export {
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem,
+    ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem,
+    GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem,
+} from "models.slint";
 
-component NavItem inherits Rectangle {
-    in property <string> label: "";
-    in property <image> icon_source;
-    in property <bool> active: false;
-    in property <string> badge: "";
-    callback clicked();
+// ---- Navigation rail entry -----------------------------------------------------
+component NavEntryRow inherits Rectangle {
+    in property <string> view;
+    in property <string> label;
+    in property <image> icon;
 
-    height: 44px;
+    height: 40px;
     border-radius: 6px;
-    background: area.pressed ? #1a1e1a : (area.has-hover ? #ffffff0d : (root.active ? #171917 : transparent));
-
+    background: nav-area.pressed ? #1a1e1a : (nav-area.has-hover ? #ffffff0d : (State.view == root.view ? #171917 : transparent));
     animate background { duration: 120ms; }
 
-    area := TouchArea {
-        clicked => { root.clicked(); }
+    nav-area := TouchArea {
+        clicked => { Actions.set-view(root.view, "", "", 0); }
     }
 
     HorizontalLayout {
@@ -40,1378 +40,1665 @@ component NavItem inherits Rectangle {
         spacing: 13px;
 
         Image {
-            source: root.icon_source;
-            width: 20px;
-            height: 20px;
-            y: (parent.height - self.height) / 2;
-            colorize: root.active ? #f7f8f6 : (area.has-hover ? #f7f8f6 : #a0a79f);
+            source: root.icon;
+            width: 18px;
+            height: 18px;
+            colorize: State.view == root.view ? State.accent : (nav-area.has-hover ? #f7f8f6 : #a0a79f);
             animate colorize { duration: 120ms; }
+            vertical-alignment: center;
         }
 
         Text {
             text: root.label;
-            color: root.active ? #f7f8f6 : (area.has-hover ? #f7f8f6 : #a0a79f);
+            color: State.view == root.view ? #f7f8f6 : (nav-area.has-hover ? #f7f8f6 : #a0a79f);
             font-size: 13px;
             font-weight: 650;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
         }
+    }
+}
 
-        if root.badge != "" : Text {
-            text: root.badge;
-            color: #717970;
-            font-size: 9px;
-            vertical-alignment: center;
+// ---- Navigation rail ---------------------------------------------------------
+component NavRail inherits Rectangle {
+    width: State.navigation-width * 1px;
+    background: #090a09;
+
+    VerticalLayout {
+        padding-top: 14px;
+        padding-bottom: 10px;
+        spacing: 4px;
+
+        HorizontalLayout {
+            padding-left: 18px;
+            padding-right: 12px;
+            spacing: 10px;
+            height: 44px;
+            Image {
+                source: @image-url("../assets/icons/disc.svg");
+                width: 22px;
+                height: 22px;
+                colorize: State.accent;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "Music Player";
+                color: #f7f8f6;
+                font-size: 13px;
+                font-weight: 800;
+                vertical-alignment: center;
+            }
+        }
+
+        // Back / forward history controls.
+        HorizontalLayout {
+            padding-left: 18px;
+            padding-right: 18px;
+            spacing: 6px;
+            height: 34px;
+            IcBtn {
+                icon: @image-url("../assets/icons/chevron-left.svg");
+                icon-size: 14px;
+                tint: State.can-go-back ? #a0a79f : #3a403a;
+                clicked => { if (State.can-go-back) { Actions.go-back(); } }
+            }
+            IcBtn {
+                icon: @image-url("../assets/icons/chevron-right.svg");
+                icon-size: 14px;
+                tint: State.can-go-forward ? #a0a79f : #3a403a;
+                clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
+            }
+        }
+
+        Rectangle { height: 6px; }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: 2px;
+                // Navigation entries follow the default order of the original.
+                NavEntryRow { view: "Home"; label: "Home"; icon: @image-url("../assets/icons/home.svg"); }
+                NavEntryRow { view: "Search"; label: "Search"; icon: @image-url("../assets/icons/search.svg"); }
+                NavEntryRow { view: "Songs"; label: "Songs"; icon: @image-url("../assets/icons/music.svg"); }
+                NavEntryRow { view: "Favorites"; label: "Favorites"; icon: @image-url("../assets/icons/heart.svg"); }
+                NavEntryRow { view: "Most Played"; label: "Most Played"; icon: @image-url("../assets/icons/spark.svg"); }
+                NavEntryRow { view: "Recently Played"; label: "Recently Played"; icon: @image-url("../assets/icons/repeat.svg"); }
+                NavEntryRow { view: "Recently Added"; label: "Recently Added"; icon: @image-url("../assets/icons/music.svg"); }
+                NavEntryRow { view: "With Lyrics"; label: "With Lyrics"; icon: @image-url("../assets/icons/lyrics.svg"); }
+                NavEntryRow { view: "Videos"; label: "Videos"; icon: @image-url("../assets/icons/expand.svg"); }
+                NavEntryRow { view: "Albums"; label: "Albums"; icon: @image-url("../assets/icons/disc.svg"); }
+                NavEntryRow { view: "Artists"; label: "Artists"; icon: @image-url("../assets/icons/users.svg"); }
+                NavEntryRow { view: "Genres"; label: "Genres"; icon: @image-url("../assets/icons/list.svg"); }
+                NavEntryRow { view: "Folders"; label: "Folders"; icon: @image-url("../assets/icons/folder.svg"); }
+                NavEntryRow { view: "Playlists"; label: "Playlists"; icon: @image-url("../assets/icons/queue.svg"); }
+                NavEntryRow { view: "Queue"; label: "Queue"; icon: @image-url("../assets/icons/queue.svg"); }
+                NavEntryRow { view: "Audio"; label: "Audio"; icon: @image-url("../assets/icons/equalizer.svg"); }
+                NavEntryRow { view: "Duplicates"; label: "Duplicates"; icon: @image-url("../assets/icons/disc.svg"); }
+                NavEntryRow { view: "Settings"; label: "Settings"; icon: @image-url("../assets/icons/more.svg"); }
+            }
         }
     }
 }
 
-component IconButton inherits Rectangle {
-    in property <image> icon_source;
-    in property <color> icon_color: #a0a79f;
-    in property <color> hover_color: #f7f8f6;
-    in property <length> icon_size: 16px;
-    callback clicked();
+// ---- Top bar -----------------------------------------------------------------
+component TopBar inherits Rectangle {
+    height: 56px;
+    background: #090a09;
 
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    background: area.pressed ? #ffffff18 : (area.has-hover ? #ffffff12 : transparent);
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 14px;
+        spacing: 12px;
 
-    animate background { duration: 100ms; }
+        Rectangle {
+            width: 340px;
+            height: 36px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 18px;
+            background: #131614;
+            border-width: 1px;
+            border-color: area.has-hover ? #ffffff22 : #ffffff12;
+            animate border-color { duration: 120ms; }
 
-    area := TouchArea {
-        clicked => { root.clicked(); }
-    }
+            area := TouchArea { }
 
-    Image {
-        source: root.icon_source;
-        width: root.icon_size;
-        height: root.icon_size;
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        colorize: area.has-hover ? root.hover_color : root.icon_color;
-        animate colorize { duration: 100ms; }
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 10px;
+                spacing: 8px;
+                Image {
+                    source: @image-url("../assets/icons/search.svg");
+                    width: 14px;
+                    height: 14px;
+                    colorize: #717970;
+                    vertical-alignment: center;
+                }
+                LineEdit {
+                    placeholder-text: "Search";
+                    text <=> State.view-search;
+                    edited(text) => { Actions.search-input(text); }
+                    accepted(text) => { Actions.save-recent-search(text); }
+                }
+                if State.view-search != "" : IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 12px;
+                    tint: #717970;
+                    clicked => { Actions.search-input(""); }
+                }
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        if State.scan-active : HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                y: 14px;
+                background: State.scan-paused ? #ffb04a : State.accent;
+            }
+            Text {
+                text: State.scan-paused ? "Scan paused" : "Scanning library";
+                color: #a0a79f;
+                font-size: 10px;
+                vertical-alignment: center;
+            }
+        }
+
+        TextBtn {
+            label: "Add folder";
+            y: (parent.height - self.height) / 2;
+            clicked => { Actions.open-modal("folders"); }
+        }
+
+        IcBtn {
+            icon: @image-url("../assets/icons/panel-left.svg");
+            y: (parent.height - self.height) / 2;
+            active: State.right-panel-open;
+            clicked => { Actions.toggle-right-panel(); }
+        }
+        IcBtn {
+            icon: @image-url("../assets/icons/close.svg");
+            y: (parent.height - self.height) / 2;
+            tint: #a0a79f;
+            hover-tint: #ff5b74;
+            clicked => { Actions.close-window(); }
+        }
     }
 }
 
-component TrackRow inherits Rectangle {
-    in property <TrackItem> track;
-    in property <int> index: 1;
-    in property <bool> is_playing: false;
-    in property <color> accent: #b7ff2d;
-    callback play_requested();
-    callback toggle_favorite();
-
-    height: 58px;
-    background: area.pressed ? #191c19 : (area.has-hover ? #131613 : (root.is_playing ? #151a15 : transparent));
-
-    animate background { duration: 120ms; }
-
-    // Bottom border line matching table td border-bottom
+// ---- Right panel bits -----------------------------------------------------------
+component InfoRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    height: 34px;
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.label;
+            color: #717970;
+            font-size: 9px;
+        }
+        Text {
+            text: root.value;
+            color: #cdd2cc;
+            font-size: 11px;
+            overflow: elide;
+        }
+    }
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: #ffffff13;
+        background: #ffffff0d;
     }
+}
 
-    area := TouchArea {
-        clicked => { root.play_requested(); }
+component QueueRow inherits Rectangle {
+    in property <QueueItem> item;
+    in property <int> index: 0;
+    callback play();
+    callback remove();
+
+    height: 52px;
+    border-radius: 6px;
+    background: row-area.has-hover ? #131613 : (root.item.is-current ? #ffffff0d : transparent);
+    animate background { duration: 100ms; }
+
+    row-area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.open-context-menu(root.item.id, 0, 0);
+            }
+        }
     }
 
     HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        spacing: 12px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
 
-        // Index / Play Icon
-        Rectangle {
-            width: 44px;
-            if area.has-hover : Image {
-                source: @image-url("../assets/icons/play.svg");
-                width: 14px;
-                height: 14px;
-                y: (parent.height - self.height) / 2;
-                x: (parent.width - self.width) / 2;
-                colorize: #f7f8f6;
-            }
-            if !area.has-hover && root.is_playing : Image {
-                source: @image-url("../assets/icons/music.svg");
-                width: 15px;
-                height: 15px;
-                y: (parent.height - self.height) / 2;
-                x: (parent.width - self.width) / 2;
-                colorize: root.accent;
-            }
-            if !area.has-hover && !root.is_playing : Text {
-                text: "\{root.index}";
-                color: #717970;
-                font-size: 11px;
-                vertical-alignment: center;
-                horizontal-alignment: center;
-            }
-        }
-
-        // Song Artwork Thumbnail (38px x 38px, border-radius 6px) with initials badge
         Rectangle {
             width: 38px;
             height: 38px;
-            border-radius: 6px;
-            clip: true;
+            border-radius: 4px;
+            background: root.item.badge-bg;
             y: (parent.height - self.height) / 2;
-            background: root.track.badge_bg;
-
             Text {
-                text: root.track.initials;
+                text: root.item.initials;
                 color: #f7f8f6;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 700;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
         }
 
-        // Title and Artist
         VerticalLayout {
             alignment: center;
             spacing: 3px;
-            horizontal-stretch: 3;
-
+            horizontal-stretch: 1;
             Text {
-                text: root.track.title;
-                color: root.is_playing ? root.accent : #f2f4f1;
-                font-size: 12px;
-                font-weight: 650;
+                text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
+                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : #f2f4f1);
+                font-size: 11px;
                 overflow: elide;
-                animate color { duration: 150ms; }
             }
-
             Text {
-                text: root.track.artist;
+                text: root.item.artist;
                 color: #a0a79f;
                 font-size: 10px;
                 overflow: elide;
             }
         }
 
-        // Album
         Text {
-            text: root.track.album;
-            color: #cdd2cc;
-            font-size: 12px;
+            text: root.item.duration;
+            color: #a0a79f;
+            font-size: 10px;
+            width: 44px;
+            horizontal-alignment: right;
             vertical-alignment: center;
-            horizontal-stretch: 2;
+        }
+
+        IcBtn {
+            icon: @image-url("../assets/icons/close.svg");
+            icon-size: 12px;
+            tint: #717970;
+            hover-tint: #ff5b74;
+            width: 26px;
+            height: 26px;
+            clicked => { root.remove(); }
+        }
+    }
+}
+
+// ---- Right panel ---------------------------------------------------------------
+component RightPanel inherits Rectangle {
+    width: State.right-panel-open ? State.right-panel-width * 1px : 0px;
+    background: #090a09;
+
+    if State.right-panel-open : VerticalLayout {
+        HorizontalLayout {
+            height: 38px;
+            padding-left: 12px;
+            padding-right: 6px;
+            spacing: 6px;
+            Chip {
+                label: "Queue";
+                active: State.right-panel-tab == "queue";
+                clicked => { Actions.set-right-tab("queue"); }
+            }
+            Chip {
+                label: "Track info";
+                active: State.right-panel-tab == "info";
+                clicked => { Actions.set-right-tab("info"); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            IcBtn {
+                icon: @image-url("../assets/icons/close.svg");
+                icon-size: 13px;
+                tint: #717970;
+                clicked => { Actions.toggle-right-panel(); }
+            }
+        }
+
+        if State.right-panel-tab == "queue" : VerticalLayout {
+            spacing: 6px;
+            HorizontalLayout {
+                height: 30px;
+                padding-left: 12px;
+                Text {
+                    text: "\{State.queue-count} in queue";
+                    color: #717970;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                TextBtn {
+                    label: "Clear";
+                    height: 26px;
+                    clicked => { Actions.clear-queue(); }
+                }
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                ListView {
+                    for row[index] in State.queue-items : QueueRow {
+                        item: row;
+                        index: index;
+                        play => { Actions.play-queue-entry(index); }
+                        remove => { Actions.queue-remove(index); }
+                    }
+                }
+            }
+            if State.queue-more-count > 0 : Rectangle {
+                height: 28px;
+                Text {
+                    text: "\{State.queue-more-count} more in Queue";
+                    color: #717970;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        if State.right-panel-tab == "info" : ScrollView {
+            VerticalLayout {
+                padding: 14px;
+                spacing: 12px;
+
+                if State.has-track : Rectangle {
+                    height: 280px;
+                    border-radius: 6px;
+                    clip: true;
+                    background: #131614;
+                    Image {
+                        source: State.current-cover;
+                        width: parent.width;
+                        height: parent.height;
+                        image-fit: ImageFit.cover;
+                    }
+                }
+
+                if State.has-track : VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: State.current-title;
+                        color: State.accent;
+                        font-size: 15px;
+                        font-weight: 750;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: State.current-artist;
+                        color: #a0a79f;
+                        font-size: 10px;
+                        overflow: elide;
+                    }
+                }
+
+                if State.has-track : VerticalLayout {
+                    spacing: 8px;
+                    InfoRow { label: "Album"; value: State.info-album; }
+                    InfoRow { label: "Album artist"; value: State.info-album-artist; }
+                    InfoRow { label: "Year · Genre"; value: State.info-year-genre; }
+                    InfoRow { label: "Audio format"; value: State.info-format; }
+                    InfoRow { label: "Status"; value: State.info-status; }
+                    InfoRow { label: "Audio quality"; value: State.info-quality; }
+                    InfoRow { label: "Location"; value: State.info-location; }
+                }
+            }
+        }
+    }
+}
+
+// ---- Player bar ----------------------------------------------------------------
+component PlayerBar inherits Rectangle {
+    height: 88px;
+    background: #090a09;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+
+        // Left: now playing
+        HorizontalLayout {
+            width: State.browse-width * 1px;
+            spacing: 11px;
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 6px;
+                clip: true;
+                background: #131614;
+                Image {
+                    source: State.current-cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+                TouchArea {
+                    clicked => { Actions.set-view("Now Playing", "", "", ""); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                horizontal-stretch: 1;
+                Text {
+                    text: State.current-title == "" ? "Not playing" : State.current-title;
+                    color: State.current-title == "" ? #717970 : #f7f8f6;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+                Text {
+                    text: State.current-artist;
+                    color: #a0a79f;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    IcBtn {
+                        icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                        icon-size: 13px;
+                        tint: State.current-favorite ? State.accent : #717970;
+                        width: 26px;
+                        height: 26px;
+                        clicked => { if (State.current-id != "") { Actions.toggle-favorite(State.current-id); } }
+                    }
+                    IcBtn {
+                        icon: @image-url("../assets/icons/more.svg");
+                        icon-size: 13px;
+                        tint: #717970;
+                        width: 26px;
+                        height: 26px;
+                        clicked => { Actions.open-context-menu(State.current-id, 0, 0); }
+                    }
+                }
+            }
+        }
+
+        // Center: controls + timeline
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 7px;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 11px;
+
+                IcBtn {
+                    icon: @image-url("../assets/icons/shuffle.svg");
+                    icon-size: 15px;
+                    tint: #939a93;
+                    active: State.shuffle;
+                    clicked => { Actions.toggle-shuffle(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/skip-back.svg");
+                    icon-size: 15px;
+                    tint: #939a93;
+                    clicked => { Actions.previous(); }
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: #f4f6f3;
+                    Image {
+                        source: State.is-playing ? @image-url("../assets/icons/pause.svg") : @image-url("../assets/icons/play.svg");
+                        width: 16px;
+                        height: 16px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        colorize: #0a0b0a;
+                    }
+                    TouchArea {
+                        clicked => { Actions.toggle-play(); }
+                    }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/skip-forward.svg");
+                    icon-size: 15px;
+                    tint: #939a93;
+                    clicked => { Actions.next(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/repeat.svg");
+                    icon-size: 15px;
+                    tint: State.repeat-mode == "Off" ? #939a93 : State.accent;
+                    clicked => { Actions.cycle-repeat(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/lyrics.svg");
+                    icon-size: 15px;
+                    tint: State.has-lyrics ? State.accent : #939a93;
+                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                }
+            }
+
+            HorizontalLayout {
+                width: 520px;
+                alignment: center;
+                spacing: 8px;
+                Text {
+                    text: State.current-time;
+                    color: #747b74;
+                    font-size: 9px;
+                    width: 40px;
+                    vertical-alignment: center;
+                }
+                Slider {
+                    horizontal-stretch: 1;
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    value: State.progress;
+                    changed value => { Actions.seek-fraction(self.value); }
+                }
+                Text {
+                    text: State.total-time;
+                    color: #747b74;
+                    font-size: 9px;
+                    width: 40px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Right: volume + extras
+        HorizontalLayout {
+            width: 240px;
+            spacing: 8px;
+            alignment: end;
+
+            if State.repeat-a != "" || State.repeat-b != "" : Chip {
+                label: State.repeat-a != "" && State.repeat-b != ""
+                    ? "A-B \{State.repeat-a}–\{State.repeat-b}"
+                    : (State.repeat-a != "" ? "A \{State.repeat-a}" : "B \{State.repeat-b}");
+                active: true;
+                clicked => { Actions.toggle-ab(); }
+            }
+
+            IcBtn {
+                icon: @image-url("../assets/icons/queue.svg");
+                icon-size: 15px;
+                tint: #939a93;
+                clicked => { Actions.set-view("Queue", "", "", ""); }
+            }
+            IcBtn {
+                icon: @image-url("../assets/icons/equalizer.svg");
+                icon-size: 15px;
+                tint: #939a93;
+                clicked => { Actions.set-view("Audio", "", "", ""); }
+            }
+            IcBtn {
+                icon: @image-url("../assets/icons/volume.svg");
+                icon-size: 15px;
+                tint: #939a93;
+                clicked => { Actions.set-volume-muted(); }
+            }
+            Slider {
+                width: 88px;
+                minimum: 0;
+                maximum: 100;
+                value: State.volume;
+                changed value => { Actions.volume-changed(round(self.value)); }
+            }
+        }
+    }
+}
+
+// ---- Context menu ----------------------------------------------------------------
+component ContextMenuOverlay inherits Rectangle {
+    background: #00000000;
+
+    // Dismiss on outside click; Escape closes first.
+    TouchArea {
+        clicked => { Actions.close-context-menu(); }
+    }
+
+    Rectangle {
+        x: State.context-x;
+        y: State.context-y;
+        width: 230px;
+        height: State.context-items.length * 30px + 16px;
+        border-radius: 8px;
+        background: #171917;
+        border-width: 1px;
+        border-color: #ffffff14;
+        clip: true;
+
+        ListView {
+            y: 8px;
+            height: parent.height - 16px;
+            for item[index] in State.context-items : Rectangle {
+                height: 30px;
+                if item.separator : Rectangle {
+                    height: 1px;
+                    y: 14px;
+                    background: #ffffff14;
+                }
+                if !item.separator : TouchArea {
+                    clicked => { Actions.context-action(index); }
+                }
+                if !item.separator : Text {
+                    text: item.label;
+                    color: item.danger ? #ff5b74 : (item.enabled ? #f2f4f1 : #565b55);
+                    font-size: 12px;
+                    x: 14px;
+                    width: parent.width - 28px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// ---- Toast (notice) ----------------------------------------------------------------
+component NoticeOverlay inherits Rectangle {
+    background: #00000000;
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 118px;
+        width: min(parent.width - 40px, 560px);
+        height: 46px;
+        border-radius: 8px;
+        background: #171917;
+        border-width: 1px;
+        border-color: State.notice-severity == "Error" ? #ff5b7466
+            : (State.notice-severity == "Warning" ? #ffb04a55
+            : (State.notice-severity == "Success" ? State.accent : #ffffff14));
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 10px;
+            spacing: 10px;
+            Text {
+                text: State.notice-message;
+                color: #f2f4f1;
+                font-size: 12px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IcBtn {
+                icon: @image-url("../assets/icons/close.svg");
+                icon-size: 12px;
+                tint: #717970;
+                width: 26px;
+                height: 26px;
+                y: 10px;
+                clicked => { Actions.close-notice(); }
+            }
+        }
+    }
+}
+
+
+
+// ---- Modal shared bits ------------------------------------------------------------
+component ModalField inherits Rectangle {
+    in property <string> label;
+    in property <string> text;
+    in property <length> field-width: 0px;
+    callback changed(string);
+    height: 52px;
+    width: root.field-width;
+
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: #717970;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        LineEdit {
+            height: 30px;
+            text: root.text;
+            edited(value) => { root.changed(value); }
+        }
+    }
+}
+
+component ModalFooter inherits Rectangle {
+    in property <string> note: "";
+    height: 52px;
+
+    // The note fills the row; action buttons are added by the using modal.
+    Text {
+        text: root.note;
+        color: #717970;
+        font-size: 9px;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+        x: 18px;
+        width: parent.width - 36px;
+        y: 0px;
+        height: parent.height;
+    }
+}
+
+// 1. Tag editor
+component TagsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            ModalField { horizontal-stretch: 1; label: "Title"; text: State.tags-title; changed(v) => { State.tags-title = v; } }
+            ModalField { horizontal-stretch: 1; label: "Artist"; text: State.tags-artist; changed(v) => { State.tags-artist = v; } }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            ModalField { horizontal-stretch: 1; label: "Album"; text: State.tags-album; changed(v) => { State.tags-album = v; } }
+            ModalField { horizontal-stretch: 1; label: "Album artist"; text: State.tags-album-artist; changed(v) => { State.tags-album-artist = v; } }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            ModalField { horizontal-stretch: 1; label: "Genre"; text: State.tags-genre; changed(v) => { State.tags-genre = v; } }
+            ModalField { horizontal-stretch: 1; label: "Year"; text: State.tags-year; changed(v) => { State.tags-year = v; } }
+            ModalField { horizontal-stretch: 1; label: "Track number"; text: State.tags-track; changed(v) => { State.tags-track = v; } }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: State.tags-has-artwork ? "Replace artwork…" : "Add artwork…";
+                clicked => { Actions.pick-artwork(); }
+            }
+            Text {
+                text: State.tags-artwork-name;
+                color: #a0a79f;
+                font-size: 10px;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
+
+        SectionTitle { text: "Additional format-specific fields"; }
+        ScrollView {
+            height: 110px;
+            VerticalLayout {
+                spacing: 6px;
+                for field[index] in State.tags-custom : HorizontalLayout {
+                    spacing: 8px;
+                    height: 30px;
+                    LineEdit {
+                        width: 140px;
+                        height: 26px;
+                        text: field.key;
+                        edited(v) => { Actions.tags-custom-key-changed(index, v); }
+                    }
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        height: 26px;
+                        text: field.value;
+                        edited(v) => { Actions.tags-custom-value-changed(index, v); }
+                    }
+                    IcBtn {
+                        icon: @image-url("../assets/icons/close.svg");
+                        icon-size: 11px;
+                        width: 24px;
+                        height: 24px;
+                        tint: #717970;
+                        hover-tint: #ff5b74;
+                        clicked => { Actions.tags-remove-custom(index); }
+                    }
+                }
+                TextBtn {
+                    label: "Add field…";
+                    width: 120px;
+                    height: 28px;
+                    clicked => { Actions.tags-add-custom-field("FIELD", ""); }
+                }
+            }
+        }
+
+        SectionTitle { text: "Additional standard fields"; }
+        ScrollView {
+            height: 100px;
+            VerticalLayout {
+                spacing: 6px;
+                for field[index] in State.tags-additional : HorizontalLayout {
+                    spacing: 8px;
+                    height: 30px;
+                    Text {
+                        text: field.key;
+                        color: #a0a79f;
+                        font-size: 10px;
+                        width: 140px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        height: 26px;
+                        text: field.value;
+                        edited(v) => { Actions.tags-field-changed(index, v); }
+                    }
+                }
+            }
+        }
+
+        ModalFooter {
+            note: State.tags-format-note;
+            // The footer doubles as the action row: swap Cancel for Save.
+            TextBtn {
+                label: "Cancel";
+                y: 9px;
+                x: parent.width - self.width - 140px;
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "Save tags";
+                primary: true;
+                width: 110px;
+                y: 9px;
+                x: parent.width - self.width - 18px;
+                clicked => { Actions.save-tags(); }
+            }
+        }
+    }
+}
+
+// 2. Track details
+component DetailsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 12px;
+                SectionTitle { text: "File details"; }
+                for row in State.detail-rows : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: #717970;
+                        font-size: 11px;
+                        width: 120px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        color: #cdd2cc;
+                        font-size: 11px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+                if State.detail-additional.length > 0 : SectionTitle { text: "Additional standard tags"; }
+                for row in State.detail-additional : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: #717970;
+                        font-size: 11px;
+                        width: 120px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        color: #cdd2cc;
+                        font-size: 11px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+                if State.detail-custom.length > 0 : SectionTitle { text: "Custom tags"; }
+                for row in State.detail-custom : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: #717970;
+                        font-size: 11px;
+                        width: 120px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        color: #cdd2cc;
+                        font-size: 11px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+                if State.detail-backups.length > 0 : SectionTitle { text: "Recent tag backups"; }
+                for backup in State.detail-backups : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: backup.label;
+                        color: #a0a79f;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    TextBtn {
+                        label: "Restore";
+                        height: 26px;
+                        clicked => { Actions.confirm-restore-backup(backup.label); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 3. Find lyrics
+component FindLyricsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ModalField { label: "Title"; text: State.find-lyrics-title; changed(v) => { State.find-lyrics-title = v; } }
+        ModalField { label: "Artist"; text: State.find-lyrics-artist; changed(v) => { State.find-lyrics-artist = v; } }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Search";
+                primary: true;
+                clicked => { Actions.find-lyrics(); }
+            }
+            if State.lyrics-searching : Text {
+                text: "Searching LRCLIB…";
+                color: #a0a79f;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        if State.lyrics-search-status != "" : Text {
+            text: State.lyrics-search-status;
+            color: State.lyrics-searching ? #a0a79f : #ffb04a;
+            font-size: 11px;
             overflow: elide;
         }
 
-        // Duration (width 64px, right aligned)
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                for result in State.lyrics-results : Rectangle {
+                    height: 54px;
+                    border-radius: 6px;
+                    background: result-area.has-hover ? #131614 : transparent;
+                    result-area := TouchArea {
+                        clicked => { Actions.use-lyric-result(result.timed ? result.synced-id : result.plain-id, result.timed); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: result.title;
+                                color: #f2f4f1;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: result.artist;
+                                color: #a0a79f;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                        }
+                        Rectangle {
+                            width: 70px;
+                            height: 22px;
+                            border-radius: 11px;
+                            background: result.timed ? #ffffff14 : #ffffff08;
+                            Text {
+                                text: result.badge;
+                                color: result.timed ? State.accent : #a0a79f;
+                                font-size: 9px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 4. Edit lyrics
+component EditLyricsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
         Text {
-            width: 64px;
-            text: root.track.duration;
-            color: #a0a79f;
-            font-size: 12px;
-            vertical-alignment: center;
-            horizontal-alignment: right;
+            text: State.edit-lyrics-source-label;
+            color: #717970;
+            font-size: 10px;
         }
 
-        // Favorite Heart Button
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Stamp position";
+                clicked => { Actions.stamp-lyric-position(); }
+            }
+            ModalField {
+                label: "Offset (ms)";
+                text: State.edit-lyrics-offset;
+                changed(v) => { State.edit-lyrics-offset = v; }
+                field-width: 120px;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Switch {
+                    checked: State.edit-lyrics-sidecar;
+                    toggled => { State.edit-lyrics-sidecar = self.checked; }
+                }
+                Text {
+                    text: "Sidecar file";
+                    color: #717970;
+                    font-size: 9px;
+                }
+            }
+        }
+
         Rectangle {
-            width: 40px;
-            fav_area := TouchArea {
-                clicked => { root.toggle_favorite(); }
+            height: 240px;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #ffffff14;
+            background: #131614;
+            TextEdit {
+                width: parent.width;
+                height: parent.height;
+                text <=> State.edit-lyrics-text;
+                font-size: 12px;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            TextBtn {
+                label: "Remove";
+                danger: true;
+                clicked => { Actions.remove-lyrics(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            TextBtn {
+                label: "Save";
+                primary: true;
+                clicked => { Actions.save-lyrics-modal(); }
+            }
+        }
+    }
+}
+
+// 6. Library folders
+component FoldersModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                for rootEntry in State.folder-roots : Rectangle {
+                    height: 52px;
+                    border-radius: 6px;
+                    background: #131614;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        Image {
+                            source: @image-url("../assets/icons/folder.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: State.accent;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: rootEntry.path;
+                                color: #f2f4f1;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: rootEntry.is-available ? "Available" : "Unavailable — reconnect this drive.";
+                                color: rootEntry.is-available ? #717970 : #ffb04a;
+                                font-size: 9px;
+                            }
+                        }
+                        TextBtn {
+                            label: "Remove";
+                            danger: true;
+                            height: 28px;
+                            clicked => { Actions.confirm-remove-root(rootEntry.path); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Add folder…";
+                clicked => { Actions.pick-library-root(); }
+            }
+            TextBtn {
+                label: "Rescan library";
+                primary: true;
+                clicked => { Actions.scan-library(); }
+            }
+        }
+    }
+}
+
+// 7. Scan exclusions
+component ExclusionsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: "Audio files are indexed for playback. Video files are opened in their own window when supported.";
+            color: #a0a79f;
+            font-size: 10px;
+            wrap: word-wrap;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 4px;
+                for ext in State.exclusion-extensions : Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: ext.extension;
+                            color: #f2f4f1;
+                            font-size: 11px;
+                            width: 70px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: ext.enabled ? "· included in scans" : "· excluded from scans";
+                            color: ext.enabled ? State.accent : #717970;
+                            font-size: 10px;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+                        Switch {
+                            checked: ext.enabled;
+                            toggled => { Actions.set-extension-enabled(ext.extension, self.checked); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            LineEdit {
+                width: 130px;
+                height: 30px;
+                placeholder-text: ".mkv";
+                text <=> State.exclusion-new-extension;
+            }
+            ComboBox {
+                width: 110px;
+                model: ["Audio", "Video"];
+                current-value: State.exclusion-new-kind;
+                selected(value) => { State.exclusion-new-kind = value; }
+            }
+            TextBtn {
+                label: "Add and enable";
+                clicked => { Actions.add-extension(); }
+            }
+        }
+
+        SectionTitle { text: "Ignored folders"; }
+        ScrollView {
+            height: 110px;
+            VerticalLayout {
+                spacing: 6px;
+                for dir in State.ignored-directories : HorizontalLayout {
+                    spacing: 10px;
+                    height: 28px;
+                    Text {
+                        text: dir;
+                        color: #a0a79f;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    IcBtn {
+                        icon: @image-url("../assets/icons/close.svg");
+                        icon-size: 11px;
+                        width: 24px;
+                        height: 24px;
+                        tint: #717970;
+                        hover-tint: #ff5b74;
+                        clicked => { Actions.remove-ignored-directory(dir); }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Add ignored folder…";
+                clicked => { Actions.pick-ignored-directory(); }
+            }
+        }
+    }
+}
+
+// 8. Playlist dialogs
+component AddToPlaylistModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                for name in State.playlist-names : TouchArea {
+                    height: 34px;
+                    clicked => { Actions.add-track-to-playlist(State.add-to-playlist-id, name); }
+                    Text {
+                        text: name;
+                        color: #f2f4f1;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "New playlist…";
+                clicked => { Actions.open-modal("new-playlist"); }
+            }
+        }
+    }
+}
+
+component NameModal inherits Rectangle {
+    in property <string> placeholder: "";
+    in property <string> action: "OK";
+    callback submit(string);
+
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        LineEdit {
+            height: 34px;
+            placeholder-text: root.placeholder;
+            text <=> State.modal-text;
+            accepted(text) => { root.submit(text); }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: root.action;
+                primary: true;
+                clicked => { root.submit(State.modal-text); }
+            }
+        }
+    }
+}
+
+// 10. Confirmations
+component ConfirmModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: State.confirm-message;
+            color: #f2f4f1;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        if State.confirm-has-choices : ComboBox {
+            width: 100%;
+            model: State.confirm-choices;
+            current-value: State.confirm-choice;
+            selected(value) => { State.confirm-choice = value; }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "Confirm";
+                danger: State.confirm-danger;
+                clicked => { Actions.confirm-action(); }
+            }
+        }
+    }
+}
+
+// 9. Rating
+component RatingModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Chip {
+                label: "Unrated";
+                active: State.rate-value == 0;
+                clicked => { Actions.rate-track(0); }
+            }
+            for star in 5 : Chip {
+                label: "\{star} ★";
+                active: State.rate-value >= star;
+                clicked => { Actions.rate-track(star); }
+            }
+        }
+    }
+}
+
+// 12. Duplicate locations
+component LocationsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                for location in State.duplicate-locations : HorizontalLayout {
+                    spacing: 10px;
+                    height: 32px;
+                    Text {
+                        text: location;
+                        color: #cdd2cc;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    TextBtn {
+                        label: "Show in folder";
+                        height: 26px;
+                        clicked => { Actions.open-file-location-at(location); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Reset dialog with three checkbox groups.
+component ResetModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        CheckBox {
+            text: "Reset view and appearance settings";
+            checked <=> State.reset-appearance;
+        }
+        CheckBox {
+            text: "Reset playback and equalizer settings";
+            checked <=> State.reset-playback;
+        }
+        CheckBox {
+            text: "Reset library roots and exclusions";
+            checked <=> State.reset-library;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Reset";
+                danger: true;
+                clicked => {
+                    Actions.reset-settings(
+                        (State.reset-appearance ? "appearance," : "")
+                        + (State.reset-playback ? "playback," : "")
+                        + (State.reset-library ? "library" : "")
+                    );
+                }
+            }
+        }
+    }
+}
+
+// 11. Update available
+component UpdateModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: "Music Player \{State.update-tag} is available";
+            color: #f7f8f6;
+            font-size: 14px;
+            font-weight: 750;
+        }
+        Text {
+            text: "You can view the release notes on GitHub. The download always opens in your browser.";
+            color: #a0a79f;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Later";
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "View release";
+                primary: true;
+                clicked => { Actions.open-release(); }
+            }
+        }
+    }
+}
+
+// ---- Modal host -----------------------------------------------------------------------
+component ModalHost inherits Rectangle {
+    background: #00000059;
+
+    // Body per modal kind, sized by the header.
+    in property <length> modal-width: 460px;
+    in property <length> modal-height: 420px;
+
+    TouchArea {
+        clicked => { Actions.close-modal(); }
+    }
+
+    Rectangle {
+        width: root.modal-width;
+        height: root.modal-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 12px;
+        background: #0e100f;
+        border-width: 1px;
+        border-color: #ffffff14;
+        clip: true;
+
+        VerticalLayout {
+            // Header
+            HorizontalLayout {
+                height: 48px;
+                padding-left: 18px;
+                padding-right: 12px;
+                Text {
+                    text: State.modal-title;
+                    color: #f7f8f6;
+                    font-size: 14px;
+                    font-weight: 750;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 13px;
+                    tint: #717970;
+                    clicked => { Actions.close-modal(); }
+                }
             }
 
-            if root.track.is_favorite : Image {
-                source: @image-url("../assets/icons/heart-filled.svg");
-                width: 16px;
-                height: 16px;
-                y: (parent.height - self.height) / 2;
-                x: (parent.width - self.width) / 2;
-                colorize: root.accent;
-                animate colorize { duration: 150ms; }
-            }
-
-            if !root.track.is_favorite && (area.has-hover || fav_area.has-hover) : Image {
-                source: @image-url("../assets/icons/heart.svg");
-                width: 16px;
-                height: 16px;
-                y: (parent.height - self.height) / 2;
-                x: (parent.width - self.width) / 2;
-                colorize: fav_area.has-hover ? #f7f8f6 : #717970;
+            // Body
+            Rectangle {
+                vertical-stretch: 1;
+                if State.modal == "tags" : TagsModal { }
+                if State.modal == "details" : DetailsModal { }
+                if State.modal == "find-lyrics" : FindLyricsModal { }
+                if State.modal == "edit-lyrics" : EditLyricsModal { }
+                if State.modal == "folders" : FoldersModal { }
+                if State.modal == "exclusions" : ExclusionsModal { }
+                if State.modal == "add-to-playlist" : AddToPlaylistModal { }
+                if State.modal == "new-playlist" : NameModal { placeholder: "Playlist name"; action: "Create"; submit(text) => { Actions.create-playlist(text); } }
+                if State.modal == "rename-playlist" : NameModal { placeholder: "New name"; action: "Rename"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
+                if State.modal == "save-preset" : NameModal { placeholder: "Preset name"; action: "Save"; submit(text) => { Actions.save-eq-preset(text); } }
+                if State.modal == "confirm" : ConfirmModal { }
+                if State.modal == "rating" : RatingModal { }
+                if State.modal == "duplicate-locations" : LocationsModal { }
+                if State.modal == "reset" : ResetModal { }
+                if State.modal == "update" : UpdateModal { }
             }
         }
     }
 }
 
 export component AppWindow inherits Window {
-    title: "Music Player";
-    icon: @image-url("../assets/icons/music.svg");
+    title: State.current-title == "" ? "Music Player" : "\{State.current-title} · \{State.current-artist} — Music Player";
     min-width: 980px;
     min-height: 640px;
-    preferred-width: 1180px;
-    preferred-height: 760px;
+    preferred-width: 1280px;
+    preferred-height: 800px;
     background: #070807;
 
-    in-out property <[TrackItem]> tracks: [];
-    in-out property <[LyricLineItem]> lyrics_items: [];
-    in-out property <bool> immersive_open: false;
-    in-out property <bool> queue_drawer_open: false;
-    in-out property <string> search_query: "";
-    in-out property <int> current_track_id: 1;
-    in-out property <string> current_title: "No Role Modelz";
-    in-out property <string> current_artist: "J. Cole";
-    in-out property <image> current_cover;
-    in-out property <color> theme_accent: #38bdf8;
-    in-out property <bool> is_playing: true;
-    in-out property <float> progress: 0.35;
-    in-out property <string> current_time: "1:42";
-    in-out property <string> total_time: "4:53";
-    in-out property <float> volume: 0.75;
-    in-out property <string> active_nav: "Songs";
-
-    callback track_selected(int);
-    callback play_pause_clicked();
-    callback next_clicked();
-    callback previous_clicked();
-    callback volume_changed(float);
-    callback favorite_toggled(int);
-    callback seek_requested(float);
-    callback nav_clicked(string);
-    callback search_query_changed(string);
-    callback queue_toggle_clicked();
-    callback lyrics_toggle_clicked();
-    callback immersive_toggle_clicked();
-    callback immersive_close_clicked();
+    init => { Actions.ui-ready(); }
 
     VerticalLayout {
-        padding: 0;
-        spacing: 0;
-
-        // Top Area (Sidebar + Main Content)
         HorizontalLayout {
-            horizontal-stretch: 1;
-
-            // ================= SIDEBAR (232px) =================
-            Rectangle {
-                width: 232px;
-                background: #090a09;
-
-                // Right Border Line
-                Rectangle {
-                    x: parent.width - 1px;
-                    width: 1px;
-                    height: parent.height;
-                    background: #ffffff13;
-                }
-
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 4px;
-
-                    // Brand (height: 48px, padding: 0 11px, margin-bottom: 8px)
-                    Rectangle {
-                        height: 48px;
-
-                        VerticalLayout {
-                            padding-left: 11px;
-                            padding-right: 11px;
-                            alignment: center;
-                            spacing: 1px;
-
-                            Text {
-                                text: "Music Player";
-                                color: #f7f8f6;
-                                font-size: 18px;
-                                font-weight: 700;
-                                letter-spacing: -0.4px;
-                            }
-
-                            Text {
-                                text: "LOCAL LIBRARY";
-                                color: #717970;
-                                font-size: 10px;
-                                font-weight: 700;
-                                letter-spacing: 0.5px;
-                            }
-                        }
-                    }
-
-                    // Navigation Viewport
-                    VerticalLayout {
-                        spacing: 2px;
-
-                        // Section: Discover
-                        HorizontalLayout {
-                            padding-top: 9px;
-                            padding-bottom: 7px;
-                            padding-left: 12px;
-                            Text {
-                                text: "DISCOVER";
-                                color: #717970;
-                                font-size: 10px;
-                                font-weight: 700;
-                                letter-spacing: 1.1px;
-                            }
-                        }
-                        NavItem {
-                            label: "Home";
-                            icon_source: @image-url("../assets/icons/home.svg");
-                            active: root.active_nav == "Home";
-                            clicked => { root.active_nav = "Home"; root.nav_clicked("Home"); }
-                        }
-                        NavItem {
-                            label: "Search";
-                            icon_source: @image-url("../assets/icons/search.svg");
-                            badge: "Ctrl K";
-                            active: root.active_nav == "Search";
-                            clicked => { root.active_nav = "Search"; root.nav_clicked("Search"); }
-                        }
-                        NavItem {
-                            label: "Favorites";
-                            icon_source: @image-url("../assets/icons/heart.svg");
-                            active: root.active_nav == "Favorites";
-                            clicked => { root.active_nav = "Favorites"; root.nav_clicked("Favorites"); }
-                        }
-
-                        // Section: Your Library
-                        HorizontalLayout {
-                            padding-top: 14px;
-                            padding-bottom: 7px;
-                            padding-left: 12px;
-                            Text {
-                                text: "YOUR LIBRARY";
-                                color: #717970;
-                                font-size: 10px;
-                                font-weight: 700;
-                                letter-spacing: 1.1px;
-                            }
-                        }
-                        NavItem {
-                            label: "Songs";
-                            icon_source: @image-url("../assets/icons/music.svg");
-                            active: root.active_nav == "Songs";
-                            clicked => { root.active_nav = "Songs"; root.nav_clicked("Songs"); }
-                        }
-                        NavItem {
-                            label: "Albums";
-                            icon_source: @image-url("../assets/icons/disc.svg");
-                            active: root.active_nav == "Albums";
-                            clicked => { root.active_nav = "Albums"; root.nav_clicked("Albums"); }
-                        }
-                        NavItem {
-                            label: "Artists";
-                            icon_source: @image-url("../assets/icons/users.svg");
-                            active: root.active_nav == "Artists";
-                            clicked => { root.active_nav = "Artists"; root.nav_clicked("Artists"); }
-                        }
-                        NavItem {
-                            label: "Genres";
-                            icon_source: @image-url("../assets/icons/tag.svg");
-                            active: root.active_nav == "Genres";
-                            clicked => { root.active_nav = "Genres"; root.nav_clicked("Genres"); }
-                        }
-                        NavItem {
-                            label: "Recently Added";
-                            icon_source: @image-url("../assets/icons/spark.svg");
-                            active: root.active_nav == "Recently Added";
-                            clicked => { root.active_nav = "Recently Added"; root.nav_clicked("Recently Added"); }
-                        }
-
-                        // Section: Manage
-                        HorizontalLayout {
-                            padding-top: 14px;
-                            padding-bottom: 7px;
-                            padding-left: 12px;
-                            Text {
-                                text: "MANAGE";
-                                color: #717970;
-                                font-size: 10px;
-                                font-weight: 700;
-                                letter-spacing: 1.1px;
-                            }
-                        }
-                        NavItem {
-                            label: "Playlists";
-                            icon_source: @image-url("../assets/icons/list.svg");
-                            active: root.active_nav == "Playlists";
-                            clicked => { root.active_nav = "Playlists"; root.nav_clicked("Playlists"); }
-                        }
-                        NavItem {
-                            label: "Folders";
-                            icon_source: @image-url("../assets/icons/folder.svg");
-                            active: root.active_nav == "Folders";
-                            clicked => { root.active_nav = "Folders"; root.nav_clicked("Folders"); }
-                        }
-                    }
-
-                    Rectangle { vertical-stretch: 1; }
-                }
-            }
-
-            // ================= MAIN VIEW =================
-            Rectangle {
-                horizontal-stretch: 1;
-                background: #070807;
-
-                VerticalLayout {
-                    padding: 0;
-                    spacing: 0;
-
-                    // Topbar (height: 56px, background: #090a09, border-bottom: 1px)
-                    Rectangle {
-                        height: 56px;
-                        background: #090a09;
-
-                        Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: #ffffff13;
-                        }
-
-                        HorizontalLayout {
-                            padding-left: 16px;
-                            padding-right: 16px;
-                            spacing: 9px;
-                            alignment: center;
-
-                            IconButton {
-                                icon_source: @image-url("../assets/icons/panel-left.svg");
-                            }
-                            IconButton {
-                                icon_source: @image-url("../assets/icons/chevron-left.svg");
-                            }
-                            IconButton {
-                                icon_source: @image-url("../assets/icons/chevron-right.svg");
-                            }
-
-                            // Search Box (max-width: 520px, height: 38px, border-radius: 999px, background: #242724)
-                            Rectangle {
-                                width: 440px;
-                                height: 38px;
-                                border-radius: 19px;
-                                background: #242724;
-
-                                HorizontalLayout {
-                                    padding-left: 13px;
-                                    padding-right: 13px;
-                                    spacing: 9px;
-
-                                    Image {
-                                        source: @image-url("../assets/icons/search.svg");
-                                        width: 16px;
-                                        height: 16px;
-                                        y: (parent.height - self.height) / 2;
-                                        colorize: #a0a79f;
-                                    }
-
-                                    search_input := TextInput {
-                                        text <=> root.search_query;
-                                        color: #f7f8f6;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
-                                        edited => { root.search_query_changed(self.text); }
-                                    }
-
-                                    if root.search_query == "" : Text {
-                                        text: "Ctrl K";
-                                        color: #717970;
-                                        font-size: 9px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-
-                            // Top Spacer
-                            Rectangle { horizontal-stretch: 1; }
-
-                            IconButton {
-                                icon_source: @image-url("../assets/icons/queue.svg");
-                                icon_color: root.queue_drawer_open ? root.theme_accent : #a0a79f;
-                                clicked => { root.queue_drawer_open = !root.queue_drawer_open; root.queue_toggle_clicked(); }
-                            }
-                            IconButton {
-                                icon_source: @image-url("../assets/icons/more.svg");
-                            }
-                        }
-                    }
-
-                    // Content Area (padding: 20px 24px 32px)
-                    VerticalLayout {
-                        padding-left: 24px;
-                        padding-right: 24px;
-                        padding-top: 20px;
-                        padding-bottom: 12px;
-                        spacing: 16px;
-                        vertical-stretch: 1;
-
-                        // Page Head
-                        HorizontalLayout {
-                            alignment: space-between;
-
-                            VerticalLayout {
-                                spacing: 5px;
-                                Text {
-                                    text: "Songs";
-                                    color: #f7f8f6;
-                                    font-size: 30px;
-                                    font-weight: 700;
-                                    letter-spacing: -0.65px;
-                                }
-                                Text {
-                                    text: "2,480 tracks · 142 hours";
-                                    color: #a0a79f;
-                                    font-size: 12px;
-                                }
-                            }
-
-                            // Action buttons: Play All (primary) & Shuffle
-                            HorizontalLayout {
-                                spacing: 8px;
-                                alignment: end;
-
-                                // Play All (action.primary: background #f4f6f3, color #0a0b0a)
-                                Rectangle {
-                                    width: 104px;
-                                    height: 34px;
-                                    border-radius: 17px;
-                                    background: play_all_touch.pressed ? #e0e3df : (play_all_touch.has-hover ? #ffffff : #f4f6f3);
-
-                                    play_all_touch := TouchArea {
-                                        clicked => { root.play_pause_clicked(); }
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        alignment: center;
-
-                                        Image {
-                                            source: @image-url("../assets/icons/play.svg");
-                                            width: 14px;
-                                            height: 14px;
-                                            y: (parent.height - self.height) / 2;
-                                            colorize: #0a0b0a;
-                                        }
-
-                                        Text {
-                                            text: "Play All";
-                                            color: #0a0b0a;
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            vertical-alignment: center;
-                                        }
-                                    }
-                                }
-
-                                // Shuffle (action: background #242724, color #ffffff)
-                                Rectangle {
-                                    width: 96px;
-                                    height: 34px;
-                                    border-radius: 17px;
-                                    background: shuf_touch.pressed ? #3a3f3a : (shuf_touch.has-hover ? #303430 : #242724);
-
-                                    shuf_touch := TouchArea {}
-
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        alignment: center;
-
-                                        Image {
-                                            source: @image-url("../assets/icons/shuffle.svg");
-                                            width: 14px;
-                                            height: 14px;
-                                            y: (parent.height - self.height) / 2;
-                                            colorize: #ffffff;
-                                        }
-
-                                        Text {
-                                            text: "Shuffle";
-                                            color: #ffffff;
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            vertical-alignment: center;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Table Column Headers (height: 37px)
-                        Rectangle {
-                            height: 37px;
-
-                            Rectangle {
-                                y: parent.height - 1px;
-                                height: 1px;
-                                background: #ffffff13;
-                            }
-
-                            HorizontalLayout {
-                                padding-left: 12px;
-                                padding-right: 12px;
-                                spacing: 12px;
-
-                                Text {
-                                    width: 44px;
-                                    text: "#";
-                                    color: #717970;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.8px;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: center;
-                                }
-
-                                Rectangle { width: 38px; }
-
-                                Text {
-                                    text: "TITLE";
-                                    color: #717970;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.8px;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 3;
-                                }
-
-                                Text {
-                                    text: "ALBUM";
-                                    color: #717970;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.8px;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 2;
-                                }
-
-                                Text {
-                                    width: 64px;
-                                    text: "TIME";
-                                    color: #717970;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.8px;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
-                                }
-
-                                Rectangle { width: 40px; }
-                            }
-                        }
-
-                        // Virtualized Track List
-                        ListView {
-                            vertical-stretch: 1;
-
-                            for track[i] in root.tracks: TrackRow {
-                                track: track;
-                                index: i + 1;
-                                is_playing: track.id == root.current_track_id;
-                                accent: root.theme_accent;
-                                play_requested => {
-                                    root.track_selected(track.id);
-                                }
-                                toggle_favorite => {
-                                    root.favorite_toggled(track.id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ================= RIGHT DRAWER (Now Playing / Queue) =================
-            if root.queue_drawer_open : Rectangle {
-                width: 280px;
-                background: #090a09;
-
-                // Left Border Line
-                Rectangle {
-                    x: 0px;
-                    width: 1px;
-                    height: parent.height;
-                    background: #ffffff13;
-                }
-
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 12px;
-
-                    // Header
-                    HorizontalLayout {
-                        alignment: space-between;
-                        Text {
-                            text: "Playback Queue";
-                            color: #f7f8f6;
-                            font-size: 15px;
-                            font-weight: 700;
-                            vertical-alignment: center;
-                        }
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/close.svg");
-                            icon_size: 14px;
-                            clicked => { root.queue_drawer_open = false; }
-                        }
-                    }
-
-                    // Now Playing Card
-                    Rectangle {
-                        height: 64px;
-                        border-radius: 8px;
-                        background: #141714;
-
-                        HorizontalLayout {
-                            padding: 8px;
-                            spacing: 10px;
-                            alignment: center;
-
-                            Rectangle {
-                                width: 48px;
-                                height: 48px;
-                                border-radius: 6px;
-                                clip: true;
-                                background: #111411;
-
-                                Image {
-                                    source: root.current_cover;
-                                    width: 100%;
-                                    height: 100%;
-                                    image-fit: cover;
-                                }
-                            }
-
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 2px;
-                                horizontal-stretch: 1;
-
-                                Text {
-                                    text: root.current_title;
-                                    color: #f7f8f6;
-                                    font-size: 12px;
-                                    font-weight: 650;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: root.current_artist;
-                                    color: #a0a79f;
-                                    font-size: 10px;
-                                    overflow: elide;
-                                }
-                            }
-                        }
-                    }
-
-                    // Up Next Section Header
-                    Text {
-                        text: "UP NEXT";
-                        color: #717970;
-                        font-size: 10px;
-                        font-weight: 700;
-                        letter-spacing: 1.0px;
-                    }
-
-                    // Queue List
-                    ListView {
-                        vertical-stretch: 1;
-                        for track in root.tracks: Rectangle {
-                            height: 44px;
-                            border-radius: 6px;
-                            background: q_area.has-hover ? #ffffff0d : transparent;
-                            q_area := TouchArea {
-                                clicked => { root.track_selected(track.id); }
-                            }
-
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
-                                spacing: 8px;
-                                alignment: center;
-
-                                Rectangle {
-                                    width: 28px;
-                                    height: 28px;
-                                    border-radius: 4px;
-                                    clip: true;
-                                    background: track.badge_bg;
-
-                                    Text {
-                                        text: track.initials;
-                                        color: #f7f8f6;
-                                        font-size: 10px;
-                                        font-weight: 700;
-                                        vertical-alignment: center;
-                                        horizontal-alignment: center;
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 1px;
-                                    horizontal-stretch: 1;
-
-                                    Text {
-                                        text: track.title;
-                                        color: track.id == root.current_track_id ? root.theme_accent : #f2f4f1;
-                                        font-size: 11px;
-                                        font-weight: 600;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        text: track.artist;
-                                        color: #717970;
-                                        font-size: 9px;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                Text {
-                                    text: track.duration;
-                                    color: #717970;
-                                    font-size: 10px;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ================= BOTTOM PLAYER (88px) =================
-        Rectangle {
-            height: 88px;
-            background: #090a09;
-
-            // Top Border Line
-            Rectangle {
-                y: 0px;
-                width: parent.width;
-                height: 1px;
-                background: #ffffff13;
-            }
-
-            HorizontalLayout {
-                padding-left: 15px;
-                padding-right: 15px;
-                spacing: 12px;
-
-                // Left: Now Playing Info (minmax 220px, 1fr)
-                HorizontalLayout {
-                    width: 260px;
-                    spacing: 11px;
-                    alignment: start;
-
-                    // Real Cover Art (56px x 56px, border-radius 6px)
-                    Rectangle {
-                        width: 56px;
-                        height: 56px;
-                        border-radius: 6px;
-                        clip: true;
-                        y: (parent.height - self.height) / 2;
-                        background: #111411;
-
-                        Image {
-                            source: root.current_cover;
-                            width: 100%;
-                            height: 100%;
-                            image-fit: cover;
-                        }
-                    }
-
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 4px;
-                        horizontal-stretch: 1;
-
-                        Text {
-                            text: root.current_title;
-                            color: #f7f8f6;
-                            font-size: 12px;
-                            font-weight: 650;
-                            overflow: elide;
-                        }
-
-                        Text {
-                            text: root.current_artist;
-                            color: #a0a79f;
-                            font-size: 10px;
-                            overflow: elide;
-                        }
-                    }
-
-                    // Heart Button (30px x 30px)
-                    Rectangle {
-                        width: 30px;
-                        height: 30px;
-                        border-radius: 15px;
-                        y: (parent.height - self.height) / 2;
-                        now_fav_area := TouchArea {
-                            clicked => { root.favorite_toggled(root.current_track_id); }
-                        }
-                        background: now_fav_area.has-hover ? #ffffff0f : transparent;
-
-                        Image {
-                            source: @image-url("../assets/icons/heart-filled.svg");
-                            width: 16px;
-                            height: 16px;
-                            y: (parent.height - self.height) / 2;
-                            x: (parent.width - self.width) / 2;
-                            colorize: root.theme_accent;
-                            animate colorize { duration: 150ms; }
-                        }
-                    }
-                }
-
-                // Center: Transport Controls & Scrubber (minmax 360px, 1.35fr)
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    alignment: center;
-                    spacing: 7px;
-
-                    // Transport Buttons
-                    HorizontalLayout {
-                        spacing: 11px;
-                        alignment: center;
-
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/shuffle.svg");
-                            icon_color: #939a93;
-                        }
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/skip-back.svg");
-                            icon_color: #939a93;
-                            clicked => { root.previous_clicked(); }
-                        }
-
-                        // Play/Pause Main Button (.play-main: 36px, background #f4f6f3, icon #0a0b0a)
-                        Rectangle {
-                            width: 36px;
-                            height: 36px;
-                            border-radius: 18px;
-                            background: play_main_touch.pressed ? #e2e5e1 : (play_main_touch.has-hover ? #ffffff : #f4f6f3);
-
-                            animate background { duration: 80ms; }
-
-                            play_main_touch := TouchArea {
-                                clicked => { root.play_pause_clicked(); }
-                            }
-
-                            if root.is_playing : Image {
-                                source: @image-url("../assets/icons/pause.svg");
-                                width: 16px;
-                                height: 16px;
-                                y: (parent.height - self.height) / 2;
-                                x: (parent.width - self.width) / 2;
-                                colorize: #0a0b0a;
-                            }
-
-                            if !root.is_playing : Image {
-                                source: @image-url("../assets/icons/play.svg");
-                                width: 16px;
-                                height: 16px;
-                                y: (parent.height - self.height) / 2;
-                                x: (parent.width - self.width) / 2;
-                                colorize: #0a0b0a;
-                            }
-                        }
-
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/skip-forward.svg");
-                            icon_color: #939a93;
-                            clicked => { root.next_clicked(); }
-                        }
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/repeat.svg");
-                            icon_color: #939a93;
-                        }
-                    }
-
-                    // Scrubber Timeline
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: center;
-
-                        Text {
-                            width: 28px;
-                            text: root.current_time;
-                            color: #747b74;
-                            font-size: 9px;
-                            vertical-alignment: center;
-                            horizontal-alignment: right;
-                        }
-
-                        // Scrubber Range Track (height: 4px, background: #2e332f)
-                        Rectangle {
-                            height: 12px;
-                            horizontal-stretch: 1;
-
-                            timeline_touch := TouchArea {
-                                pointer-event(event) => {
-                                    if (event.kind == PointerEventKind.down) {
-                                        root.seek_requested(clamp(self.mouse-x / self.width, 0.0, 1.0));
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                y: (parent.height - self.height) / 2;
-                                height: 4px;
-                                border-radius: 2px;
-                                background: #2e332f;
-
-                                // Progress fill (default #e2e6e1, hover fills with theme_accent!)
-                                Rectangle {
-                                    x: 0;
-                                    width: parent.width * root.progress;
-                                    height: parent.height;
-                                    border-radius: 2px;
-                                    background: timeline_touch.has-hover ? root.theme_accent : #e2e6e1;
-
-                                    animate background { duration: 100ms; }
-                                }
-                            }
-
-                            // 8px white circle thumb (visible on hover)
-                            if timeline_touch.has-hover : Rectangle {
-                                x: (parent.width * root.progress) - (self.width / 2);
-                                y: (parent.height - self.height) / 2;
-                                width: 8px;
-                                height: 8px;
-                                border-radius: 4px;
-                                background: #ffffff;
-                            }
-                        }
-
-                        Text {
-                            width: 28px;
-                            text: root.total_time;
-                            color: #747b74;
-                            font-size: 9px;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                // Right: Utilities & Volume (minmax 220px, 1fr)
-                HorizontalLayout {
-                    width: 240px;
-                    spacing: 7px;
-                    alignment: end;
-
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/lyrics.svg");
-                        icon_color: root.immersive_open ? root.theme_accent : #939a93;
-                        clicked => { root.immersive_open = !root.immersive_open; root.lyrics_toggle_clicked(); }
-                    }
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/queue.svg");
-                        icon_color: root.queue_drawer_open ? root.theme_accent : #939a93;
-                        clicked => { root.queue_drawer_open = !root.queue_drawer_open; root.queue_toggle_clicked(); }
-                    }
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/equalizer.svg");
-                        icon_color: #939a93;
-                    }
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/expand.svg");
-                        icon_color: #939a93;
-                        clicked => { root.immersive_open = !root.immersive_open; root.immersive_toggle_clicked(); }
-                    }
-
-                    // Volume
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/volume.svg");
-                        icon_color: #939a93;
-                    }
-
-                    // Volume Range Slider (width: 88px, height: 4px)
-                    Rectangle {
-                        width: 88px;
-                        height: 12px;
-                        y: (parent.height - self.height) / 2;
-
-                        vol_area := TouchArea {
-                            pointer-event(event) => {
-                                if (event.kind == PointerEventKind.down) {
-                                    root.volume = clamp(self.mouse-x / self.width, 0.0, 1.0);
-                                    root.volume_changed(root.volume);
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            height: 4px;
-                            border-radius: 2px;
-                            background: #2e332f;
-
-                            Rectangle {
-                                x: 0;
-                                width: parent.width * root.volume;
-                                height: parent.height;
-                                border-radius: 2px;
-                                background: vol_area.has-hover ? root.theme_accent : #e2e6e1;
-                                animate background { duration: 100ms; }
-                            }
-                        }
-
-                        if vol_area.has-hover : Rectangle {
-                            x: (parent.width * root.volume) - (self.width / 2);
-                            y: (parent.height - self.height) / 2;
-                            width: 8px;
-                            height: 8px;
-                            border-radius: 4px;
-                            background: #ffffff;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ================= FULLSCREEN IMMERSIVE PLAYER =================
-    if root.immersive_open : Rectangle {
-        width: 100%;
-        height: 100%;
-        background: #070807;
-
-        VerticalLayout {
-            padding: 32px;
-            spacing: 24px;
-
-            // Topbar
-            HorizontalLayout {
-                alignment: space-between;
-
-                Text {
-                    text: "NOW PLAYING";
-                    color: #717970;
-                    font-size: 12px;
-                    font-weight: 700;
-                    letter-spacing: 1.5px;
-                    vertical-alignment: center;
-                }
-
-                IconButton {
-                    icon_source: @image-url("../assets/icons/close.svg");
-                    icon_size: 18px;
-                    clicked => { root.immersive_open = false; root.immersive_close_clicked(); }
-                }
-            }
-
-            // Main Stage (Artwork on left, Synced Lyrics on right)
-            HorizontalLayout {
-                vertical-stretch: 1;
-                spacing: 48px;
-
-                // Left Column: Big Album Art + Metadata
-                VerticalLayout {
-                    width: 380px;
-                    alignment: center;
-                    spacing: 20px;
-
-                    // Large 340px cover art
-                    Rectangle {
-                        width: 340px;
-                        height: 340px;
-                        border-radius: 16px;
-                        clip: true;
-                        background: #111411;
-
-                        Image {
-                            source: root.current_cover;
-                            width: 100%;
-                            height: 100%;
-                            image-fit: cover;
-                        }
-                    }
-
-                    // Metadata
-                    HorizontalLayout {
-                        width: 340px;
-                        alignment: space-between;
-
-                        VerticalLayout {
-                            spacing: 4px;
-                            horizontal-stretch: 1;
-
-                            Text {
-                                text: root.current_title;
-                                color: #f7f8f6;
-                                font-size: 22px;
-                                font-weight: 700;
-                                overflow: elide;
-                            }
-                            Text {
-                                text: root.current_artist;
-                                color: #a0a79f;
-                                font-size: 14px;
-                                overflow: elide;
-                            }
-                        }
-
-                        IconButton {
-                            icon_source: @image-url("../assets/icons/heart-filled.svg");
-                            icon_color: root.theme_accent;
-                            icon_size: 20px;
-                            clicked => { root.favorite_toggled(root.current_track_id); }
-                        }
-                    }
-                }
-
-                // Right Column: Synced Lyrics View
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 12px;
-
-                    Text {
-                        text: "LYRICS";
-                        color: #717970;
-                        font-size: 11px;
-                        font-weight: 700;
-                        letter-spacing: 1.2px;
-                    }
-
-                    if root.lyrics_items.length == 0 : Rectangle {
-                        vertical-stretch: 1;
-                        Text {
-                            text: "No synchronized lyrics available for this song.";
-                            color: #717970;
-                            font-size: 14px;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                        }
-                    }
-
-                    if root.lyrics_items.length > 0 : ListView {
-                        vertical-stretch: 1;
-
-                        for lyric in root.lyrics_items: Rectangle {
-                            height: lyric.is_active ? 48px : 36px;
-                            animate height { duration: 150ms; }
-
-                            Text {
-                                text: lyric.text;
-                                color: lyric.is_active ? root.theme_accent : #565d55;
-                                font-size: lyric.is_active ? 20px : 15px;
-                                font-weight: lyric.is_active ? 700 : 500;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                animate color { duration: 150ms; }
-                                animate font-size { duration: 150ms; }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Bottom Fullscreen Scrubber & Transport Controls
+            NavRail { }
             VerticalLayout {
-                spacing: 14px;
-                alignment: center;
-
-                // Scrubber
+                TopBar { }
                 HorizontalLayout {
-                    spacing: 12px;
-                    alignment: center;
-
-                    Text {
-                        width: 36px;
-                        text: root.current_time;
-                        color: #717970;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                        horizontal-alignment: right;
-                    }
-
                     Rectangle {
-                        height: 16px;
-                        horizontal-stretch: 1;
-
-                        imm_scrub_touch := TouchArea {
-                            pointer-event(event) => {
-                                if (event.kind == PointerEventKind.down) {
-                                    root.seek_requested(clamp(self.mouse-x / self.width, 0.0, 1.0));
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            height: 6px;
-                            border-radius: 3px;
-                            background: #242724;
-
-                            Rectangle {
-                                x: 0;
-                                width: parent.width * root.progress;
-                                height: parent.height;
-                                border-radius: 3px;
-                                background: root.theme_accent;
-                            }
-                        }
+                        background: #090a09;
+                        ContentArea { }
                     }
-
-                    Text {
-                        width: 36px;
-                        text: root.total_time;
-                        color: #717970;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                    }
-                }
-
-                // Controls
-                HorizontalLayout {
-                    spacing: 24px;
-                    alignment: center;
-
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/skip-back.svg");
-                        icon_size: 22px;
-                        icon_color: #f7f8f6;
-                        clicked => { root.previous_clicked(); }
-                    }
-
-                    Rectangle {
-                        width: 48px;
-                        height: 48px;
-                        border-radius: 24px;
-                        background: #f4f6f3;
-
-                        imm_play_touch := TouchArea {
-                            clicked => { root.play_pause_clicked(); }
-                        }
-
-                        if root.is_playing : Image {
-                            source: @image-url("../assets/icons/pause.svg");
-                            width: 20px;
-                            height: 20px;
-                            y: (parent.height - self.height) / 2;
-                            x: (parent.width - self.width) / 2;
-                            colorize: #0a0b0a;
-                        }
-
-                        if !root.is_playing : Image {
-                            source: @image-url("../assets/icons/play.svg");
-                            width: 20px;
-                            height: 20px;
-                            y: (parent.height - self.height) / 2;
-                            x: (parent.width - self.width) / 2;
-                            colorize: #0a0b0a;
-                        }
-                    }
-
-                    IconButton {
-                        icon_source: @image-url("../assets/icons/skip-forward.svg");
-                        icon_size: 22px;
-                        icon_color: #f7f8f6;
-                        clicked => { root.next_clicked(); }
-                    }
+                    RightPanel { }
                 }
             }
         }
+        PlayerBar { }
     }
+
+    // Immersive drawer overlay: re-parents the content area with Queue/Audio.
+    if State.immersive-open : Rectangle {
+        x: State.navigation-width * 1px;
+        y: 56px;
+        width: parent.width - State.navigation-width * 1px - (State.right-panel-open ? State.right-panel-width * 1px : 0px);
+        height: parent.height - 56px - 88px;
+        background: #090a09;
+        VerticalLayout {
+            HorizontalLayout {
+                height: 44px;
+                padding-left: 20px;
+                padding-right: 12px;
+                Text {
+                    text: State.immersive-kind;
+                    color: #f7f8f6;
+                    font-size: 15px;
+                    font-weight: 750;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 13px;
+                    tint: #717970;
+                    clicked => { Actions.close-immersive(); }
+                }
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                if State.immersive-kind == "Queue" : QueueView { }
+                if State.immersive-kind == "Audio" : AudioView { }
+            }
+        }
+    }
+
+    if State.context-visible : ContextMenuOverlay { width: 100%; height: 100%; }
+    if State.notice-visible : NoticeOverlay { width: 100%; height: 100%; }
+    if State.modal != "" : ModalHost { width: 100%; height: 100%; }
 }

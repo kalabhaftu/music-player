@@ -1,0 +1,710 @@
+// Shared view widgets: icons, track rows and tables, card grids, heroes.
+
+import { State, Actions } from "state.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
+import { ListView } from "std-widgets.slint";
+
+// Gradient classes c1..c10 from the original components.css.
+export global Palette {
+    public pure function ga(index: int) -> color {
+        if (index <= 1) { return #1b1d26; }
+        if (index == 2) { return #162124; }
+        if (index == 3) { return #251b1d; }
+        if (index == 4) { return #172019; }
+        if (index == 5) { return #231f18; }
+        if (index == 6) { return #1b1b20; }
+        if (index == 7) { return #1d1d21; }
+        if (index == 8) { return #251726; }
+        if (index == 9) { return #112324; }
+        return #272116;
+    }
+    public pure function gb(index: int) -> color {
+        if (index <= 1) { return #3b4358; }
+        if (index == 2) { return #30494e; }
+        if (index == 3) { return #4e373c; }
+        if (index == 4) { return #364a3b; }
+        if (index == 5) { return #4b4432; }
+        if (index == 6) { return #3d3d48; }
+        if (index == 7) { return #484954; }
+        if (index == 8) { return #5f3263; }
+        if (index == 9) { return #29595d; }
+        return #665536;
+    }
+    // Row thumbnail badge uses the middle stop.
+    public pure function badge(index: int) -> color {
+        if (index <= 1) { return #2a2f3f; }
+        if (index == 2) { return #213337; }
+        if (index == 3) { return #38272b; }
+        if (index == 4) { return #243328; }
+        if (index == 5) { return #353025; }
+        if (index == 6) { return #2a2a32; }
+        if (index == 7) { return #2e2f36; }
+        if (index == 8) { return #3e2140; }
+        if (index == 9) { return #1b393b; }
+        return #403623;
+    }
+}
+
+export component IcBtn inherits Rectangle {
+    in property <image> icon;
+    in property <color> tint: #a0a79f;
+    in property <color> hover-tint: #f7f8f6;
+    in property <length> icon-size: 16px;
+    in property <bool> active: false;
+    callback clicked();
+
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: area.pressed ? #ffffff18 : (area.has-hover ? #ffffff12 : transparent);
+    animate background { duration: 100ms; }
+
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Image {
+        source: root.icon;
+        width: root.icon-size;
+        height: root.icon-size;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.active ? State.accent : (area.has-hover ? root.hover-tint : root.tint);
+        animate colorize { duration: 100ms; }
+    }
+}
+
+export component TextBtn inherits Rectangle {
+    in property <string> label;
+    in property <bool> danger: false;
+    in property <bool> primary: false;
+    callback clicked();
+
+    min-width: 34px;
+    height: 34px;
+    border-radius: 6px;
+    border-width: root.primary || root.danger ? 1px : 0px;
+    border-color: root.danger ? #ff5b7455 : State.accent;
+    background: area.pressed ? #ffffff0a : (root.primary ? State.accent : (area.has-hover ? #ffffff10 : #131614));
+    animate background { duration: 100ms; }
+
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.label;
+        color: root.primary ? #101210 : (root.danger ? #ff5b74 : (area.has-hover ? #f7f8f6 : #cdd2cc));
+        font-size: 12px;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}
+
+export component HeaderCell inherits TouchArea {
+    in property <string> label;
+    in property <bool> active: false;
+    in property <bool> descending: false;
+    in property <bool> right-align: false;
+    callback sort();
+
+    Text {
+        text: root.active ? (root.descending ? "\{root.label} \u{25BE}" : "\{root.label}") : root.label;
+        color: root.active ? State.accent : #717970;
+        font-size: 10px;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-alignment: root.right-align ? right : left;
+    }
+    clicked => { root.sort(); }
+}
+
+// One table row. Triggers: click plays, right-click or the overflow button
+// opens the global context menu, heart toggles the favorite.
+export component TrackRow inherits Rectangle {
+    in property <TrackItem> track;
+    in property <int> index: 1;
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <bool> show-remove: false;
+
+    callback play();
+    callback favorite();
+    callback context();
+    callback remove();
+
+    height: 58px;
+    background: area.pressed ? #191c19 : (area.has-hover ? #131613 : (root.track.is-playing ? #151a15 : transparent));
+    animate background { duration: 120ms; }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: #ffffff13;
+    }
+
+    area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.context();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        Rectangle {
+            width: 44px;
+            if area.has-hover : Image {
+                source: @image-url("../assets/icons/play.svg");
+                width: 14px;
+                height: 14px;
+                y: (parent.height - self.height) / 2;
+                x: (parent.width - self.width) / 2;
+                colorize: #f7f8f6;
+            }
+            if !area.has-hover && root.track.is-playing : Image {
+                source: @image-url("../assets/icons/music.svg");
+                width: 15px;
+                height: 15px;
+                y: (parent.height - self.height) / 2;
+                x: (parent.width - self.width) / 2;
+                colorize: State.accent;
+            }
+            if !area.has-hover && !root.track.is-playing : Text {
+                text: "\{root.index}";
+                color: root.track.unavailable ? #ff5b74 : #717970;
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 6px;
+            clip: true;
+            y: (parent.height - self.height) / 2;
+            background: root.track.badge-bg;
+            Text {
+                text: root.track.initials;
+                color: #f7f8f6;
+                font-size: 13px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 3;
+
+            Text {
+                text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
+                color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : #f2f4f1);
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+                animate color { duration: 150ms; }
+            }
+            if State.show-list-artist : Text {
+                text: root.track.artist;
+                color: #a0a79f;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        if root.show-album && State.show-list-album : Text {
+            text: root.track.album;
+            color: #cdd2cc;
+            font-size: 11px;
+            overflow: elide;
+            width: 25%;
+        }
+
+        if State.show-list-added && root.show-added : Text {
+            text: root.track.added;
+            color: #cdd2cc;
+            font-size: 11px;
+            overflow: elide;
+            width: 100px;
+        }
+
+        if State.show-list-year && root.show-year : Text {
+            text: root.track.year;
+            color: #cdd2cc;
+            font-size: 11px;
+            width: 70px;
+        }
+
+        if root.show-plays : Text {
+            text: "\{root.track.play-count}";
+            color: #cdd2cc;
+            font-size: 11px;
+            width: 60px;
+        }
+
+        if State.show-list-duration : Text {
+            text: root.track.duration;
+            color: #a0a79f;
+            font-size: 11px;
+            width: 64px;
+            horizontal-alignment: right;
+        }
+
+        Rectangle {
+            width: 76px;
+            HorizontalLayout {
+                spacing: 2px;
+                alignment: center;
+
+                if State.show-list-favorite : IcBtn {
+                    icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                    tint: root.track.is-favorite ? State.accent : #717970;
+                    hover-tint: root.track.is-favorite ? State.accent : #f7f8f6;
+                    icon-size: 14px;
+                    clicked => { root.favorite(); }
+                }
+                if root.show-remove : IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    tint: #717970;
+                    hover-tint: #ff5b74;
+                    icon-size: 13px;
+                    clicked => { root.remove(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/more.svg");
+                    tint: #717970;
+                    hover-tint: #f7f8f6;
+                    icon-size: 14px;
+                    clicked => { root.context(); }
+                }
+            }
+        }
+    }
+}
+
+// Sortable table header.
+export component TrackHeader inherits Rectangle {
+    in property <string> first-column: "Title";
+    in property <string> first-sort: "Title";
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <string> active-sort: "Title";
+    in property <bool> descending: false;
+
+    callback sort(string);
+
+    height: 37px;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        HeaderCell {
+            label: "#";
+            width: 44px;
+        }
+        Rectangle { width: 38px; }
+
+        HeaderCell {
+            label: root.first-column;
+            active: root.active-sort == root.first-sort;
+            descending: root.descending;
+            horizontal-stretch: 3;
+            sort => { root.sort(root.first-sort); }
+        }
+
+        if root.show-album && State.show-list-album : HeaderCell {
+            label: "Album";
+            width: 25%;
+            active: root.active-sort == "Album";
+            descending: root.descending;
+            sort => { root.sort("Album"); }
+        }
+
+        if State.show-list-added && root.show-added : HeaderCell {
+            label: "Added";
+            width: 100px;
+            active: root.active-sort == "Added";
+            descending: root.descending;
+            sort => { root.sort("Added"); }
+        }
+
+        if State.show-list-year && root.show-year : HeaderCell {
+            label: "Year";
+            width: 70px;
+            active: root.active-sort == "Year";
+            descending: root.descending;
+            sort => { root.sort("Year"); }
+        }
+
+        if root.show-plays : HeaderCell {
+            label: "Plays";
+            width: 60px;
+            active: root.active-sort == "PlayCount";
+            descending: root.descending;
+            sort => { root.sort("PlayCount"); }
+        }
+
+        if State.show-list-duration : HeaderCell {
+            label: "Time";
+            width: 64px;
+            right-align: true;
+            sort => { root.sort("Duration"); }
+        }
+
+        Rectangle { width: 76px; }
+    }
+}
+
+// The standard table view: header + rows + "Load more" affordance.
+export component TrackTable inherits Rectangle {
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <string> first-column: "Title";
+    in property <string> first-sort: "Title";
+    in property <bool> show-remove: false;
+    in property <string> empty-text: "No tracks to show.";
+
+    callback sort(string);
+
+    VerticalLayout {
+        TrackHeader {
+            first-column: root.first-column;
+            first-sort: root.first-sort;
+            show-added: root.show-added;
+            show-year: root.show-year;
+            show-album: root.show-album;
+            show-plays: root.show-plays;
+            active-sort: State.view-sort;
+            descending: State.view-descending;
+            sort(column) => { root.sort(column); }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            ListView {
+                for row[index] in State.tracks : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: root.show-added;
+                    show-year: root.show-year;
+                    show-album: root.show-album;
+                    show-plays: root.show-plays;
+                    show-remove: root.show-remove;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                    remove => { Actions.remove-from-playlist(index); }
+                }
+            }
+
+            if State.tracks.length == 0 && !State.page-loading : Rectangle {
+                width: 100%;
+                height: 100%;
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: root.empty-text;
+                        color: #717970;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+
+        if State.can-load-more : Rectangle {
+            height: 44px;
+            TextBtn {
+                label: "Load more";
+                height: 30px;
+                width: 120px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.load-more(); }
+            }
+        }
+    }
+}
+
+// Gradient card tile used by the albums/artists/genres/folders grids.
+export component CardTile inherits Rectangle {
+    in property <GroupItem> item;
+    in property <bool> round: false;
+
+    callback play();
+    callback open();
+
+    area := TouchArea {
+        clicked => { root.open(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.play();
+            }
+        }
+    }
+
+    VerticalLayout {
+        spacing: 8px;
+
+        card := Rectangle {
+            height: card.width;
+            border-radius: root.round ? self.width / 2 : 6px;
+            clip: true;
+            background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
+
+            Text {
+                text: root.item.initials;
+                color: #ffffffe0;
+                font-size: 24px;
+                font-weight: 900;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 15px;
+                    height: 15px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: #101210;
+                }
+
+                TouchArea {
+                    clicked => { root.play(); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: root.item.name;
+                color: #f2f4f1;
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.subtitle;
+                color: #a0a79f;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// Three tiles per row.
+export component GroupGrid inherits Rectangle {
+    in property <bool> round: false;
+    in property <string> empty-text: "Nothing here yet.";
+
+    VerticalLayout {
+        if State.group-rows.length == 0 : Rectangle {
+            width: 100%;
+            height: 100%;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.empty-text;
+                    color: #717970;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        if State.group-rows.length > 0 : ListView {
+            for row in State.group-rows : HorizontalLayout {
+                spacing: 14px;
+                padding-bottom: 14px;
+                if row.filled >= 1 : CardTile {
+                    item: row.a;
+                    round: root.round;
+                    horizontal-stretch: 1;
+                    play => { Actions.play-group("", row.a.name); }
+                    open => { Actions.open-group("", row.a.name); }
+                }
+                if row.filled >= 2 : CardTile {
+                    item: row.b;
+                    round: root.round;
+                    horizontal-stretch: 1;
+                    play => { Actions.play-group("", row.b.name); }
+                    open => { Actions.open-group("", row.b.name); }
+                }
+                if row.filled >= 3 : CardTile {
+                    item: row.c;
+                    round: root.round;
+                    horizontal-stretch: 1;
+                    play => { Actions.play-group("", row.c.name); }
+                    open => { Actions.open-group("", row.c.name); }
+                }
+            }
+        }
+        if State.groups-total > State.group-rows.length * 3 : Rectangle {
+            height: 44px;
+            TextBtn {
+                label: "Load more";
+                height: 30px;
+                width: 120px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.load-more-groups(); }
+            }
+        }
+    }
+}
+
+// Detail page hero: cover block + eyebrow + title + subtitle.
+export component HeroDetail inherits Rectangle {
+    in property <string> eyebrow: "";
+    in property <string> title: "";
+    in property <string> subtitle: "";
+    in property <image> cover;
+    in property <bool> has-cover: false;
+
+    height: 210px;
+    border-radius: 8px;
+    background: @linear-gradient(110deg, #ffffff1c 0%, #ffffff05 45%, #ffffff00 100%);
+
+    HorizontalLayout {
+        padding: 20px;
+        spacing: 24px;
+        alignment: start;
+
+        Rectangle {
+            width: 190px;
+            border-radius: 6px;
+            clip: true;
+            background: #182219;
+            if !root.has-cover : Text {
+                text: root.title;
+                color: #ffffff88;
+                font-size: 34px;
+                font-weight: 900;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            if root.has-cover : Image {
+                source: root.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+        }
+
+        VerticalLayout {
+            alignment: end;
+            spacing: 8px;
+
+            Text {
+                text: root.eyebrow;
+                color: State.accent;
+                font-size: 10px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.title;
+                color: #f7f8f6;
+                font-size: 28px;
+                font-weight: 800;
+                overflow: elide;
+            }
+            Text {
+                text: root.subtitle;
+                color: #a0a79f;
+                font-size: 12px;
+            }
+        }
+    }
+}
+
+export component EmptyState inherits Rectangle {
+    in property <string> text: "Nothing here yet.";
+    in property <string> action-label: "";
+    callback action();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        Text {
+            text: root.text;
+            color: #a0a79f;
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
+        if root.action-label != "" : TextBtn {
+            label: root.action-label;
+            width: 170px;
+            x: (parent.width - self.width) / 2;
+            primary: true;
+            clicked => { root.action(); }
+        }
+    }
+}
+
+export component SectionTitle inherits Rectangle {
+    in property <string> text;
+    height: 26px;
+    Text {
+        text: root.text;
+        color: #f2f4f1;
+        font-size: 15px;
+        font-weight: 750;
+        vertical-alignment: center;
+    }
+}
+
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 28px;
+    min-width: 40px;
+    border-radius: 14px;
+    background: root.active ? #ffffff1a : #131614;
+    animate background { duration: 100ms; }
+
+    area := TouchArea { clicked => { root.clicked(); } }
+
+    Text {
+        text: root.label;
+        color: root.active ? #f7f8f6 : #a0a79f;
+        font-size: 10px;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}

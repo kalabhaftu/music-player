@@ -1853,3 +1853,47 @@ fn writer_backup_prune_keeps_five_and_restore_roundtrip() {
 
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn opening_pre_v11_database_adds_unavailable_column_before_indexes() {
+    let dir = std::env::temp_dir().join(format!("mp-legacy-schema-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("legacy.db");
+    let _ = std::fs::remove_file(&path);
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tracks (
+                path TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL DEFAULT '',
+                album TEXT NOT NULL DEFAULT '',
+                album_artist TEXT NOT NULL DEFAULT '',
+                genre TEXT NOT NULL DEFAULT '',
+                year INTEGER NOT NULL DEFAULT 0,
+                track_number INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                modified_utc TEXT NOT NULL,
+                added_utc TEXT NOT NULL,
+                favorite INTEGER NOT NULL DEFAULT 0,
+                rating INTEGER NOT NULL DEFAULT 0,
+                play_count INTEGER NOT NULL DEFAULT 0,
+                last_played_utc TEXT NULL
+            );",
+        )
+        .unwrap();
+    }
+    let store = LibraryStore::open(&path).unwrap();
+    assert!(store.get_all_tracks(TrackSort::Title, false).unwrap().is_empty());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM pragma_table_info('tracks') WHERE name = 'unavailable'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1);
+    std::fs::remove_dir_all(&dir).ok();
+}

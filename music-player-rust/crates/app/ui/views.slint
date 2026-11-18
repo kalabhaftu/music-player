@@ -1,0 +1,1549 @@
+// All 25 views from the original library.js view registry, routed by
+// State.view. Shared widgets come from widgets.slint.
+
+import { State, Actions } from "state.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
+import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
+import {
+    Palette, IcBtn, TextBtn, TrackRow, TrackHeader, TrackTable, CardTile,
+    GroupGrid, HeroDetail, EmptyState, SectionTitle, Chip,
+} from "widgets.slint";
+
+// ---- Home ------------------------------------------------------------------
+component HomeView inherits Rectangle {
+    if State.library-empty : EmptyState {
+        text: State.has-roots
+            ? "Your library is being scanned. Tracks will appear here as they are indexed."
+            : "Add a music folder to build your library.";
+        action-label: State.has-roots ? "Scan folders" : "Add music folder";
+        action => {
+            if (State.has-roots) { Actions.scan-library(); } else { Actions.open-modal("folders"); }
+        }
+    }
+    if !State.library-empty : ScrollView {
+        VerticalLayout {
+            padding: 20px;
+            spacing: 18px;
+
+            Text {
+                text: State.home-greeting;
+                color: #f7f8f6;
+                font-size: 26px;
+                font-weight: 800;
+            }
+
+            if State.home-albums.length > 0 : VerticalLayout {
+                spacing: 10px;
+                SectionTitle { text: "Your albums"; }
+                HorizontalLayout {
+                    spacing: 14px;
+                    for item[index] in State.home-albums : CardTile {
+                        width: 150px;
+                        item: item;
+                        play => { Actions.play-group("album", item.name); }
+                        open => { Actions.set-view("Album", item.name, "album", 0); }
+                    }
+                }
+            }
+
+            if State.home-most.length > 0 : VerticalLayout {
+                spacing: 4px;
+                SectionTitle { text: "Most played"; }
+                for row[index] in State.home-most : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: false;
+                    show-year: false;
+                    show-album: true;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                }
+            }
+
+            if State.home-recent.length > 0 : VerticalLayout {
+                spacing: 4px;
+                SectionTitle { text: "Recently played"; }
+                for row[index] in State.home-recent : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: false;
+                    show-year: false;
+                    show-album: true;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                }
+            }
+
+            if State.home-added.length > 0 : VerticalLayout {
+                spacing: 4px;
+                SectionTitle { text: "Recently added"; }
+                for row[index] in State.home-added : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: true;
+                    show-year: false;
+                    show-album: true;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                }
+            }
+        }
+    }
+}
+
+// ---- Songs-like table views ------------------------------------------------
+component SongsView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        padding-top: 14px;
+        spacing: 12px;
+
+        Text {
+            text: State.view-title;
+            color: #f7f8f6;
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        TrackTable {
+            vertical-stretch: 1;
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: "No tracks to show.";
+        }
+    }
+}
+
+// ---- Grid views (Albums / Artists / Genres) --------------------------------
+component GridView inherits Rectangle {
+    in property <string> title: "";
+    in property <bool> round: false;
+    in property <string> empty-text: "Nothing here yet.";
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        Text {
+            text: root.title;
+            color: #f7f8f6;
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        GroupGrid {
+            vertical-stretch: 1;
+            round: root.round;
+            empty-text: root.empty-text;
+        }
+    }
+}
+
+// ---- Folders ---------------------------------------------------------------
+component FolderTile inherits Rectangle {
+    in property <GroupItem> item;
+
+    TouchArea {
+        clicked => { Actions.set-view("Folder", item.name, "folder", 0); }
+    }
+
+    VerticalLayout {
+        spacing: 8px;
+        folder-card := Rectangle {
+            height: folder-card.width;
+            border-radius: 6px;
+            background: #131614;
+            Image {
+                source: @image-url("../assets/icons/folder.svg");
+                width: 26px;
+                height: 26px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: State.accent;
+            }
+        }
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: root.item.name;
+                color: #f2f4f1;
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.subtitle;
+                color: #a0a79f;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component FoldersView inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            Text {
+                text: "Folders";
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+            }
+
+            if State.library-warning != "" : Text {
+                text: State.library-warning;
+                color: #ffb04a;
+                font-size: 11px;
+            }
+
+            // Scan status row: dot + label + counters.
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    y: 6px;
+                    background: State.scan-active ? State.accent : (State.scan-paused ? #ffb04a : #3a403a);
+                }
+                Text {
+                    text: State.scan-active
+                        ? (State.scan-paused ? "Scan paused" : "Scanning library")
+                        : (State.scan-cancelling ? "Cancelling scan" : "Library up to date");
+                    color: State.scan-active ? #f2f4f1 : #a0a79f;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+                if State.scan-path != "" : Text {
+                    text: "\{State.scan-path} · \{State.library-tracks} tracks · \{State.library-folders} folders";
+                    color: #717970;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                if State.scan-active : TextBtn {
+                    label: State.scan-paused ? "Resume" : "Pause";
+                    clicked => { Actions.pause-scan(); }
+                }
+                if State.scan-active : TextBtn {
+                    label: "Cancel";
+                    danger: true;
+                    clicked => { Actions.cancel-scan(); }
+                }
+                if !State.scan-active : TextBtn {
+                    label: "Rescan";
+                    clicked => { Actions.scan-library(); }
+                }
+            }
+
+            SectionTitle { text: "Library folders"; }
+            HorizontalLayout {
+                spacing: 10px;
+                TextBtn {
+                    label: "Add folder…";
+                    clicked => { Actions.open-modal("folders"); }
+                }
+                TextBtn {
+                    label: "Scan exclusions…";
+                    clicked => { Actions.open-modal("exclusions"); }
+                }
+            }
+
+            for rootEntry in State.folder-roots : Rectangle {
+                height: 56px;
+                border-radius: 6px;
+                background: #131614;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 10px;
+                    Image {
+                        source: @image-url("../assets/icons/folder.svg");
+                        width: 18px;
+                        height: 18px;
+                        colorize: State.accent;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: rootEntry.path;
+                            color: #f2f4f1;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: rootEntry.is-available ? "Available" : "Reconnect this drive, then rescan the library.";
+                            color: rootEntry.is-available ? #717970 : #ffb04a;
+                            font-size: 9px;
+                        }
+                    }
+                    TextBtn {
+                        label: "Remove";
+                        danger: true;
+                        clicked => { Actions.remove-root(rootEntry.path); }
+                    }
+                    TextBtn {
+                        label: "Rescan";
+                        clicked => { Actions.rescan-root(rootEntry.path); }
+                    }
+                }
+            }
+
+            if State.group-rows.length == 0 : EmptyState {
+                text: "Indexed folders will appear here.";
+            }
+            if State.group-rows.length > 0 : ListView {
+                for row in State.group-rows : HorizontalLayout {
+                    spacing: 14px;
+                    padding-bottom: 14px;
+                    if row.filled >= 1 : FolderTile { item: row.a; }
+                    if row.filled >= 2 : FolderTile { item: row.b; }
+                    if row.filled >= 3 : FolderTile { item: row.c; }
+                }
+            }
+        }
+    }
+}
+
+
+// ---- Playlists ---------------------------------------------------------------
+
+component PlaylistTile inherits Rectangle {
+    in property <PlaylistCardItem> card;
+
+    tile-area := TouchArea {
+        clicked => { Actions.set-view("Playlist", "", "", root.card.id); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.play-playlist(root.card.id);
+            }
+        }
+    }
+
+    VerticalLayout {
+        spacing: 8px;
+        tile := Rectangle {
+            height: tile.width;
+            border-radius: 6px;
+            clip: true;
+            background: @linear-gradient(150deg, root.card.is-smart ? #1b1d26 : Palette.ga(root.card.gradient) 0%, root.card.is-smart ? #4e373c : Palette.gb(root.card.gradient) 100%);
+            Text {
+                text: root.card.initials;
+                color: #ffffffe0;
+                font-size: 24px;
+                font-weight: 900;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: tile-area.has-hover ? 1.0 : 0.0;
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 15px;
+                    height: 15px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: #101210;
+                }
+                TouchArea {
+                    clicked => { Actions.play-playlist(root.card.id); }
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: root.card.name;
+                color: #f2f4f1;
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            Text {
+                text: "\{root.card.track-count} songs";
+                color: #a0a79f;
+                font-size: 10px;
+            }
+        }
+    }
+}
+
+component PlaylistsList inherits Rectangle {
+    ListView {
+        for row in State.playlist-rows : HorizontalLayout {
+            spacing: 14px;
+            padding-bottom: 14px;
+            if row.filled >= 1 : PlaylistTile { card: row.a; }
+            if row.filled >= 2 : PlaylistTile { card: row.b; }
+            if row.filled >= 3 : PlaylistTile { card: row.c; }
+        }
+    }
+}
+
+component PlaylistsView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Playlists";
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+                horizontal-stretch: 1;
+            }
+            TextBtn {
+                label: "Import M3U/M3U8";
+                clicked => { Actions.import-m3u(); }
+            }
+            TextBtn {
+                label: "＋ New playlist";
+                primary: true;
+                clicked => { Actions.open-modal("new-playlist"); }
+            }
+        }
+
+        if State.playlists.length == 0 : EmptyState {
+            text: "No playlists yet. Create one from any track's menu.";
+        }
+        if State.playlists.length > 0 : ListView {
+            for row in State.playlist-rows : HorizontalLayout {
+                spacing: 14px;
+                padding-bottom: 14px;
+                if row.filled >= 1 : PlaylistTile { card: row.a; }
+                if row.filled >= 2 : PlaylistTile { card: row.b; }
+                if row.filled >= 3 : PlaylistTile { card: row.c; }
+            }
+        }
+    }
+}
+
+
+// ---- Playlist detail ---------------------------------------------------------
+component PlaylistView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: State.playlist-name;
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            TextBtn {
+                label: "Play";
+                primary: true;
+                clicked => { Actions.play-playlist(State.view-playlist-id); }
+            }
+            TextBtn {
+                label: "Shuffle";
+                clicked => { Actions.play-playlist-shuffle(State.view-playlist-id); }
+            }
+            TextBtn {
+                label: "Rename…";
+                clicked => { Actions.open-modal("rename-playlist"); }
+            }
+            TextBtn {
+                label: "Export";
+                clicked => { Actions.export-m3u(State.view-playlist-id); }
+            }
+            TextBtn {
+                label: "Delete";
+                danger: true;
+                clicked => { Actions.open-modal("delete-playlist"); }
+            }
+        }
+
+        if State.playlist-empty-message != "" : Text {
+            text: State.playlist-empty-message;
+            color: #717970;
+            font-size: 11px;
+        }
+
+        TrackTable {
+            vertical-stretch: 1;
+            show-added: false;
+            show-year: false;
+            first-column: "Title";
+            show-remove: true;
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: "This playlist is empty…";
+        }
+    }
+}
+
+// ---- Detail pages (Album / Artist / Genre / Folder) --------------------------
+component DetailView inherits Rectangle {
+    in property <string> eyebrow: "";
+    in property <string> empty-text: "No tracks.";
+
+    VerticalLayout {
+        spacing: 12px;
+
+        HeroDetail {
+            eyebrow: root.eyebrow;
+            title: State.view-group-value == "" ? State.view-title : State.view-group-value;
+            subtitle: State.hero-subtitle;
+            cover: State.hero-cover;
+            has-cover: State.hero-has-cover;
+        }
+
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 10px;
+            alignment: start;
+            TextBtn {
+                label: "Play";
+                primary: true;
+                clicked => { Actions.play-group(State.view-group-column, State.view-group-value); }
+            }
+            TextBtn {
+                label: "Shuffle";
+                clicked => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
+            }
+        }
+
+        if State.view-group-column == "artist" && State.artist-albums.length > 0 : Rectangle {
+            height: 190px;
+            x: 20px;
+            width: parent.width - 40px;
+            ListView {
+                for album in State.artist-albums : CardTile {
+                    width: 150px;
+                    item: album;
+                    play => { Actions.play-group("album", album.name); }
+                    open => { Actions.set-view("Album", album.name, "album", 0); }
+                }
+            }
+        }
+
+        TrackTable {
+            vertical-stretch: 1;
+            show-added: false;
+            first-column: State.view-group-column == "album" ? "Track" : "Title";
+            first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: root.empty-text;
+        }
+    }
+}
+
+// ---- Search -----------------------------------------------------------------
+component SearchView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        LineEdit {
+            height: 36px;
+            placeholder-text: "Search";
+            text <=> State.view-search;
+            edited(text) => { Actions.search-input(text); }
+            accepted(text) => { Actions.save-recent-search(text); }
+        }
+
+        HorizontalLayout {
+            spacing: 6px;
+            Chip {
+                label: "All";
+                active: State.search-filter == "all";
+                clicked => { Actions.search(State.view-search, "all"); }
+            }
+            Chip {
+                label: "Songs";
+                active: State.search-filter == "song";
+                clicked => { Actions.search(State.view-search, "song"); }
+            }
+            Chip {
+                label: "Albums";
+                active: State.search-filter == "album";
+                clicked => { Actions.search(State.view-search, "album"); }
+            }
+            Chip {
+                label: "Artists";
+                active: State.search-filter == "artist";
+                clicked => { Actions.search(State.view-search, "artist"); }
+            }
+            Chip {
+                label: "Playlists";
+                active: State.search-filter == "playlist";
+                clicked => { Actions.search(State.view-search, "playlist"); }
+            }
+        }
+
+        if State.recent-searches.length > 0 : HorizontalLayout {
+            spacing: 6px;
+            Text {
+                text: "Recent:";
+                color: #717970;
+                font-size: 10px;
+                vertical-alignment: center;
+            }
+            for term in State.recent-searches : Chip {
+                label: term;
+                clicked => { Actions.search(term, State.search-filter); }
+            }
+        }
+
+        if State.search-filter == "all" || State.search-filter == "song" : TrackTable {
+            vertical-stretch: 1;
+            show-added: false;
+            first-column: "Title";
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: State.view-search == "" ? "Type to search your library." : "No results for “\{State.view-search}”";
+        }
+
+        if State.search-filter == "album" : GroupGrid {
+            vertical-stretch: 1;
+            empty-text: "No matching albums.";
+        }
+        if State.search-filter == "artist" : GroupGrid {
+            vertical-stretch: 1;
+            round: true;
+            empty-text: "No matching artists.";
+        }
+        if State.search-filter == "playlist" : PlaylistsList {
+            vertical-stretch: 1;
+        }
+    }
+}
+
+
+// ---- Queue ------------------------------------------------------------------
+component QueueRow inherits Rectangle {
+    in property <QueueItem> item;
+    in property <int> index: 0;
+
+    callback play();
+    callback move-up();
+    callback move-down();
+    callback remove();
+
+    height: 52px;
+    border-radius: 6px;
+    background: row-area.has-hover ? #131613 : (root.item.is-current ? #ffffff0d : transparent);
+    animate background { duration: 100ms; }
+
+    row-area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.open-context-menu(root.item.id, 0, 0);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 4px;
+            background: root.item.badge-bg;
+            y: (parent.height - self.height) / 2;
+            Text {
+                text: root.item.initials;
+                color: #f7f8f6;
+                font-size: 12px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
+                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : #f2f4f1);
+                font-size: 11px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.artist;
+                color: #a0a79f;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: root.item.duration;
+            color: #a0a79f;
+            font-size: 10px;
+            width: 48px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            width: 76px;
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 0px;
+                IcBtn {
+                    icon: @image-url("../assets/icons/chevron-left.svg");
+                    icon-size: 12px;
+                    tint: #717970;
+                    clicked => { root.move-up(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/chevron-right.svg");
+                    icon-size: 12px;
+                    tint: #717970;
+                    clicked => { root.move-down(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 12px;
+                    tint: #717970;
+                    hover-tint: #ff5b74;
+                    clicked => { root.remove(); }
+                }
+            }
+        }
+    }
+}
+
+export component QueueView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Queue";
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+                horizontal-stretch: 1;
+            }
+            TextBtn {
+                label: "Clear";
+                danger: true;
+                clicked => { Actions.clear-queue(); }
+            }
+        }
+
+        ListView {
+            for row[index] in State.queue-items : QueueRow {
+                item: row;
+                index: index;
+                play => { Actions.play-queue-entry(index); }
+                move-up => { Actions.queue-move(index, index - 1); }
+                move-down => { Actions.queue-move(index, index + 1); }
+                remove => { Actions.queue-remove(index); }
+            }
+        }
+    }
+}
+
+
+// ---- Now Playing --------------------------------------------------------------
+component NowPlayingView inherits Rectangle {
+    if State.has-track : HorizontalLayout {
+        padding: 28px;
+        spacing: 28px;
+
+        VerticalLayout {
+            width: 320px;
+            alignment: start;
+            spacing: 16px;
+
+            Rectangle {
+                height: 320px;
+                border-radius: 8px;
+                clip: true;
+                background: #131614;
+                Image {
+                    source: State.current-cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 14px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: "Now Playing";
+                color: State.accent;
+                font-size: 10px;
+                font-weight: 700;
+            }
+            Text {
+                text: State.current-title;
+                color: #f7f8f6;
+                font-size: 30px;
+                font-weight: 800;
+                overflow: elide;
+            }
+            Text {
+                text: State.current-artist;
+                color: #a0a79f;
+                font-size: 14px;
+                overflow: elide;
+            }
+            Text {
+                text: State.current-album;
+                color: #717970;
+                font-size: 12px;
+                overflow: elide;
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                IcBtn {
+                    icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                    tint: State.current-favorite ? State.accent : #a0a79f;
+                    clicked => { Actions.toggle-favorite(State.current-id); }
+                }
+                TextBtn {
+                    label: "Track details";
+                    clicked => { Actions.open-details(State.current-id); }
+                }
+                TextBtn {
+                    label: "Show in folder";
+                    clicked => { Actions.open-file-location(State.current-id); }
+                }
+                TextBtn {
+                    label: "Lyrics";
+                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                }
+            }
+        }
+    }
+    if !State.has-track : EmptyState {
+        text: "Nothing is playing.";
+    }
+}
+
+// ---- Lyrics ------------------------------------------------------------------
+component LyricsView inherits Rectangle {
+    if State.has-lyrics : VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Lyrics";
+                color: #f7f8f6;
+                font-size: 20px;
+                font-weight: 800;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded audio tags" : "");
+                color: #717970;
+                font-size: 10px;
+                vertical-alignment: center;
+            }
+            TextBtn {
+                label: "Find lyrics…";
+                clicked => { Actions.open-find-lyrics(State.current-id); }
+            }
+            TextBtn {
+                label: "Edit lyrics…";
+                clicked => { Actions.open-edit-lyrics(); }
+            }
+        }
+
+        if State.lyrics-scroll-paused : TextBtn {
+            label: "Resume auto-scroll";
+            width: 160px;
+            x: (parent.width - self.width) / 2;
+            clicked => { Actions.lyrics-scroll-changed(false); }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            ListView {
+                for line[index] in State.lyrics-lines : TouchArea {
+                    height: 40px;
+                    clicked => {
+                        if (State.lyrics-timed && State.seek-from-lyrics) {
+                            Actions.seek-to-lyric(index);
+                        }
+                    }
+                    Text {
+                        text: line.text;
+                        color: line.is-active ? State.accent : (line.is-past ? #717970 : #f2f4f1);
+                        font-size: line.is-active ? 15px : 13px;
+                        font-weight: line.is-active ? 750 : 500;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        x: 12px;
+                        width: parent.width - 24px;
+                        overflow: elide;
+                        animate color { duration: 200ms; }
+                    }
+                }
+            }
+        }
+    }
+    if !State.has-lyrics : EmptyState {
+        text: "No lyrics for this track.";
+        action-label: "Find lyrics…";
+        action => { Actions.open-find-lyrics(State.current-id); }
+    }
+}
+
+// ---- Audio (equalizer) --------------------------------------------------------
+export component AudioView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 14px;
+
+        Text {
+            text: "Audio";
+            color: #f7f8f6;
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Text {
+                text: "Preset";
+                color: #a0a79f;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+            ComboBox {
+                width: 220px;
+                model: State.eq-presets;
+                current-value: State.eq-preset;
+                selected(value) => { Actions.set-eq-preset(value); }
+            }
+            TextBtn {
+                label: "Save preset…";
+                clicked => { Actions.open-modal("save-preset"); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Preamp";
+                    color: #a0a79f;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                }
+                Rectangle {
+                    width: 44px;
+                    height: 220px;
+                    Slider {
+                        y: 10px;
+                        height: parent.height - 20px;
+                        width: parent.width;
+                        orientation: Orientation.vertical;
+                        minimum: -12.0;
+                        maximum: 12.0;
+                        value: State.eq-preamp;
+                        changed value => { Actions.set-eq-preamp(self.value); }
+                    }
+                    Text {
+                        text: "\{round(State.eq-preamp)}dB";
+                        y: parent.height - 16px;
+                        width: parent.width;
+                        color: #717970;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                for band[index] in State.eq-bands : VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: band.label;
+                        color: #a0a79f;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                    }
+                    Rectangle {
+                        width: 36px;
+                        height: 220px;
+                        Slider {
+                            y: 10px;
+                            height: parent.height - 20px;
+                            width: parent.width;
+                            orientation: Orientation.vertical;
+                            minimum: -12.0;
+                            maximum: 12.0;
+                            value: band.value;
+                            changed value => { Actions.set-eq-band(index, self.value); }
+                        }
+                        Text {
+                            text: "\{round(band.value)}";
+                            y: parent.height - 16px;
+                            width: parent.width;
+                            color: #717970;
+                            font-size: 9px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Text {
+                text: "Output device";
+                color: #a0a79f;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+            ComboBox {
+                width: 280px;
+                model: State.output-devices;
+                current-value: State.output-device;
+                selected(value) => { Actions.set-output-device(value); }
+            }
+        }
+    }
+}
+
+// ---- Settings ----------------------------------------------------------------
+component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    height: 48px;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        Text {
+            text: root.label;
+            color: #f2f4f1;
+            font-size: 11px;
+            font-weight: 650;
+        }
+        if root.description != "" : Text {
+            text: root.description;
+            color: #a0a79f;
+            font-size: 9px;
+            overflow: elide;
+        }
+    }
+}
+
+component SettingSwitchRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <bool> checked: false;
+    callback toggled(bool);
+
+    height: 48px;
+    HorizontalLayout {
+        spacing: 18px;
+        SettingRow {
+            label: root.label;
+            description: root.description;
+            horizontal-stretch: 1;
+        }
+        VerticalLayout {
+            alignment: center;
+            Switch {
+                checked: root.checked;
+                toggled => { root.toggled(self.checked); }
+            }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: #ffffff13;
+    }
+}
+
+component SettingComboRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <[string]> options;
+    in property <string> value;
+    callback changed(string);
+
+    height: 48px;
+    HorizontalLayout {
+        spacing: 18px;
+        SettingRow {
+            label: root.label;
+            description: root.description;
+            horizontal-stretch: 1;
+        }
+        VerticalLayout {
+            alignment: center;
+            ComboBox {
+                width: 170px;
+                model: root.options;
+                current-value: root.value;
+                selected(value) => { root.changed(value); }
+            }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: #ffffff13;
+    }
+}
+
+component SettingsView inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            padding: 20px;
+            spacing: 18px;
+
+            Text {
+                text: "Settings";
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+            }
+
+            SectionTitle { text: "Appearance"; }
+            SettingComboRow {
+                label: "Theme";
+                options: ["System", "Light", "Dark"];
+                value: State.theme;
+                changed(value) => { Actions.set-setting("theme", value); }
+            }
+            SettingComboRow {
+                label: "Accent";
+                description: "Artwork follows the playing track.";
+                options: ["Artwork", "Native"];
+                value: State.accent-mode;
+                changed(value) => { Actions.set-setting("accent-mode", value); }
+            }
+            SettingComboRow {
+                label: "Motion";
+                options: ["Off", "Subtle", "Expressive"];
+                value: State.motion-style;
+                changed(value) => { Actions.set-setting("motion-style", value); }
+            }
+            SettingSwitchRow {
+                label: "Transparent window";
+                checked: State.transparent-window;
+                toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
+            }
+            SettingComboRow {
+                label: "Equalizer accent";
+                options: ["Lime", "Sky", "Violet", "Rose", "Amber"];
+                value: State.accent-preset-name;
+                changed(value) => { Actions.set-accent-preset(value); }
+            }
+
+            SectionTitle { text: "Library"; }
+            SettingSwitchRow {
+                label: "Hide exact duplicates";
+                checked: State.hide-exact-duplicates;
+                toggled(value) => { Actions.set-setting("hide-exact-duplicates", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Automatically load lyrics";
+                checked: State.auto-load-lyrics;
+                toggled(value) => { Actions.set-setting("auto-load-lyrics", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Seek by clicking a lyric line";
+                checked: State.seek-from-lyrics;
+                toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
+            }
+
+            SectionTitle { text: "Playback"; }
+            SettingSwitchRow {
+                label: "Autoplay similar songs";
+                description: "When the queue ends, similar tracks keep playing.";
+                checked: State.autoplay-similar;
+                toggled(value) => { Actions.set-setting("autoplay-similar", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Automatically open the side panel";
+                checked: State.auto-open-side-panel;
+                toggled(value) => { Actions.set-setting("auto-open-side-panel", value ? "true" : "false"); }
+            }
+
+            SectionTitle { text: "Equalizer"; }
+            SettingComboRow {
+                label: "Crossfade";
+                description: "Blend between songs.";
+                options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                value: State.crossfade-label;
+                changed(value) => { Actions.set-crossfade-label(value); }
+            }
+
+            SectionTitle { text: "Song columns"; }
+            SettingSwitchRow {
+                label: "Show artwork";
+                checked: State.show-list-artwork;
+                toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show artist";
+                checked: State.show-list-artist;
+                toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show album";
+                checked: State.show-list-album;
+                toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show added date";
+                checked: State.show-list-added;
+                toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show year";
+                checked: State.show-list-year;
+                toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show duration";
+                checked: State.show-list-duration;
+                toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Show favorite hearts";
+                checked: State.show-list-favorite;
+                toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); }
+            }
+
+            SectionTitle { text: "Advanced"; }
+            SettingSwitchRow {
+                label: "Check GitHub for updates";
+                checked: State.check-updates;
+                toggled(value) => { Actions.set-setting("check-updates", value ? "true" : "false"); }
+            }
+            SettingSwitchRow {
+                label: "Minimize to the system tray";
+                checked: State.minimize-to-tray;
+                toggled(value) => { Actions.set-setting("minimize-to-tray", value ? "true" : "false"); }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                SettingRow {
+                    label: "Diagnostics";
+                    description: "Local log files and tag backups.";
+                    horizontal-stretch: 1;
+                }
+                TextBtn {
+                    label: "Open log folder";
+                    clicked => { Actions.open-log-folder(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                SettingRow {
+                    label: "Reset settings";
+                    description: "Restores the defaults you choose.";
+                    horizontal-stretch: 1;
+                }
+                TextBtn {
+                    label: "Reset…";
+                    danger: true;
+                    clicked => { Actions.open-modal("reset"); }
+                }
+            }
+
+            SectionTitle { text: "About"; }
+            if State.about-rows.length > 0 : VerticalLayout {
+                spacing: 6px;
+                for row in State.about-rows : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: #717970;
+                        font-size: 11px;
+                        width: 130px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        color: #cdd2cc;
+                        font-size: 11px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                TextBtn {
+                    label: "Manage library folders…";
+                    clicked => { Actions.open-modal("folders"); }
+                }
+                TextBtn {
+                    label: "Scan exclusions…";
+                    clicked => { Actions.open-modal("exclusions"); }
+                }
+            }
+        }
+    }
+}
+
+// ---- Duplicates --------------------------------------------------------------
+component DuplicatesView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Duplicates";
+                color: #f7f8f6;
+                font-size: 22px;
+                font-weight: 800;
+                horizontal-stretch: 1;
+            }
+            TextBtn {
+                label: "Rescan duplicates";
+                clicked => { Actions.prepare-duplicates(); }
+            }
+        }
+
+        if State.duplicate-files.length == 0 : VerticalLayout {
+            spacing: 12px;
+
+            TrackHeader {
+                first-column: "Title";
+                show-added: false;
+                show-year: false;
+                show-album: true;
+                sort(s) => { Actions.load-duplicates(s, State.duplicates-descending, 0); }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+                ListView {
+                    for row[index] in State.duplicates : Rectangle {
+                        height: 48px;
+                        background: dup-area.has-hover ? #131613 : transparent;
+                        dup-area := TouchArea {
+                            clicked => { Actions.open-duplicate-files(row.first-id); }
+                        }
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            Text {
+                                text: row.title;
+                                color: #f2f4f1;
+                                font-size: 12px;
+                                overflow: elide;
+                                horizontal-stretch: 3;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: row.artist;
+                                color: #a0a79f;
+                                font-size: 11px;
+                                overflow: elide;
+                                horizontal-stretch: 3;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "\{row.copies}";
+                                color: #cdd2cc;
+                                font-size: 11px;
+                                width: 60px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: row.locations;
+                                color: #717970;
+                                font-size: 10px;
+                                overflow: elide;
+                                width: 220px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: center;
+                TextBtn {
+                    label: "Previous";
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page - 1); }
+                }
+                Text {
+                    text: "Page \{State.duplicates-page + 1} of \{State.duplicates-pages}";
+                    color: #a0a79f;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                TextBtn {
+                    label: "Next";
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page + 1); }
+                }
+            }
+        }
+
+        if State.duplicate-files.length > 0 : VerticalLayout {
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 10px;
+                IcBtn {
+                    icon: @image-url("../assets/icons/chevron-left.svg");
+                    clicked => { Actions.close-duplicate-files(); }
+                }
+                Text {
+                    text: State.duplicate-group-title;
+                    color: #f7f8f6;
+                    font-size: 16px;
+                    font-weight: 750;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+            TrackTable {
+                vertical-stretch: 1;
+                show-added: false;
+                show-year: false;
+                empty-text: "No duplicate files.";
+            }
+        }
+    }
+}
+
+// ---- Videos ------------------------------------------------------------------
+component VideosView inherits Rectangle {
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+        Text {
+            text: "Videos";
+            color: #f7f8f6;
+            font-size: 22px;
+            font-weight: 800;
+        }
+        TrackTable {
+            vertical-stretch: 1;
+            show-added: false;
+            show-year: false;
+            first-column: "Title";
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: "No videos indexed. Enable video file types in scan exclusions.";
+        }
+    }
+}
+
+// ---- Root content router -----------------------------------------------------
+export component ContentArea inherits Rectangle {
+    background: transparent;
+
+    if State.view == "Home" : HomeView { width: 100%; height: 100%; }
+    if State.view == "Search" : SearchView { width: 100%; height: 100%; }
+    if State.view == "Songs" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Favorites" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Most Played" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Recently Played" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Recently Added" : SongsView { width: 100%; height: 100%; }
+    if State.view == "With Lyrics" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Videos" : VideosView { width: 100%; height: 100%; }
+    if State.view == "Albums" : GridView {
+        width: 100%;
+        height: 100%;
+        title: "Albums";
+        empty-text: "No albums indexed yet.";
+    }
+    if State.view == "Artists" : GridView {
+        width: 100%;
+        height: 100%;
+        title: "Artists";
+        round: true;
+        empty-text: "No artists indexed yet.";
+    }
+    if State.view == "Genres" : GridView {
+        width: 100%;
+        height: 100%;
+        title: "Genres";
+        empty-text: "No genres indexed yet.";
+    }
+    if State.view == "Folders" : FoldersView { width: 100%; height: 100%; }
+    if State.view == "Playlists" : PlaylistsView { width: 100%; height: 100%; }
+    if State.view == "Playlist" : PlaylistView { width: 100%; height: 100%; }
+    if State.view == "Album" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "Album";
+        empty-text: "No tracks in this album.";
+    }
+    if State.view == "Artist" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "Artist";
+        empty-text: "No tracks by this artist.";
+    }
+    if State.view == "Genre" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "Genre";
+        empty-text: "No tracks in this genre.";
+    }
+    if State.view == "Folder" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "Folder";
+        empty-text: "No tracks in this folder.";
+    }
+    if State.view == "Queue" : QueueView { width: 100%; height: 100%; }
+    if State.view == "Now Playing" : NowPlayingView { width: 100%; height: 100%; }
+    if State.view == "Lyrics" : LyricsView { width: 100%; height: 100%; }
+    if State.view == "Audio" : AudioView { width: 100%; height: 100%; }
+    if State.view == "Settings" : SettingsView { width: 100%; height: 100%; }
+    if State.view == "Duplicates" : DuplicatesView { width: 100%; height: 100%; }
+}

@@ -22,3 +22,4 @@ Cleanup-MusicPlayerLocalBuilds.ps1
 progress.md
 slint-prototype/
 target/
+music-player-rust/GAP_ANALYSIS.md

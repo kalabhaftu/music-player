@@ -1,0 +1,143 @@
+// Shared model structs for the Music Player UI.
+// Names mirror the WebUI DTO field names from the original C# app.
+
+export struct TrackItem {
+    id: string,
+    title: string,
+    artist: string,
+    album: string,
+    album-artist: string,
+    genre: string,
+    year: string,
+    duration: string,
+    added: string,
+    initials: string,
+    badge-bg: color,
+    is-favorite: bool,
+    rating: int,
+    play-count: int,
+    is-playing: bool,
+    unavailable: bool,
+}
+
+export struct GroupItem {
+    // Group key value (album name, artist name, genre, folder path).
+    name: string,
+    // Subtitle line: "artist · 12 songs · 1998" per the original subtitle rules.
+    subtitle: string,
+    // Monogram initials from the shared initials() algorithm.
+    initials: string,
+    // Gradient class c1..c10 derived from the FNV-style hash.
+    gradient: int,
+    track-count: int,
+}
+
+export struct QueueItem {
+    id: string,
+    title: string,
+    artist: string,
+    duration: string,
+    initials: string,
+    badge-bg: color,
+    is-current: bool,
+    unavailable: bool,
+    is-playing: bool,
+}
+
+export struct PlaylistCardItem {
+    id: string,
+    name: string,
+    track-count: int,
+    // Smart playlists render the exact gradient hexes; user cards use c1..c10.
+    is-smart: bool,
+    gradient: int,
+    initials: string,
+    description: string,
+}
+
+export struct LyricLineItem {
+    text: string,
+    is-active: bool,
+    is-past: bool,
+    is-upcoming: bool,
+}
+
+export struct TagFieldItem {
+    key: string,
+    value: string,
+}
+
+export struct ContextMenuItem {
+    label: string,
+    danger: bool,
+    separator: bool,
+    enabled: bool,
+}
+
+export struct EqBandItem {
+    label: string,
+    value: float,
+}
+
+export struct DuplicateItem {
+    title: string,
+    artist: string,
+    copies: int,
+    locations: string,
+    first-id: string,
+}
+
+export struct DetailRowItem {
+    label: string,
+    value: string,
+}
+
+export struct BackupItem {
+    label: string,
+}
+
+export struct LyricResultItem {
+    title: string,
+    artist: string,
+    badge: string,
+    timed: bool,
+    synced-id: string,
+    plain-id: string,
+}
+
+export struct NavEntry {
+    view: string,
+    label: string,
+    icon: string,
+    badge: string,
+}
+
+// Card grids are laid out three tiles per row (the original auto-fill grid);
+// Rust chunks the group model into rows so Slint can render them as a list.
+export struct GroupRowItem {
+    a: GroupItem,
+    b: GroupItem,
+    c: GroupItem,
+    filled: int,
+}
+
+export struct PlaylistRowItem {
+    a: PlaylistCardItem,
+    b: PlaylistCardItem,
+    c: PlaylistCardItem,
+    filled: int,
+}
+
+export struct FolderRootItem {
+    path: string,
+    is-available: bool,
+}
+
+export struct ExtensionItem {
+    extension: string,
+    kind: string,
+    enabled: bool,
+}
+
+
+
