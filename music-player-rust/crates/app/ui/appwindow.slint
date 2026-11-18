@@ -2170,13 +2170,19 @@ export component AppWindow inherits Window {
 
     VerticalLayout {
         HorizontalLayout {
+            vertical-stretch: 1;
             NavRail { }
             VerticalLayout {
+                vertical-stretch: 1;
                 TopBar { }
                 HorizontalLayout {
+                    vertical-stretch: 1;
                     Rectangle {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        clip: true;
                         background: Palette.surface;
-                        ContentArea { }
+                        ContentArea { width: 100%; height: 100%; }
                     }
                     RightPanel { }
                 }
