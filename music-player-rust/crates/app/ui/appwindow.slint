@@ -3,7 +3,7 @@
 
 import { State, Actions } from "state.slint";
 import {
-    TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem,
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem,
     TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem,
     BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem,
 } from "models.slint";
@@ -14,7 +14,7 @@ import { ContentArea, QueueView, AudioView } from "views.slint";
 // Export globals and DTO structs to the Rust host.
 export { State, Actions } from "state.slint";
 export {
-    TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem,
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem,
     ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem,
     GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem,
 } from "models.slint";
@@ -73,42 +73,44 @@ component NavRail inherits Rectangle {
         padding-right: 12px;
         spacing: 2px;
 
-        HorizontalLayout {
-            padding-left: 10px;
-            spacing: 10px;
+        VerticalLayout {
+            padding-left: 11px;
             height: 48px;
-            Image {
-                source: @image-url("../assets/icons/disc.svg");
-                width: 22px;
-                height: 22px;
-                colorize: State.accent;
-                vertical-alignment: center;
-            }
+            spacing: 1px;
             Text {
-                text: "Music Player\nLOCAL LIBRARY";
+                text: "Music Player";
                 color: Palette.text;
-                font-size: 12px;
+                font-size: 18px;
                 font-weight: 800;
                 vertical-alignment: center;
             }
+            Text {
+                text: "LOCAL LIBRARY";
+                color: Palette.muted-2;
+                font-size: 10px;
+                letter-spacing: 0.5px;
+                vertical-alignment: center;
+            }
         }
+        Rectangle { height: 8px; }
 
         ScrollView {
+            vertical-stretch: 1;
             VerticalLayout {
                 spacing: 2px;
-                Text { text: "DISCOVER"; color: Palette.muted-2; font-size: 9px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
+                Text { text: "DISCOVER"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
                 NavEntryRow { view: "Home"; label: "Home"; icon: @image-url("../assets/icons/home.svg"); }
                 NavEntryRow { view: "Search"; label: "Search"; icon: @image-url("../assets/icons/search.svg"); }
                 NavEntryRow { view: "Favorites"; label: "Favorites"; icon: @image-url("../assets/icons/heart.svg"); }
 
-                Text { text: "YOUR LIBRARY"; color: Palette.muted-2; font-size: 9px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
+                Text { text: "YOUR LIBRARY"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
                 NavEntryRow { view: "Songs"; label: "Songs"; icon: @image-url("../assets/icons/music.svg"); }
                 NavEntryRow { view: "Albums"; label: "Albums"; icon: @image-url("../assets/icons/disc.svg"); }
                 NavEntryRow { view: "Artists"; label: "Artists"; icon: @image-url("../assets/icons/users.svg"); }
                 NavEntryRow { view: "Genres"; label: "Genres"; icon: @image-url("../assets/icons/tag.svg"); }
                 NavEntryRow { view: "Recently Added"; label: "Recently Added"; icon: @image-url("../assets/icons/music.svg"); }
 
-                Text { text: "MANAGE"; color: Palette.muted-2; font-size: 9px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
+                Text { text: "MANAGE"; color: Palette.muted-2; font-size: 10px; font-weight: 700; x: 12px; height: 25px; vertical-alignment: bottom; }
                 NavEntryRow { view: "Playlists"; label: "Playlists"; icon: @image-url("../assets/icons/list.svg"); }
                 NavEntryRow { view: "Folders"; label: "Folders"; icon: @image-url("../assets/icons/folder.svg"); }
             }
@@ -146,20 +148,18 @@ component TopBar inherits Rectangle {
         }
 
         Rectangle {
-            width: 340px;
+            horizontal-stretch: 1;
+            min-width: 110px;
+            max-width: 520px;
             height: 36px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 18px;
+            border-radius: 19px;
             background: Palette.panel-2;
-            border-width: 1px;
-            border-color: area.has-hover ? Palette.border-hover : Palette.overlay;
-            animate border-color { duration: 120ms; }
 
-            area := TouchArea { }
+            TouchArea { }
 
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 10px;
+                padding-left: 13px;
+                padding-right: 12px;
                 spacing: 8px;
                 Image {
                     source: @image-url("../assets/icons/search.svg");
@@ -169,10 +169,17 @@ component TopBar inherits Rectangle {
                     vertical-alignment: center;
                 }
                 LineEdit {
-                placeholder-text: "Search songs, artists, albums, playlists…";
+                    horizontal-stretch: 1;
+                    placeholder-text: "Search songs, artists, albums, playlists…";
                     text <=> State.view-search;
                     edited(text) => { Actions.search-input(text); }
                     accepted(text) => { Actions.save-recent-search(text); }
+                }
+                Text {
+                    text: "Ctrl K";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                    vertical-alignment: center;
                 }
                 if State.view-search != "" : IcBtn {
                     icon: @image-url("../assets/icons/close.svg");
@@ -186,17 +193,21 @@ component TopBar inherits Rectangle {
         Rectangle { horizontal-stretch: 1; }
 
         if State.scan-active : HorizontalLayout {
-            spacing: 8px;
             Rectangle {
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                y: 14px;
-                background: State.scan-paused ? #ffb04a : State.accent;
-            }
-            TextBtn {
-                label: State.scan-paused ? "Scan paused" : "Scanning";
-                clicked => { Actions.toggle-scan-details(); }
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: scan-area.has-hover ? Palette.overlay : transparent;
+                border-width: 2px;
+                border-color: State.scan-paused ? #ffb04a : State.accent;
+                Text {
+                    text: State.scan-paused ? "Ⅱ" : "•";
+                    color: State.scan-paused ? #ffb04a : State.accent;
+                    font-size: State.scan-paused ? 10px : 16px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                scan-area := TouchArea { clicked => { Actions.toggle-scan-details(); } }
             }
         }
 
@@ -251,19 +262,23 @@ component TopBar inherits Rectangle {
 
 component ToolMenuRow inherits Rectangle {
     in property <string> label;
+    in property <image> icon;
     in property <string> view;
     callback clicked();
-    height: 34px;
+    height: 38px;
     border-radius: 5px;
     background: area.has-hover ? Palette.hover : transparent;
     area := TouchArea { clicked => { root.clicked(); } }
-    Text {
-        text: root.label;
-        x: 11px;
-        width: parent.width - 22px;
-        color: Palette.text-strong;
-        font-size: 11px;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 10px;
+        spacing: 10px;
+        Image { source: root.icon; width: 17px; height: 17px; colorize: Palette.muted; vertical-alignment: center; }
+        Text {
+            text: root.label;
+            color: Palette.text-strong;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
     }
 }
 
@@ -271,28 +286,19 @@ component ToolsMenuOverlay inherits Rectangle {
     background: #00000000;
     TouchArea { clicked => { State.tools-menu-open = false; } }
     Rectangle {
-        x: parent.width - 212px;
+        x: parent.width - 204px;
         y: 62px;
-        width: 198px;
-        height: 360px;
+        width: 190px;
+        height: 86px;
         border-radius: 8px;
         background: Palette.panel;
         border-width: 1px;
         border-color: Palette.border;
         VerticalLayout {
-            padding: 6px;
-            spacing: 1px;
-            ToolMenuRow { label: "Settings"; clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
-            Rectangle { height: 1px; background: Palette.border-soft; }
-            ToolMenuRow { label: "Most played"; clicked => { Actions.set-view("Most Played", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "Recently played"; clicked => { Actions.set-view("Recently Played", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "With lyrics"; clicked => { Actions.set-view("With Lyrics", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "Videos"; clicked => { Actions.set-view("Videos", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "Queue"; clicked => { Actions.set-view("Queue", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "Equalizer"; clicked => { Actions.set-view("Audio", "", "", ""); State.tools-menu-open = false; } }
-            ToolMenuRow { label: "Duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); State.tools-menu-open = false; } }
-            Rectangle { height: 1px; background: Palette.border-soft; }
-            ToolMenuRow { label: "Scan library"; clicked => { Actions.scan-library(); State.tools-menu-open = false; } }
+            padding: 5px;
+            spacing: 2px;
+            ToolMenuRow { label: "Settings"; icon: @image-url("../assets/icons/settings.svg"); clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
+            ToolMenuRow { label: "Scan library"; icon: @image-url("../assets/icons/refresh.svg"); clicked => { Actions.scan-library(); State.tools-menu-open = false; } }
         }
     }
 }
@@ -353,9 +359,16 @@ component QueueRow inherits Rectangle {
             width: 38px;
             height: 38px;
             border-radius: 4px;
+            clip: true;
             background: root.item.badge-bg;
             y: (parent.height - self.height) / 2;
-            Text {
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
                 text: root.item.initials;
                 color: Palette.text;
                 font-size: 12px;
@@ -383,25 +396,43 @@ component QueueRow inherits Rectangle {
             }
         }
 
-        Text {
-            text: root.item.duration;
-            color: Palette.muted;
-            font-size: 10px;
-            width: 44px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
-        }
-
-        IcBtn {
-            icon: @image-url("../assets/icons/close.svg");
-            icon-size: 12px;
-            tint: Palette.muted-2;
-            hover-tint: #ff5b74;
-            width: 26px;
-            height: 26px;
-            clicked => { root.remove(); }
+        Rectangle {
+            width: 30px;
+            if row-area.has-hover : IcBtn {
+                icon: @image-url("../assets/icons/close.svg");
+                icon-size: 12px;
+                tint: Palette.muted-2;
+                hover-tint: #ff5b74;
+                width: 26px;
+                height: 26px;
+                clicked => { root.remove(); }
+            }
         }
     }
+}
+
+component PanelTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback clicked();
+    width: root.label == "Queue" ? 48px : 72px;
+    height: 30px;
+    Text {
+        text: root.label;
+        color: root.active ? Palette.text : Palette.muted;
+        font-size: 10px;
+        x: 2px;
+        width: parent.width - 4px;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        width: parent.width;
+        height: 2px;
+        background: root.active ? State.accent : transparent;
+    }
+    TouchArea { clicked => { root.clicked(); } }
 }
 
 // ---- Right panel ---------------------------------------------------------------
@@ -410,14 +441,18 @@ component RightPanel inherits Rectangle {
     background: Palette.surface;
 
     if State.right-panel-open : VerticalLayout {
+        padding-top: 16px;
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-bottom: 8px;
+        spacing: 0px;
+
         HorizontalLayout {
-            height: 30px;
-            padding-left: 12px;
-            padding-right: 6px;
+            height: 38px;
             Text {
                 text: "Now playing";
                 color: Palette.text;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: 750;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
@@ -428,43 +463,97 @@ component RightPanel inherits Rectangle {
                 clicked => { Actions.toggle-right-panel(); }
             }
         }
+
+        if State.has-track : Rectangle {
+            height: 18px;
+        }
+        if State.has-track : Rectangle {
+            width: State.right-panel-width * 1px - 28px;
+            height: self.width;
+            border-radius: 7px;
+            clip: true;
+            background: Palette.panel-2;
+            if State.current-has-cover : Image {
+                source: State.current-cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !State.current-has-cover : Text {
+                text: State.current-initials;
+                color: #ffffffcc;
+                font-size: 42px;
+                font-weight: 900;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+        if State.has-track : Rectangle {
+            height: 14px;
+        }
+        if State.has-track : HorizontalLayout {
+            height: 48px;
+            padding-left: 2px;
+            padding-right: 2px;
+            spacing: 8px;
+            VerticalLayout {
+                spacing: 4px;
+                horizontal-stretch: 1;
+                Text {
+                    text: State.current-title;
+                    color: Palette.text;
+                    font-size: 15px;
+                    font-weight: 750;
+                    overflow: elide;
+                }
+                Text {
+                    text: State.current-album == "" ? State.current-artist : "{State.current-artist} · {State.current-album}";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    overflow: elide;
+                }
+            }
+            IcBtn {
+                icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                icon-size: 15px;
+                tint: State.current-favorite ? State.accent : Palette.muted-2;
+                clicked => { Actions.toggle-favorite(State.current-id); }
+            }
+        }
+        if !State.has-track : VerticalLayout {
+            height: 112px;
+            alignment: center;
+            Text { text: "Nothing playing"; color: Palette.text; font-size: 14px; font-weight: 750; horizontal-alignment: center; }
+            Text { text: "Choose a track to see details here."; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
+        }
+        Rectangle { height: 1px; background: Palette.border; }
+
         HorizontalLayout {
-            height: 38px;
-            padding-left: 12px;
-            padding-right: 6px;
-            spacing: 6px;
-            Chip {
+            height: 40px;
+            Rectangle { width: 2px; background: transparent; }
+            PanelTab {
                 label: "Queue";
                 active: State.right-panel-tab == "queue";
                 clicked => { Actions.set-right-tab("queue"); }
             }
-            Chip {
+            PanelTab {
                 label: "Track info";
                 active: State.right-panel-tab == "info";
                 clicked => { Actions.set-right-tab("info"); }
             }
-            Rectangle { horizontal-stretch: 1; }
-            IcBtn {
-                icon: @image-url("../assets/icons/close.svg");
-                icon-size: 13px;
-                tint: Palette.muted-2;
-                clicked => { Actions.toggle-right-panel(); }
-            }
         }
 
         if State.right-panel-tab == "queue" : VerticalLayout {
-            spacing: 6px;
             HorizontalLayout {
-                height: 30px;
-                padding-left: 12px;
+                height: 34px;
                 Text {
-                    text: "\{State.queue-count} in queue";
+                    text: "Next in queue (\{State.queue-count})";
                     color: Palette.muted-2;
                     font-size: 10px;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
-                TextBtn {
+                if State.queue-count > 0 : TextBtn {
                     label: "Clear";
                     height: 26px;
                     clicked => { Actions.clear-queue(); }
@@ -474,11 +563,22 @@ component RightPanel inherits Rectangle {
                 vertical-stretch: 1;
                 ListView {
                     for row[index] in State.queue-items : QueueRow {
+                        visible: !row.is-current;
                         item: row;
                         index: index;
-                        play => { Actions.play-queue-entry(index); }
-                        remove => { Actions.queue-remove(index); }
+                        play => { Actions.play-queue-entry(row.queue-index); }
+                        remove => { Actions.queue-remove(row.queue-index); }
                     }
+                }
+            }
+            if State.queue-count <= 0 : Rectangle {
+                vertical-stretch: 1;
+                Text {
+                    text: "No upcoming tracks.";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    x: 12px;
+                    y: 16px;
                 }
             }
             if State.queue-more-count > 0 : Rectangle {
@@ -495,41 +595,15 @@ component RightPanel inherits Rectangle {
 
         if State.right-panel-tab == "info" : ScrollView {
             VerticalLayout {
-                padding: 14px;
-                spacing: 12px;
-
-                if State.has-track : Rectangle {
-                    height: 280px;
-                    border-radius: 6px;
-                    clip: true;
-                    background: Palette.panel-2;
-                    Image {
-                        source: State.current-cover;
-                        width: parent.width;
-                        height: parent.height;
-                        image-fit: ImageFit.cover;
-                    }
-                }
-
                 if State.has-track : VerticalLayout {
-                    spacing: 4px;
+                    padding-top: 10px;
+                    spacing: 0px;
                     Text {
-                        text: State.current-title;
-                        color: State.accent;
-                        font-size: 15px;
-                        font-weight: 750;
-                        overflow: elide;
+                        text: "Track information";
+                        color: Palette.text-subtle;
+                        font-size: 11px;
+                        font-weight: 800;
                     }
-                    Text {
-                        text: State.current-artist;
-                        color: Palette.muted;
-                        font-size: 10px;
-                        overflow: elide;
-                    }
-                }
-
-                if State.has-track : VerticalLayout {
-                    spacing: 8px;
                     InfoRow { label: "Album"; value: State.info-album; }
                     InfoRow { label: "Album artist"; value: State.info-album-artist; }
                     InfoRow { label: "Year · Genre"; value: State.info-year-genre; }
@@ -549,13 +623,15 @@ component PlayerBar inherits Rectangle {
     background: Palette.surface;
 
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        spacing: 12px;
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 16px;
 
-        // Left: now playing
         HorizontalLayout {
-            width: State.browse-width * 1px;
+            horizontal-stretch: 1;
+            min-width: 220px;
             spacing: 11px;
             Rectangle {
                 width: 56px;
@@ -564,14 +640,19 @@ component PlayerBar inherits Rectangle {
                 border-radius: 6px;
                 clip: true;
                 background: Palette.panel-2;
-                Image {
+                if State.current-has-cover : Image {
                     source: State.current-cover;
                     width: parent.width;
                     height: parent.height;
                     image-fit: ImageFit.cover;
                 }
-                TouchArea {
-                    clicked => { Actions.open-immersive-player(); }
+                if !State.current-has-cover : Text {
+                    text: State.current-initials;
+                    color: #ffffffcc;
+                    font-size: 18px;
+                    font-weight: 900;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
                 }
             }
             VerticalLayout {
@@ -579,48 +660,35 @@ component PlayerBar inherits Rectangle {
                 spacing: 4px;
                 horizontal-stretch: 1;
                 Text {
-                    text: State.current-title == "" ? "Not playing" : State.current-title;
+                    text: State.current-title == "" ? "Nothing playing" : State.current-title;
                     color: State.current-title == "" ? Palette.muted-2 : Palette.text;
                     font-size: 12px;
                     overflow: elide;
                 }
                 Text {
-                    text: State.current-artist;
+                    text: State.current-title == "" ? "Choose a song from your library" : State.current-artist;
                     color: Palette.muted;
                     font-size: 10px;
                     overflow: elide;
                 }
-                HorizontalLayout {
-                    spacing: 4px;
-                    IcBtn {
-                        icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
-                        icon-size: 13px;
-                        tint: State.current-favorite ? State.accent : Palette.muted-2;
-                        width: 26px;
-                        height: 26px;
-                        clicked => { if (State.current-id != "") { Actions.toggle-favorite(State.current-id); } }
-                    }
-                    IcBtn {
-                        icon: @image-url("../assets/icons/more.svg");
-                        icon-size: 13px;
-                        tint: Palette.muted-2;
-                        width: 26px;
-                        height: 26px;
-                        clicked => { Actions.open-context-menu(State.current-id, round((root.absolute-position.x + root.width - 10px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
-                    }
-                }
+            }
+            IcBtn {
+                icon: State.current-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                icon-size: 16px;
+                tint: State.current-favorite ? State.accent : Palette.icon-muted;
+                clicked => { if (State.current-id != "") { Actions.toggle-favorite(State.current-id); } }
             }
         }
 
-        // Center: controls + timeline
         VerticalLayout {
-            horizontal-stretch: 1;
+            horizontal-stretch: 1.25;
+            min-width: 340px;
             alignment: center;
             spacing: 7px;
 
             HorizontalLayout {
                 alignment: center;
-                spacing: 11px;
+                spacing: 8px;
 
                 IcBtn {
                     icon: @image-url("../assets/icons/shuffle.svg");
@@ -664,17 +732,25 @@ component PlayerBar inherits Rectangle {
                     tint: State.repeat-mode == "Off" ? Palette.icon-muted : State.accent;
                     clicked => { Actions.cycle-repeat(); }
                 }
-                IcBtn {
-                    icon: @image-url("../assets/icons/lyrics.svg");
-                    icon-size: 15px;
-                    tint: State.has-lyrics ? State.accent : Palette.icon-muted;
-                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                Rectangle {
+                    width: 32px;
+                    height: 30px;
+                    border-radius: 15px;
+                    background: ab-area.has-hover ? Palette.overlay : transparent;
+                    Text {
+                        text: "A–B";
+                        color: State.repeat-a != "" || State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                        font-size: 10px;
+                        font-weight: 650;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    ab-area := TouchArea { clicked => { Actions.toggle-ab(); } }
                 }
             }
 
             HorizontalLayout {
-                width: 520px;
-                alignment: center;
+                horizontal-stretch: 1;
                 spacing: 8px;
                 Text {
                     text: State.current-time;
@@ -701,42 +777,43 @@ component PlayerBar inherits Rectangle {
             }
         }
 
-        // Right: volume + extras
         HorizontalLayout {
-            width: 280px;
-            spacing: 8px;
+            horizontal-stretch: 1;
+            min-width: 240px;
+            spacing: 7px;
             alignment: end;
 
-            if State.repeat-a != "" || State.repeat-b != "" : Chip {
-                label: State.repeat-a != "" && State.repeat-b != ""
-                    ? "A-B \{State.repeat-a}–\{State.repeat-b}"
-                    : (State.repeat-a != "" ? "A \{State.repeat-a}" : "B \{State.repeat-b}");
-                active: true;
-                clicked => { Actions.toggle-ab(); }
+            IcBtn {
+                icon: @image-url("../assets/icons/lyrics.svg");
+                icon-size: 15px;
+                tint: Palette.icon-muted;
+                active: State.view == "Lyrics";
+                clicked => { Actions.set-view("Lyrics", "", "", ""); }
             }
-
             IcBtn {
                 icon: @image-url("../assets/icons/queue.svg");
                 icon-size: 15px;
                 tint: Palette.icon-muted;
+                active: State.view == "Queue";
                 clicked => { Actions.set-view("Queue", "", "", ""); }
             }
             IcBtn {
                 icon: @image-url("../assets/icons/equalizer.svg");
                 icon-size: 15px;
                 tint: Palette.icon-muted;
+                active: State.view == "Audio";
                 clicked => { Actions.set-view("Audio", "", "", ""); }
             }
-            if State.has-track : IcBtn {
+            IcBtn {
                 icon: @image-url("../assets/icons/expand.svg");
                 icon-size: 15px;
                 tint: Palette.icon-muted;
                 clicked => { Actions.open-immersive-player(); }
             }
             IcBtn {
-                icon: @image-url("../assets/icons/volume.svg");
+                icon: State.volume == 0 ? @image-url("../assets/icons/mute.svg") : @image-url("../assets/icons/volume.svg");
                 icon-size: 15px;
-                tint: Palette.icon-muted;
+                tint: State.volume == 0 ? State.accent : Palette.icon-muted;
                 clicked => { Actions.set-volume-muted(); }
             }
             Slider {
@@ -1684,7 +1761,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
     background: #080908;
     clip: true;
 
-    if State.has-track : Image {
+    if State.current-has-cover : Image {
         source: State.current-cover;
         width: parent.width;
         height: parent.height;
@@ -1741,12 +1818,20 @@ component ImmersivePlayerOverlay inherits Rectangle {
                     height: self.width;
                     border-radius: 14px;
                     clip: true;
-                    background: Palette.panel-2;
-                    Image {
+                    background: State.current-badge-bg;
+                    if State.current-has-cover : Image {
                         source: State.current-cover;
                         width: parent.width;
                         height: parent.height;
                         image-fit: ImageFit.cover;
+                    }
+                    if !State.current-has-cover : Text {
+                        text: State.current-initials;
+                        color: #ffffffcc;
+                        font-size: 60px;
+                        font-weight: 900;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
                     }
                 }
                 VerticalLayout {

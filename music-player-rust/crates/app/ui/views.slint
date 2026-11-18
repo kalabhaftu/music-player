@@ -2,93 +2,236 @@
 // State.view. Shared widgets come from widgets.slint.
 
 import { State, Actions } from "state.slint";
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
 import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
 import {
-    Palette, IcBtn, TextBtn, TrackRow, TrackHeader, TrackTable, CardTile,
+    Palette, IcBtn, TextBtn, TrackRow, TrackHeader, TrackTable, CardTile, HomeCardTile,
     GroupGrid, HeroDetail, EmptyState, SectionTitle, Chip,
 } from "widgets.slint";
 
+component HomeSectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> view;
+    in property <string> action-label: "See all";
+    height: 26px;
+    HorizontalLayout {
+        Text {
+            text: root.title;
+            color: Palette.text-strong;
+            font-size: 19px;
+            font-weight: 750;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 56px;
+            height: 26px;
+            Text {
+                text: root.action-label;
+                color: Palette.muted;
+                font-size: 11px;
+                font-weight: 700;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { Actions.set-view(root.view, "", "", ""); } }
+        }
+    }
+}
+
+component HomeQuickTrackTile inherits Rectangle {
+    in property <TrackItem> item;
+    callback play();
+
+    height: 58px;
+    border-radius: 6px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 120ms; }
+    area := TouchArea { clicked => { root.play(); } }
+
+    HorizontalLayout {
+        padding: 5px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 48px;
+            height: 48px;
+            border-radius: 5px;
+            clip: true;
+            background: root.item.badge-bg;
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: Palette.text;
+                font-size: 15px;
+                font-weight: 800;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.item.title;
+                color: Palette.text-strong;
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.artist;
+                color: Palette.muted;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        IcBtn {
+            icon: @image-url("../assets/icons/play.svg");
+            icon-size: 14px;
+            tint: Palette.muted-2;
+            width: 28px;
+            height: 28px;
+            clicked => { root.play(); }
+        }
+    }
+}
+
+component HomeQuickRowView inherits Rectangle {
+    in property <HomeTrackRow> track-row;
+    HorizontalLayout {
+        spacing: 10px;
+        if root.track-row.filled >= 1 : HomeQuickTrackTile {
+            horizontal-stretch: 1;
+            item: root.track-row.a;
+            play => { Actions.play-track(root.track-row.a.id); }
+        }
+        if root.track-row.filled >= 2 : HomeQuickTrackTile {
+            horizontal-stretch: 1;
+            item: root.track-row.b;
+            play => { Actions.play-track(root.track-row.b.id); }
+        }
+        if root.track-row.filled == 1 : Rectangle { horizontal-stretch: 1; }
+    }
+}
+
+component HomeLibraryTile inherits Rectangle {
+    in property <HomeCardItem> item;
+    height: self.width + 68px;
+
+    HomeCardTile {
+        width: parent.width;
+        height: parent.height;
+        item: root.item;
+        open => {
+            if (root.item.kind == "track") { Actions.play-track(root.item.id); }
+            else if (root.item.kind == "playlist") { Actions.set-view("Playlist", "", "", root.item.id); }
+            else { Actions.set-view("Album", root.item.title, "album", ""); }
+        }
+        play => {
+            if (root.item.kind == "track") { Actions.play-track(root.item.id); }
+            else if (root.item.kind == "playlist") { Actions.play-playlist(root.item.id); }
+            else { Actions.play-group("album", root.item.title); }
+        }
+    }
+}
+
+component HomeCardRowView inherits Rectangle {
+    in property <HomeCardRow> card-row;
+    HorizontalLayout {
+        spacing: 14px;
+        if root.card-row.filled >= 1 : HomeLibraryTile {
+            horizontal-stretch: 1;
+            item: root.card-row.a;
+        }
+        if root.card-row.filled >= 2 : HomeLibraryTile {
+            horizontal-stretch: 1;
+            item: root.card-row.b;
+        }
+        if root.card-row.filled >= 3 : HomeLibraryTile {
+            horizontal-stretch: 1;
+            item: root.card-row.c;
+        }
+        if root.card-row.filled >= 4 : HomeLibraryTile {
+            horizontal-stretch: 1;
+            item: root.card-row.d;
+        }
+        if root.card-row.filled < 4 : Rectangle { horizontal-stretch: 4 - root.card-row.filled; }
+    }
+}
+
+component HomeEmptyState inherits Rectangle {
+    VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        Text {
+            text: State.has-roots ? (State.scan-active ? "Scanning your music folders" : "No indexed tracks yet") : "No music folders added";
+            color: Palette.text;
+            font-size: 16px;
+            font-weight: 750;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: State.has-roots
+                ? (State.scan-active ? "Tracks will appear here as the scan indexes your files." : "Scan your selected folders to add tracks to the library.")
+                : "Add a folder to scan your local collection.";
+            color: Palette.muted;
+            font-size: 11px;
+            horizontal-alignment: center;
+        }
+        if !State.scan-active : TextBtn {
+            label: State.has-roots ? "Scan folders" : "Add music folder";
+            primary: true;
+            clicked => {
+                if (State.has-roots) { Actions.scan-library(); }
+                else { Actions.open-modal("folders"); }
+            }
+        }
+    }
+}
+
 // ---- Home ------------------------------------------------------------------
 component HomeView inherits Rectangle {
-    if State.library-empty : EmptyState {
-        text: State.has-roots
-            ? "Your library is being scanned. Tracks will appear here as they are indexed."
-            : "Add a music folder to build your library.";
-        action-label: State.has-roots ? "Scan folders" : "Add music folder";
-        action => {
-            if (State.has-roots) { Actions.scan-library(); } else { Actions.open-modal("folders"); }
-        }
+    if State.library-empty : HomeEmptyState {
     }
     if !State.library-empty : ScrollView {
         VerticalLayout {
-            padding: 20px;
-            spacing: 18px;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
 
-            Text {
-                text: State.home-greeting;
-                color: Palette.text;
-                font-size: 26px;
-                font-weight: 800;
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: State.home-greeting; color: Palette.text; font-size: 28px; font-weight: 800; }
+                Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
             }
 
-            if State.home-albums.length > 0 : VerticalLayout {
-                spacing: 10px;
-                SectionTitle { text: "Your albums"; }
-                HorizontalLayout {
-                    spacing: 14px;
-                    for item[index] in State.home-albums : CardTile {
-                        width: 150px;
-                        item: item;
-                        play => { Actions.play-group("album", item.name); }
-                        open => { Actions.set-view("Album", item.name, "album", 0); }
-                    }
-                }
+            if State.home-quick-rows.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
+                for row in State.home-quick-rows : HomeQuickRowView { track-row: row; }
             }
 
-            if State.home-most.length > 0 : VerticalLayout {
-                spacing: 4px;
-                SectionTitle { text: "Most played"; }
-                for row[index] in State.home-most : TrackRow {
-                    track: row;
-                    index: index + 1;
-                    show-added: false;
-                    show-year: false;
-                    show-album: true;
-                    play => { Actions.play-track(row.id); }
-                    favorite => { Actions.toggle-favorite(row.id); }
-                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
-                }
+            if State.home-recent-album-rows.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
+                for row in State.home-recent-album-rows : HomeCardRowView { card-row: row; }
             }
 
-            if State.home-recent.length > 0 : VerticalLayout {
-                spacing: 4px;
-                SectionTitle { text: "Recently played"; }
-                for row[index] in State.home-recent : TrackRow {
-                    track: row;
-                    index: index + 1;
-                    show-added: false;
-                    show-year: false;
-                    show-album: true;
-                    play => { Actions.play-track(row.id); }
-                    favorite => { Actions.toggle-favorite(row.id); }
-                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
-                }
-            }
-
-            if State.home-added.length > 0 : VerticalLayout {
-                spacing: 4px;
-                SectionTitle { text: "Recently added"; }
-                for row[index] in State.home-added : TrackRow {
-                    track: row;
-                    index: index + 1;
-                    show-added: true;
-                    show-year: false;
-                    show-album: true;
-                    play => { Actions.play-track(row.id); }
-                    favorite => { Actions.toggle-favorite(row.id); }
-                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
-                }
+            if State.home-library-card-rows.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
+                for row in State.home-library-card-rows : HomeCardRowView { card-row: row; }
             }
         }
     }
@@ -97,15 +240,46 @@ component HomeView inherits Rectangle {
 // ---- Songs-like table views ------------------------------------------------
 component SongsView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
-        padding-top: 14px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
         spacing: 12px;
 
-        Text {
-            text: State.view-title;
-            color: Palette.text;
-            font-size: 22px;
-            font-weight: 800;
+        HorizontalLayout {
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 800; }
+                Text { text: State.view-subtitle; color: Palette.muted; font-size: 12px; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            TextBtn { label: "Play all"; clicked => { Actions.play-view(State.view); } }
+            TextBtn {
+                label: "Shuffle";
+                clicked => {
+                    if (!State.shuffle) { Actions.toggle-shuffle(); }
+                    Actions.play-view(State.view);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 34px;
+            spacing: 8px;
+            Rectangle { horizontal-stretch: 1; }
+            Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+            ComboBox {
+                width: 150px;
+                model: State.view == "Videos"
+                    ? ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating", "Type"]
+                    : ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
+                current-value: State.view-sort;
+                selected(value) => { Actions.sort-view(value); }
+            }
+            TextBtn {
+                label: State.view-descending ? "Descending" : "Ascending";
+                clicked => { Actions.sort-view(State.view-sort); }
+            }
         }
 
         TrackTable {
@@ -667,9 +841,16 @@ component QueueRow inherits Rectangle {
             width: 38px;
             height: 38px;
             border-radius: 4px;
+            clip: true;
             background: root.item.badge-bg;
             y: (parent.height - self.height) / 2;
-            Text {
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
                 text: root.item.initials;
                 color: Palette.text;
                 font-size: 12px;
@@ -761,10 +942,10 @@ export component QueueView inherits Rectangle {
             for row[index] in State.queue-items : QueueRow {
                 item: row;
                 index: index;
-                play => { Actions.play-queue-entry(index); }
-                move-up => { Actions.queue-move(index, index - 1); }
-                move-down => { Actions.queue-move(index, index + 1); }
-                remove => { Actions.queue-remove(index); }
+                play => { Actions.play-queue-entry(row.queue-index); }
+                move-up => { Actions.queue-move(row.queue-index, row.queue-index - 1); }
+                move-down => { Actions.queue-move(row.queue-index, row.queue-index + 1); }
+                remove => { Actions.queue-remove(row.queue-index); }
             }
         }
     }

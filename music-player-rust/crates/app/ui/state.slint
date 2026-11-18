@@ -2,12 +2,13 @@
 // The Actions callbacks mirror the WebUiCommandRouter command allowlist and the
 // State properties mirror the native -> JS event catalog payloads.
 
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem } from "models.slint";
 
 export global State {
     // ---- Routing ----
     in-out property <string> view: "Home";
     in-out property <string> view-title: "Home";
+    in-out property <string> view-subtitle: "";
     in-out property <string> view-search: "";
     in-out property <string> view-group-column: "";
     in-out property <string> view-group-value: "";
@@ -25,10 +26,12 @@ export global State {
     in property <[GroupRowItem]> group-rows;
     in property <int> groups-total: 0;
     in property <[PlaylistCardItem]> playlists;
-    in property <[TrackItem]> home-recent;
-    in property <[TrackItem]> home-most;
-    in property <[TrackItem]> home-added;
-    in property <[GroupItem]> home-albums;
+    in property <[HomeTrackRow]> home-quick-rows;
+    in property <[HomeCardRow]> home-recent-album-rows;
+    in property <[HomeCardRow]> home-library-card-rows;
+    in property <string> home-subtitle: "";
+    in property <string> home-library-view: "Playlists";
+    in property <string> home-library-title: "Made from your library";
     in property <string> home-greeting: "";
     in property <bool> library-empty: false;
     in property <bool> has-roots: false;
@@ -68,6 +71,9 @@ export global State {
     in property <string> current-album: "";
     in property <bool> current-favorite: false;
     in property <image> current-cover;
+    in property <bool> current-has-cover: false;
+    in property <string> current-initials: "";
+    in property <color> current-badge-bg: #2a2f3f;
     in property <color> accent: #b7ff2d;
     in property <color> accent-ink: #101210;
     in property <bool> light-theme: false;

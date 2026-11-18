@@ -1,7 +1,7 @@
 // Shared view widgets: icons, track rows and tables, card grids, heroes.
 
 import { State, Actions } from "state.slint";
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
 import { ListView } from "std-widgets.slint";
 
 // Gradient classes c1..c10 from the original components.css.
@@ -212,11 +212,17 @@ export component TrackRow inherits Rectangle {
         Rectangle {
             width: 38px;
             height: 38px;
-            border-radius: 6px;
+            border-radius: 8px;
             clip: true;
             y: (parent.height - self.height) / 2;
             background: root.track.badge-bg;
-            Text {
+            if root.track.has-cover : Image {
+                source: root.track.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.track.has-cover : Text {
                 text: root.track.initials;
                 color: Palette.text;
                 font-size: 13px;
@@ -287,35 +293,35 @@ export component TrackRow inherits Rectangle {
 
         Rectangle {
             width: 76px;
-            HorizontalLayout {
-                spacing: 2px;
-                alignment: center;
+            if area.has-hover : HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
 
-                if State.show-list-favorite : IcBtn {
-                    icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
-                    tint: root.track.is-favorite ? State.accent : Palette.muted-2;
-                    hover-tint: root.track.is-favorite ? State.accent : Palette.text;
-                    icon-size: 14px;
-                    clicked => { root.favorite(); }
-                }
-                if root.show-remove : IcBtn {
-                    icon: @image-url("../assets/icons/close.svg");
-                    tint: Palette.muted-2;
-                    hover-tint: #ff5b74;
-                    icon-size: 13px;
-                    clicked => { root.remove(); }
-                }
-                IcBtn {
-                    icon: @image-url("../assets/icons/more.svg");
-                    tint: Palette.muted-2;
-                    hover-tint: Palette.text;
-                    icon-size: 14px;
-                    clicked => { root.context(round((root.absolute-position.x + root.width - 10px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
+                    if State.show-list-favorite : IcBtn {
+                        icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                        tint: root.track.is-favorite ? State.accent : Palette.muted-2;
+                        hover-tint: root.track.is-favorite ? State.accent : Palette.text;
+                        icon-size: 14px;
+                        clicked => { root.favorite(); }
+                    }
+                    if root.show-remove : IcBtn {
+                        icon: @image-url("../assets/icons/close.svg");
+                        tint: Palette.muted-2;
+                        hover-tint: #ff5b74;
+                        icon-size: 13px;
+                        clicked => { root.remove(); }
+                    }
+                    IcBtn {
+                        icon: @image-url("../assets/icons/more.svg");
+                        tint: Palette.muted-2;
+                        hover-tint: Palette.text;
+                        icon-size: 14px;
+                        clicked => { root.context(round((root.absolute-position.x + root.width - 10px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
+                    }
                 }
             }
         }
     }
-}
 
 // Sortable table header.
 export component TrackHeader inherits Rectangle {
@@ -434,7 +440,7 @@ export component TrackTable inherits Rectangle {
                     show-remove: root.show-remove;
                     play => { Actions.play-track(row.id); }
                     favorite => { Actions.toggle-favorite(row.id); }
-                    context => { Actions.open-context-menu(row.id, 0, 0); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                     remove => { Actions.remove-from-playlist(index); }
                 }
             }
@@ -476,6 +482,10 @@ export component CardTile inherits Rectangle {
     callback play();
     callback open();
 
+    border-radius: 8px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+
     area := TouchArea {
         clicked => { root.open(); }
         pointer-event(event) => {
@@ -486,7 +496,8 @@ export component CardTile inherits Rectangle {
     }
 
     VerticalLayout {
-        spacing: 8px;
+        padding: 10px;
+        spacing: 10px;
 
         card := Rectangle {
             height: card.width;
@@ -540,16 +551,85 @@ export component CardTile inherits Rectangle {
             Text {
                 text: root.item.name;
                 color: Palette.text-strong;
-                font-size: 12px;
-                font-weight: 650;
+                font-size: 13px;
+                font-weight: 750;
                 overflow: elide;
             }
             Text {
                 text: root.item.subtitle;
                 color: Palette.muted;
-                font-size: 10px;
+                font-size: 11px;
                 overflow: elide;
             }
+        }
+    }
+}
+
+export component HomeCardTile inherits Rectangle {
+    in property <HomeCardItem> item;
+    callback open();
+    callback play();
+
+    border-radius: 8px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+    area := TouchArea {
+        clicked => { root.open(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.play();
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        card := Rectangle {
+            height: card.width;
+            border-radius: 6px;
+            clip: true;
+            background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: Palette.text;
+                font-size: 28px;
+                font-weight: 900;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 15px;
+                    height: 15px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+                TouchArea { clicked => { root.play(); } }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+            Text { text: root.item.title; color: Palette.text-strong; font-size: 13px; font-weight: 750; overflow: elide; }
+            Text { text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
         }
     }
 }

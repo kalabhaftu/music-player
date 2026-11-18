@@ -43,6 +43,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 slint::include_modules!();
 
+const TRACK_PAGE_SIZE: usize = 200;
+
 // ---------------------------------------------------------------------------
 // Helpers (WebUI DTO formatting, faithful to the original JS/C# display code)
 // ---------------------------------------------------------------------------
@@ -79,6 +81,17 @@ fn fmt_added(epoch_secs: u64) -> String {
             date
         }
     }
+}
+
+fn fmt_count(count: u32) -> String {
+    let mut grouped = String::new();
+    for (index, digit) in count.to_string().chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped.chars().rev().collect()
 }
 
 fn chrono_fallback_date(secs: i64) -> String {
@@ -183,6 +196,7 @@ fn song_sort(name: &str, default: TrackSort) -> TrackSort {
         "PlayCount" | "Plays" => TrackSort::PlayCount,
         "LastPlayed" => TrackSort::LastPlayed,
         "TrackNumber" | "Track" => TrackSort::TrackNumber,
+        "Type" => TrackSort::Type,
         "Rating" => TrackSort::Rating,
         "Path" => TrackSort::Path,
         _ => default,
@@ -462,10 +476,10 @@ impl App {
         state.set_accent(parse_hex_color(&accent_hex));
         state.set_accent_ink(contrasting_ink(&accent_hex));
         let accent_preset = match accent_hex.to_ascii_lowercase().as_str() {
-            "#4ab8ff" => "Sky",
-            "#b48cff" => "Violet",
-            "#ff7ba6" => "Rose",
-            "#ffc24a" => "Amber",
+            "#59d7ff" => "Sky",
+            "#a878ff" => "Violet",
+            "#ff6e91" => "Rose",
+            "#ffb04a" => "Amber",
             _ => "Lime",
         };
         state.set_accent_preset_name(ss(accent_preset));
@@ -487,6 +501,7 @@ impl App {
         if roots.len() != before {
             self.settings.set_library_roots(&roots);
         }
+        self.ui.global::<State>().set_has_roots(!roots.is_empty());
         self.reconfigure_watcher(&roots);
         self.publish_folder_roots(&roots);
     }
@@ -1377,12 +1392,17 @@ impl App {
         state.set_current_artist(ss(&track.artist));
         state.set_current_album(ss(&track.album));
         state.set_current_favorite(track.favorite);
-        let cover = track
+        let (has_cover, cover) = track
             .artwork_path
             .as_deref()
             .and_then(|p| native_io::load_artwork_image(Path::new(p)))
-            .unwrap_or_default();
+            .map(|image| (true, image))
+            .unwrap_or((false, Image::default()));
         state.set_current_cover(cover);
+        let slot = gradient_slot(if track.album.is_empty() { &track.title } else { &track.album });
+        state.set_current_has_cover(has_cover);
+        state.set_current_initials(ss(initials(&track.title)));
+        state.set_current_badge_bg(badge_color(slot));
         drop(state);
         self.publish_appearance();
         self.publish_info(track);
@@ -1421,6 +1441,12 @@ impl App {
         let added = chrono::DateTime::from_timestamp(track.added_utc.timestamp(), 0)
             .map(|dt| dt.timestamp() as u64)
             .unwrap_or(0);
+        let (has_cover, cover) = track
+            .artwork_path
+            .as_deref()
+            .and_then(|path| native_io::load_artwork_image(Path::new(path)))
+            .map(|image| (true, image))
+            .unwrap_or((false, Image::default()));
         TrackItem {
             id: ss(track.id()),
             title: ss(&track.title),
@@ -1433,6 +1459,8 @@ impl App {
             added: ss(fmt_added(added)),
             initials: ss(initials(&track.title)),
             badge_bg: badge_color(slot),
+            has_cover,
+            cover,
             is_favorite: track.favorite,
             rating: track.rating as i32,
             play_count: track.play_count as i32,
@@ -1441,16 +1469,25 @@ impl App {
         }
     }
 
-    fn queue_item(&mut self, track: &Track, is_current: bool, playing_path: &str) -> QueueItem {
+    fn queue_item(&mut self, track: &Track, queue_index: usize, is_current: bool, playing_path: &str) -> QueueItem {
         self.id_to_path.insert(track.id(), track.path.clone());
         let slot = gradient_slot(&track.title);
+        let (has_cover, cover) = track
+            .artwork_path
+            .as_deref()
+            .and_then(|path| native_io::load_artwork_image(Path::new(path)))
+            .map(|image| (true, image))
+            .unwrap_or((false, Image::default()));
         QueueItem {
             id: ss(track.id()),
+            queue_index: queue_index as i32,
             title: ss(&track.title),
             artist: ss(&track.artist),
             duration: ss(fmt_time(track.duration_ms)),
             initials: ss(initials(&track.title)),
             badge_bg: badge_color(slot),
+            has_cover,
+            cover,
             is_current,
             unavailable: track.unavailable,
             is_playing: track.path.eq_ignore_ascii_case(playing_path),
@@ -1473,6 +1510,8 @@ impl App {
             added: ss("Unavailable"),
             initials: ss(initials(&file_stem(path))),
             badge_bg: badge_color(3),
+            has_cover: false,
+            cover: Image::default(),
             is_favorite: false,
             rating: 0,
             play_count: 0,
@@ -1487,20 +1526,24 @@ impl App {
         let start = current_index.unwrap_or(0);
         let playing_path = self.current.as_ref().map(|t| t.path.clone()).unwrap_or_default();
         let mut items = Vec::new();
-        for path in entries.iter().skip(start).take(30) {
+        for (offset, path) in entries.iter().skip(start).take(30).enumerate() {
+            let is_current = current_index == Some(start + offset);
             let item = match self.store.get_track(path).ok().flatten() {
-                Some(track) => self.queue_item(&track, false, &playing_path),
+                Some(track) => self.queue_item(&track, start + offset, is_current, &playing_path),
                 None => {
                     let id = music_player_core::track_id_for_path(path);
                     self.id_to_path.insert(id.clone(), path.clone());
                     QueueItem {
                         id: ss(&id),
+                        queue_index: (start + offset) as i32,
                         title: ss(file_stem(path)),
                         artist: ss("Unavailable"),
                         duration: ss("0:00"),
                         initials: ss(initials(&file_stem(path))),
                         badge_bg: badge_color(3),
-                        is_current: false,
+                        has_cover: false,
+                        cover: Image::default(),
+                        is_current,
                         unavailable: true,
                         is_playing: false,
                     }
@@ -1508,16 +1551,11 @@ impl App {
             };
             items.push(item);
         }
-        // Mark the current entry even when the window starts past it.
-        if let Some(idx) = current_index {
-            if idx < start && idx < items.len() {
-                items[idx].is_current = true;
-            }
-        }
         let more = entries.len().saturating_sub(start + 30);
         let state = self.ui.global::<State>();
         state.set_queue_items(ui_model(items).into());
-        state.set_queue_count(entries.len() as i32);
+        let upcoming = entries.len().saturating_sub(current_index.map(|index| index + 1).unwrap_or(0));
+        state.set_queue_count(upcoming as i32);
         state.set_queue_more_count(more as i32);
         let _ = force;
     }
@@ -1757,15 +1795,15 @@ impl App {
             hide_duplicates: hide_dupes && view == "Songs",
             sort: song_sort(&sort_name, song_sort(&default_sort_for_view(&view).0, TrackSort::Title)),
             descending,
-            offset: self.tracks_offset as u32,
-            page_size: 100,
+            offset: 0,
+            page_size: (self.tracks_offset + TRACK_PAGE_SIZE).min(u32::MAX as usize) as u32,
             ..TrackQuery::default()
         };
         let (tracks, total) = self.store.query_track_page(&query).unwrap_or_default();
         let items: Vec<TrackItem> = tracks
             .iter()
             .enumerate()
-            .map(|(i, t)| self.track_to_ui(t, (self.tracks_offset + i + 1) as i32, &playing))
+            .map(|(i, t)| self.track_to_ui(t, (i + 1) as i32, &playing))
             .collect();
         self.view_paths = tracks.iter().map(|t| t.path.clone()).collect();
         self.id_to_path.clear();
@@ -1779,8 +1817,15 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_tracks(ui_model(items).into());
         state.set_tracks_total(total as i32);
-        state.set_can_load_more(self.tracks_offset + 100 < total as usize);
-        state.set_library_empty(total == 0 && self.settings.library_roots().is_empty());
+        state.set_can_load_more(self.tracks_offset + TRACK_PAGE_SIZE < total as usize);
+        state.set_view_title(ss(&view));
+        state.set_view_subtitle(ss(format!(
+            "{} {}",
+            fmt_count(total as u32),
+            if view == "Videos" { "videos" } else { "tracks" }
+        )));
+        state.set_has_roots(!self.settings.library_roots().is_empty());
+        state.set_library_empty(view == "Home" && total == 0);
         state.set_page_loading(false);
 
         // Home sections.
@@ -1805,40 +1850,129 @@ impl App {
         let greeting = match chrono::Local::now().hour() {
             5..=11 => "Good morning",
             12..=17 => "Good afternoon",
-            18..=22 => "Good evening",
-            _ => "Good night",
+            _ => "Good evening",
         };
-        let recent = self
-            .store
-            .query_track_page(&TrackQuery {
-                recently_played: true,
-                sort: TrackSort::LastPlayed,
+        let hide_dupes = self.settings.bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        let recent = self.store.query_track_page(&TrackQuery {
+            recently_played: true,
+            hide_duplicates: hide_dupes,
+            sort: TrackSort::LastPlayed,
+            descending: true,
+            page_size: 8,
+            ..TrackQuery::default()
+        }).map(|(tracks, _)| tracks).unwrap_or_default();
+        let mut quick = self.store.query_track_page(&TrackQuery {
+            favorites: true,
+            hide_duplicates: hide_dupes,
+            sort: TrackSort::Added,
+            descending: true,
+            page_size: 8,
+            ..TrackQuery::default()
+        }).map(|(tracks, _)| tracks).unwrap_or_default();
+        if quick.is_empty() {
+            quick = recent.clone();
+        }
+        if quick.is_empty() {
+            quick = self.store.query_track_page(&TrackQuery {
+                hide_duplicates: hide_dupes,
+                sort: TrackSort::Added,
                 descending: true,
-                page_size: 6,
+                page_size: 8,
                 ..TrackQuery::default()
-            })
-            .map(|(tracks, _)| tracks)
-            .unwrap_or_default();
-        let most = self.store.get_most_played(6).unwrap_or_default();
-        let added = self.store.get_recently_added(6).unwrap_or_default();
-        let albums = self.store.get_album_groups().unwrap_or_default();
-        let map = |tracks: &[Track], this: &mut Self| -> Vec<TrackItem> {
-            tracks.iter().enumerate().map(|(i, t)| this.track_to_ui(t, i as i32 + 1, playing)).collect()
+            }).map(|(tracks, _)| tracks).unwrap_or_default();
+        }
+
+        let total_tracks = self.store.get_library_stats().map(|stats| stats.total_tracks).unwrap_or(0);
+        let subtitle = if !recent.is_empty() {
+            "Pick up where you left off.".to_string()
+        } else if total_tracks > 0 {
+            format!("{} tracks in your local library", fmt_count(total_tracks))
+        } else {
+            "Your music library".to_string()
         };
-        let recent_items = map(&recent, self);
-        let most_items = map(&most, self);
-        let added_items = map(&added, self);
-        let album_items: Vec<GroupItem> = albums
-            .iter()
-            .take(8)
-            .map(|g| group_to_ui(g))
+        let quick_items = quick.iter().take(6).enumerate()
+            .map(|(i, track)| self.track_to_ui(track, i as i32 + 1, playing))
             .collect();
+        let mut album_seen = HashSet::new();
+        let recent_album_items: Vec<HomeCardItem> = recent.iter()
+            .filter(|track| !track.album.trim().is_empty())
+            .filter(|track| album_seen.insert((
+                track.album.clone(),
+                if track.album_artist.trim().is_empty() { track.artist.clone() } else { track.album_artist.clone() },
+            )))
+            .take(5)
+            .map(|track| {
+                let title = track.album.trim();
+                let artist = if track.album_artist.trim().is_empty() { &track.artist } else { &track.album_artist };
+                self.home_track_card(track, title, artist, "album", playing)
+            })
+            .collect();
+
+        let playlists = self.store.get_playlists().unwrap_or_default();
+        let mut library_cards: Vec<HomeCardItem> = Vec::new();
+        let (library_title, library_view) = if !playlists.is_empty() {
+            library_cards.extend(playlists.iter().take(5).map(|playlist| HomeCardItem {
+                id: ss(&playlist.id),
+                title: ss(&playlist.name),
+                subtitle: ss(format!("{} song{}", playlist.track_count, if playlist.track_count == 1 { "" } else { "s" })),
+                kind: ss("playlist"),
+                gradient: gradient_slot(&playlist.name),
+                initials: ss(initials(&playlist.name)),
+                has_cover: false,
+                cover: Image::default(),
+            }));
+            ("Made from your library", "Playlists")
+        } else {
+            let (album_groups, _) = self.store.query_group_page("album", None, 0, 5).unwrap_or_default();
+            if !album_groups.is_empty() {
+                library_cards.extend(album_groups.iter().map(|group| self.home_group_card(group)));
+                ("Made from your library", "Albums")
+            } else if !recent.is_empty() {
+                library_cards.extend(recent.iter().take(5).map(|track| {
+                    self.home_track_card(track, &track.title, &track.artist, "track", playing)
+                }));
+                ("Recently played", "Recently Played")
+            } else {
+                ("Made from your library", "Playlists")
+            }
+        };
+
         let state = self.ui.global::<State>();
         state.set_home_greeting(ss(greeting));
-        state.set_home_recent(ui_model(recent_items).into());
-        state.set_home_most(ui_model(most_items).into());
-        state.set_home_added(ui_model(added_items).into());
-        state.set_home_albums(ui_model(album_items).into());
+        state.set_home_subtitle(ss(subtitle));
+        state.set_home_quick_rows(ui_model(chunk_home_tracks(quick_items)).into());
+        state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items)).into());
+        state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards)).into());
+        state.set_home_library_title(ss(library_title));
+        state.set_home_library_view(ss(library_view));
+    }
+
+    fn home_track_card(&mut self, track: &Track, title: &str, subtitle: &str, kind: &str, playing: &str) -> HomeCardItem {
+        let item = self.track_to_ui(track, 0, playing);
+        HomeCardItem {
+            id: item.id,
+            title: ss(title),
+            subtitle: ss(subtitle),
+            kind: ss(kind),
+            gradient: gradient_slot(if track.album.is_empty() { title } else { &track.album }),
+            initials: ss(initials(title)),
+            has_cover: item.has_cover,
+            cover: item.cover,
+        }
+    }
+
+    fn home_group_card(&self, group: &music_player_core::LibraryGroup) -> HomeCardItem {
+        let item = group_to_ui(group);
+        HomeCardItem {
+            id: ss(&group.name),
+            title: item.name,
+            subtitle: item.subtitle,
+            kind: ss("album"),
+            gradient: item.gradient,
+            initials: item.initials,
+            has_cover: item.has_cover,
+            cover: item.cover,
+        }
     }
 
     fn publish_groups(&mut self, view: &str, search: &str) {
@@ -3051,6 +3185,40 @@ fn chunk_groups(groups: Vec<GroupItem>) -> Vec<GroupRowItem> {
     rows
 }
 
+fn chunk_home_cards(cards: Vec<HomeCardItem>) -> Vec<HomeCardRow> {
+    let mut rows = Vec::new();
+    let mut iter = cards.into_iter();
+    loop {
+        let Some(a) = iter.next() else { break; };
+        let b = iter.next();
+        let c = iter.next();
+        let d = iter.next();
+        let filled = 1 + [&b, &c, &d].iter().filter(|item| item.is_some()).count() as i32;
+        let spare = a.clone();
+        rows.push(HomeCardRow {
+            a,
+            b: b.unwrap_or_else(|| spare.clone()),
+            c: c.unwrap_or_else(|| spare.clone()),
+            d: d.unwrap_or(spare),
+            filled,
+        });
+    }
+    rows
+}
+
+fn chunk_home_tracks(tracks: Vec<TrackItem>) -> Vec<HomeTrackRow> {
+    let mut rows = Vec::new();
+    let mut iter = tracks.into_iter();
+    loop {
+        let Some(a) = iter.next() else { break; };
+        let b = iter.next();
+        let filled = if b.is_some() { 2 } else { 1 };
+        let spare = a.clone();
+        rows.push(HomeTrackRow { a, b: b.unwrap_or(spare), filled });
+    }
+    rows
+}
+
 fn chunk_playlists(cards: Vec<PlaylistCardItem>) -> Vec<PlaylistRowItem> {
     let mut rows = Vec::new();
     let mut iter = cards.into_iter();
@@ -3885,7 +4053,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_set_accent_preset(move |name| {
             let color = match name.as_str() {
-                "Sky" => "#4ab8ff", "Violet" => "#b48cff", "Rose" => "#ff7ba6", "Amber" => "#ffc24a",
+                "Sky" => "#59d7ff", "Violet" => "#a878ff", "Rose" => "#ff6e91", "Amber" => "#ffb04a",
                 _ => "#b7ff2d",
             };
             let mut app = a.borrow_mut();
@@ -4029,7 +4197,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_load_more(move || {
             let mut app = a.borrow_mut();
-            app.tracks_offset += 100;
+            app.tracks_offset += TRACK_PAGE_SIZE;
             app.refresh_view();
         });
     }

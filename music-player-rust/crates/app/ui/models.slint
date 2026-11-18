@@ -13,6 +13,8 @@ export struct TrackItem {
     added: string,
     initials: string,
     badge-bg: color,
+    has-cover: bool,
+    cover: image,
     is-favorite: bool,
     rating: int,
     play-count: int,
@@ -36,11 +38,14 @@ export struct GroupItem {
 
 export struct QueueItem {
     id: string,
+    queue-index: int,
     title: string,
     artist: string,
     duration: string,
     initials: string,
     badge-bg: color,
+    has-cover: bool,
+    cover: image,
     is-current: bool,
     unavailable: bool,
     is-playing: bool,
@@ -55,6 +60,31 @@ export struct PlaylistCardItem {
     gradient: int,
     initials: string,
     description: string,
+}
+
+export struct HomeCardItem {
+    id: string,
+    title: string,
+    subtitle: string,
+    kind: string,
+    gradient: int,
+    initials: string,
+    has-cover: bool,
+    cover: image,
+}
+
+export struct HomeCardRow {
+    a: HomeCardItem,
+    b: HomeCardItem,
+    c: HomeCardItem,
+    d: HomeCardItem,
+    filled: int,
+}
+
+export struct HomeTrackRow {
+    a: TrackItem,
+    b: TrackItem,
+    filled: int,
 }
 
 export struct LyricLineItem {
