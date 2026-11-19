@@ -719,8 +719,7 @@ component RightPanel inherits Rectangle {
             Rectangle {
                 vertical-stretch: 1;
                 ListView {
-                    for row[index] in State.queue-items : QueueRow {
-                        visible: !row.is-current;
+                    for row[index] in State.panel-queue-items : QueueRow {
                         item: row;
                         index: index;
                         play => { Actions.play-queue-entry(row.queue-index); }

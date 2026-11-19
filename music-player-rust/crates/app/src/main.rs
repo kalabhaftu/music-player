@@ -112,41 +112,82 @@ fn chrono_fallback_date(secs: i64) -> String {
         .unwrap_or_default()
 }
 
-fn initials(text: &str) -> String {
-    let mut out = String::new();
-    for word in text.split_whitespace().take(2) {
-        if let Some(ch) = word.chars().find(|c| c.is_alphanumeric()) {
-            out.extend(ch.to_uppercase());
+fn initials(value: &str) -> String {
+    let s = value.trim();
+    if s.is_empty() {
+        return "MP".to_string();
+    }
+    let mut clean = String::with_capacity(s.len());
+    let mut depth_paren = 0;
+    let mut depth_bracket = 0;
+    let mut depth_brace = 0;
+    for ch in s.chars() {
+        match ch {
+            '(' => depth_paren += 1,
+            ')' => if depth_paren > 0 { depth_paren -= 1; },
+            '[' => depth_bracket += 1,
+            ']' => if depth_bracket > 0 { depth_bracket -= 1; },
+            '{' => depth_brace += 1,
+            '}' => if depth_brace > 0 { depth_brace -= 1; },
+            _ => {
+                if depth_paren == 0 && depth_bracket == 0 && depth_brace == 0 {
+                    if ch.is_alphanumeric() || ch.is_whitespace() {
+                        clean.push(ch);
+                    } else {
+                        clean.push(' ');
+                    }
+                }
+            }
         }
     }
-    if out.is_empty() {
-        "?".to_string()
+    let words: Vec<&str> = clean.split_whitespace().collect();
+    if words.is_empty() {
+        let fallback: String = s.chars().filter(|c| c.is_alphanumeric()).take(2).collect();
+        return if fallback.is_empty() {
+            "MP".to_string()
+        } else {
+            fallback.to_uppercase()
+        };
+    }
+    if words.len() == 1 {
+        let mut chars = words[0].chars();
+        let first = chars.next().unwrap_or('M');
+        let second = chars.next();
+        let mut res = String::new();
+        res.extend(first.to_uppercase());
+        if let Some(c) = second {
+            res.extend(c.to_uppercase());
+        }
+        res
     } else {
-        out
+        let c1 = words[0].chars().next().unwrap_or('M');
+        let c2 = words[1].chars().next().unwrap_or('P');
+        let mut res = String::new();
+        res.extend(c1.to_uppercase());
+        res.extend(c2.to_uppercase());
+        res
     }
 }
 
-/// FNV-1a slot 1..=10, mirroring the WebUI `gradientClass()` helper.
-fn gradient_slot(name: &str) -> i32 {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for b in name.to_ascii_lowercase().bytes() {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
+/// FNV-1a slot 1..=6, mirroring the WebUI `cover()` helper in app.js:
+/// hash = 2166136261; hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+/// cls = `c${Math.abs(hash >>> 0) % 6 + 1}`
+fn gradient_slot(seed: &str) -> i32 {
+    let mut hash: u32 = 2166136261;
+    for ch in seed.encode_utf16() {
+        hash = (hash ^ (ch as u32)).wrapping_mul(16777619);
     }
-    (hash % 10) as i32 + 1
+    ((hash % 6) + 1) as i32
 }
 
 fn badge_color(slot: i32) -> slint::Color {
     let (r, g, b) = match slot {
+        1 => (0x2a, 0x2f, 0x3f),
         2 => (0x21, 0x33, 0x37),
         3 => (0x38, 0x27, 0x2b),
         4 => (0x24, 0x33, 0x28),
         5 => (0x35, 0x30, 0x25),
         6 => (0x2a, 0x2a, 0x32),
-        7 => (0x2e, 0x2f, 0x36),
-        8 => (0x3e, 0x21, 0x40),
-        9 => (0x1b, 0x39, 0x3b),
-        10 => (0x40, 0x36, 0x23),
         _ => (0x2a, 0x2f, 0x3f),
     };
     slint::Color::from_rgb_u8(r, g, b)
@@ -1473,7 +1514,21 @@ impl App {
 
     fn track_to_ui(&mut self, track: &Track, _index: i32, playing_path: &str) -> TrackItem {
         self.id_to_path.insert(track.id(), track.path.clone());
-        let slot = gradient_slot(if track.album.is_empty() { &track.title } else { &track.album });
+        let seed = if !track.album.is_empty() {
+            format!("{}:{}", if track.album_artist.is_empty() { &track.artist } else { &track.album_artist }, &track.album)
+        } else if !track.artist.is_empty() {
+            track.artist.clone()
+        } else {
+            track.title.clone()
+        };
+        let slot = gradient_slot(&seed);
+        let mark_src = if !track.album.is_empty() {
+            &track.album
+        } else if !track.artist.is_empty() {
+            &track.artist
+        } else {
+            &track.title
+        };
         let added = chrono::DateTime::from_timestamp(track.added_utc.timestamp(), 0)
             .map(|dt| dt.timestamp() as u64)
             .unwrap_or(0);
@@ -1493,7 +1548,7 @@ impl App {
             year: ss(if track.year > 0 { track.year.to_string() } else { String::new() }),
             duration: ss(fmt_time(track.duration_ms)),
             added: ss(fmt_added(added)),
-            initials: ss(initials(&track.title)),
+            initials: ss(initials(mark_src)),
             badge_bg: badge_color(slot),
             has_cover,
             cover,
@@ -1507,7 +1562,21 @@ impl App {
 
     fn queue_item(&mut self, track: &Track, queue_index: usize, is_current: bool, playing_path: &str) -> QueueItem {
         self.id_to_path.insert(track.id(), track.path.clone());
-        let slot = gradient_slot(&track.title);
+        let seed = if !track.album.is_empty() {
+            format!("{}:{}", if track.album_artist.is_empty() { &track.artist } else { &track.album_artist }, &track.album)
+        } else if !track.artist.is_empty() {
+            track.artist.clone()
+        } else {
+            track.title.clone()
+        };
+        let slot = gradient_slot(&seed);
+        let mark_src = if !track.album.is_empty() {
+            &track.album
+        } else if !track.artist.is_empty() {
+            &track.artist
+        } else {
+            &track.title
+        };
         let (has_cover, cover) = track
             .artwork_path
             .as_deref()
@@ -1520,7 +1589,7 @@ impl App {
             title: ss(&track.title),
             artist: ss(&track.artist),
             duration: ss(fmt_time(track.duration_ms)),
-            initials: ss(initials(&track.title)),
+            initials: ss(initials(mark_src)),
             badge_bg: badge_color(slot),
             has_cover,
             cover,
@@ -1593,11 +1662,38 @@ impl App {
             };
             items.push(item);
         }
-        let panel_more = entries.len().saturating_sub(start + 30);
+        let upcoming_start = current_index.map(|i| i + 1).unwrap_or(0);
+        let mut panel_items = Vec::new();
+        for (offset, path) in entries.iter().skip(upcoming_start).take(30).enumerate() {
+            let item = match self.store.get_track(path).ok().flatten() {
+                Some(track) => self.queue_item(&track, upcoming_start + offset, false, &playing_path),
+                None => {
+                    let id = music_player_core::track_id_for_path(path);
+                    self.id_to_path.insert(id.clone(), path.clone());
+                    QueueItem {
+                        id: ss(&id),
+                        queue_index: (upcoming_start + offset) as i32,
+                        title: ss(file_stem(path)),
+                        artist: ss("Unavailable"),
+                        duration: ss("0:00"),
+                        initials: ss(initials(&file_stem(path))),
+                        badge_bg: badge_color(3),
+                        has_cover: false,
+                        cover: Image::default(),
+                        is_current: false,
+                        unavailable: true,
+                        is_playing: false,
+                    }
+                }
+            };
+            panel_items.push(item);
+        }
+        let panel_more = entries.len().saturating_sub(upcoming_start + 30);
         let view_more = if full_queue_view { entries.len().saturating_sub(start + display_limit) } else { 0 };
         let state = self.ui.global::<State>();
         state.set_queue_items(ui_model(items).into());
-        let upcoming = entries.len().saturating_sub(current_index.map(|index| index + 1).unwrap_or(0));
+        state.set_panel_queue_items(ui_model(panel_items).into());
+        let upcoming = entries.len().saturating_sub(upcoming_start);
         state.set_queue_count(upcoming as i32);
         state.set_queue_current_index(current_index.map(|index| index as i32).unwrap_or(-1));
         state.set_queue_more_count(view_more as i32);
