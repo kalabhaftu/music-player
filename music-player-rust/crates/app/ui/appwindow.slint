@@ -207,7 +207,7 @@ component PanelResizeHandle inherits Rectangle {
 
 // ---- Top bar -----------------------------------------------------------------
 component TopBar inherits Rectangle {
-    height: 56px;
+    height: 48px;
     background: Palette.surface;
 
     // 1px bottom border matching original CSS
@@ -245,7 +245,7 @@ component TopBar inherits Rectangle {
         // Pill Search Box
         Rectangle {
             horizontal-stretch: 10;
-            min-width: 220px;
+            min-width: 0px;
             max-width: 520px;
             height: 38px;
             border-radius: 19px;
@@ -298,11 +298,20 @@ component TopBar inherits Rectangle {
                     }
                 }
 
-                if State.view-search == "" : Text {
-                    text: "Ctrl K";
-                    color: Palette.muted-2;
-                    font-size: 9px;
-                    vertical-alignment: center;
+                if State.view-search == "" : Rectangle {
+                    width: 38px;
+                    height: 18px;
+                    border-radius: 4px;
+                    background: #ffffff0a;
+                    border-width: 1px;
+                    border-color: #ffffff14;
+                    Text {
+                        text: "Ctrl K";
+                        color: Palette.muted-2;
+                        font-size: 9px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
                 }
 
                 if State.view-search != "" : IcBtn {
@@ -344,10 +353,10 @@ component TopBar inherits Rectangle {
             tint: Palette.muted;
             clicked => { Actions.scan-library(); }
         }
-        if !State.right-panel-open : IcBtn {
+        IcBtn {
             icon: @image-url("../assets/icons/queue.svg");
             icon-size: 16px;
-            tint: Palette.muted;
+            tint: State.right-panel-open ? State.accent : Palette.muted;
             clicked => { Actions.toggle-right-panel(); }
         }
         IcBtn {
@@ -503,9 +512,9 @@ component QueueRow inherits Rectangle {
             }
             if !root.item.has-cover : Text {
                 text: root.item.initials;
-                color: Palette.text;
-                font-size: 12px;
-                font-weight: 700;
+                color: #ffffffd0;
+                font-size: 13px;
+                font-weight: 800;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -669,10 +678,25 @@ component RightPanel inherits Rectangle {
             }
         }
         if !State.has-track : VerticalLayout {
-            height: 112px;
+            padding-top: 24px;
+            padding-bottom: 24px;
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 4px;
             alignment: center;
-            Text { text: "Nothing playing"; color: Palette.text; font-size: 14px; font-weight: 750; horizontal-alignment: center; }
-            Text { text: "Choose a track to see details here."; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
+            Text {
+                text: "Nothing playing";
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "Choose a track to see details here.";
+                color: Palette.muted;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
         }
         Rectangle { height: 1px; background: Palette.border; }
 
@@ -739,8 +763,8 @@ component RightPanel inherits Rectangle {
                     text: "No upcoming tracks.";
                     color: Palette.muted;
                     font-size: 11px;
-                    x: 12px;
-                    y: 16px;
+                    horizontal-alignment: center;
+                    y: 24px;
                 }
             }
             if State.queue-panel-more-count > 0 : Rectangle {
@@ -808,7 +832,7 @@ component PlayerBar inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 border-radius: 6px;
                 clip: true;
-                background: Palette.panel-2;
+                background: State.current-has-cover ? Palette.panel-2 : (State.current-id == "" ? @linear-gradient(145deg, #182219 0%, #090b09 100%) : State.current-badge-bg);
                 if State.current-has-cover : Image {
                     source: State.current-cover;
                     width: parent.width;
@@ -816,7 +840,7 @@ component PlayerBar inherits Rectangle {
                     image-fit: ImageFit.cover;
                 }
                 if !State.current-has-cover : Text {
-                    text: State.current-initials;
+                    text: State.current-initials == "" ? "MP" : State.current-initials;
                     color: #ffffffcc;
                     font-size: 18px;
                     font-weight: 900;
@@ -927,7 +951,6 @@ component PlayerBar inherits Rectangle {
                 horizontal-stretch: 1;
                 max-width: 520px;
                 spacing: 8px;
-                alignment: center;
 
                 Text {
                     text: State.current-time;

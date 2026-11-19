@@ -2125,7 +2125,7 @@ impl App {
         } else {
             "Your music library".to_string()
         };
-        let quick_items = quick.iter().take(6).enumerate()
+        let quick_items: Vec<TrackItem> = quick.iter().take(6).enumerate()
             .map(|(i, track)| self.track_to_ui(track, i as i32 + 1, playing))
             .collect();
         let mut album_seen = HashSet::new();
@@ -2180,6 +2180,9 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_home_greeting(ss(greeting));
         state.set_home_subtitle(ss(subtitle));
+        state.set_home_quick_tracks(ui_model(quick_items.clone()).into());
+        state.set_home_recent_albums(ui_model(recent_album_items.clone()).into());
+        state.set_home_library_cards(ui_model(library_cards.clone()).into());
         state.set_home_quick_rows(ui_model(chunk_home_tracks(quick_items)).into());
         state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items, 5)).into());
         state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards, 5)).into());

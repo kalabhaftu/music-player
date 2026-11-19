@@ -113,6 +113,10 @@ export component PlayerSlider inherits Rectangle {
     min-width: 40px;
 
     area := TouchArea {
+        clicked => {
+            root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+            root.changed(root.value);
+        }
         pointer-event(event) => {
             if (event.kind == PointerEventKind.down || (event.kind == PointerEventKind.move && area.pressed)) {
                 root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
@@ -639,9 +643,9 @@ export component CardTile inherits Rectangle {
             if !root.item.has-cover : Text {
                 text: root.item.initials;
                 color: #ffffffd0;
-                font-size: 20px;
-                font-weight: 800;
-                letter-spacing: -0.5px;
+                font-size: 24px;
+                font-weight: 900;
+                letter-spacing: -1px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -734,9 +738,9 @@ export component HomeCardTile inherits Rectangle {
             if !root.item.has-cover : Text {
                 text: root.item.initials;
                 color: #ffffffd0;
-                font-size: 20px;
-                font-weight: 800;
-                letter-spacing: -0.5px;
+                font-size: 24px;
+                font-weight: 900;
+                letter-spacing: -1px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -801,12 +805,12 @@ export component GroupGrid inherits Rectangle {
             vertical-stretch: 1;
             GridLayout {
                 width: 100%;
-                spacing: max(10px, min(20px, State.browse-width * 1px * 0.05));
+                spacing: 14px;
                 for item[index] in root.items : CardTile {
                     item: item;
                     round: root.round;
-                    col: Math.mod(index, min(6, max(1, Math.round(root.width / 150px))));
-                    row: index / min(6, max(1, Math.round(root.width / 150px)));
+                    col: Math.mod(index, State.card-columns);
+                    row: index / State.card-columns;
                     play => { Actions.play-group("", item.name); }
                     open => { Actions.open-group("", item.name); }
                 }

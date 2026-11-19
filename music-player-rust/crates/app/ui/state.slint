@@ -2,7 +2,7 @@
 // The Actions callbacks mirror the WebUiCommandRouter command allowlist and the
 // State properties mirror the native -> JS event catalog payloads.
 
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem } from "models.slint";
 
 export global State {
     // ---- Routing ----
@@ -32,6 +32,9 @@ export global State {
     in property <[GroupItem]> search-albums;
     in property <[GroupItem]> search-artists;
     in property <[PlaylistCardItem]> search-playlists;
+    in property <[TrackItem]> home-quick-tracks;
+    in property <[HomeCardItem]> home-recent-albums;
+    in property <[HomeCardItem]> home-library-cards;
     in property <[HomeTrackRow]> home-quick-rows;
     in property <[HomeCardRow]> home-recent-album-rows;
     in property <[HomeCardRow]> home-library-card-rows;
@@ -236,6 +239,12 @@ export global State {
     in-out property <int> navigation-width: 232;
     in-out property <int> browse-width: 280;
     in-out property <int> right-panel-width: 294;
+    out property <int> content-width: State.window-width
+        - (State.navigation-collapsed ? 0 : State.navigation-width)
+        - (State.right-panel-open ? State.right-panel-width : 0);
+    out property <int> card-columns: State.content-width < 500 ? 2
+        : (State.content-width < 720 ? 3
+        : (State.content-width < 920 ? 4 : 5));
     in property <[DetailRowItem]> about-rows;
 
     // ---- Context menu ----
