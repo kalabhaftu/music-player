@@ -2043,7 +2043,12 @@ impl App {
             .map(|track| {
                 let title = track.album.trim();
                 let artist = if track.album_artist.trim().is_empty() { &track.artist } else { &track.album_artist };
-                self.home_track_card(track, title, artist, "album", playing)
+                let subtitle = if track.year > 0 {
+                    format!("{artist} • {}", track.year)
+                } else {
+                    artist.to_string()
+                };
+                self.home_track_card(track, title, &subtitle, "album", playing)
             })
             .collect();
 

@@ -80,7 +80,7 @@ export component IcBtn inherits Rectangle {
 
     width: 32px;
     height: 32px;
-    border-radius: 16px;
+    border-radius: self.width / 2;
     background: area.pressed ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : transparent);
     animate background { duration: 100ms; }
 
@@ -96,6 +96,60 @@ export component IcBtn inherits Rectangle {
         y: (parent.height - self.height) / 2;
         colorize: root.active ? State.accent : (area.has-hover ? root.hover-tint : root.tint);
         animate colorize { duration: 100ms; }
+    }
+}
+
+export component PlayerSlider inherits Rectangle {
+    in-out property <float> value: 0.0;
+    in property <float> minimum: 0.0;
+    in property <float> maximum: 1.0;
+    in property <color> fill-color: #e2e6e1;
+    in property <color> track-color: #2e332f;
+    in property <color> thumb-color: #ffffff;
+    callback changed(float);
+
+    height: 16px;
+    min-width: 40px;
+
+    area := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down || (event.kind == PointerEventKind.move && area.pressed)) {
+                root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.changed(root.value);
+            }
+        }
+    }
+
+    // Track background (unfilled)
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        height: 4px;
+        width: parent.width;
+        border-radius: 2px;
+        background: root.track-color;
+
+        // Filled progress portion
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            height: 4px;
+            width: parent.width * clamp((root.value - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0);
+            border-radius: 2px;
+            background: area.has-hover || area.pressed ? State.accent : root.fill-color;
+            animate background { duration: 100ms; }
+        }
+    }
+
+    // Thumb dot
+    Rectangle {
+        x: clamp(parent.width * clamp((root.value - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0) - self.width / 2, 0px, parent.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: root.thumb-color;
+        opacity: area.has-hover || area.pressed ? 1.0 : 0.0;
+        animate opacity { duration: 120ms; }
     }
 }
 
@@ -551,6 +605,7 @@ export component CardTile inherits Rectangle {
 
         VerticalLayout {
             spacing: 3px;
+            min-width: 0px;
             Text {
                 text: root.item.name;
                 color: Palette.text-strong;
@@ -631,6 +686,7 @@ export component HomeCardTile inherits Rectangle {
 
         VerticalLayout {
             spacing: 3px;
+            min-width: 0px;
             Text { text: root.item.title; color: Palette.text-strong; font-size: 13px; font-weight: 750; overflow: elide; }
             Text { text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
         }
