@@ -91,7 +91,7 @@ component NavEntryRow inherits Rectangle {
                         padding-left: 5px;
                         padding-right: 5px;
                         Text {
-                            text: "Ctrl K";
+                            text: "ctrl K";
                             color: Palette.muted-2;
                             font-size: 9px;
                             vertical-alignment: center;
@@ -244,12 +244,13 @@ component TopBar inherits Rectangle {
 
         // Pill Search Box
         Rectangle {
-            horizontal-stretch: 1;
-            min-width: 140px;
+            horizontal-stretch: 10;
+            min-width: 220px;
             max-width: 520px;
             height: 38px;
             border-radius: 19px;
-            background: Palette.control;
+            background: search-input.has-focus ? Palette.hover : Palette.control;
+            animate background { duration: 100ms; }
             clip: true;
 
             HorizontalLayout {
@@ -283,7 +284,7 @@ component TopBar inherits Rectangle {
                         overflow: elide;
                     }
 
-                    TextInput {
+                    search-input := TextInput {
                         x: 0px;
                         y: 0px;
                         width: 100%;
@@ -483,7 +484,7 @@ component QueueRow inherits Rectangle {
 
     height: 52px;
     border-radius: 6px;
-    background: row-area.has-hover ? Palette.panel-2 : (root.item.is-current ? Palette.border-soft : transparent);
+    background: row-area.has-hover ? Palette.hover : (root.item.is-current ? Palette.raised : transparent);
     animate background { duration: 100ms; }
 
     row-area := TouchArea {
@@ -496,9 +497,9 @@ component QueueRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 10px;
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 9px;
 
         Rectangle {
             width: 38px;
@@ -527,13 +528,15 @@ component QueueRow inherits Rectangle {
             alignment: center;
             spacing: 3px;
             horizontal-stretch: 1;
+            min-width: 0px;
             Text {
                 text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
                 color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : Palette.text-strong);
                 font-size: 11px;
+                font-weight: 650;
                 overflow: elide;
             }
-            Text {
+            if root.item.artist != "" : Text {
                 text: root.item.artist;
                 color: Palette.muted;
                 font-size: 10px;
@@ -623,7 +626,7 @@ component RightPanel inherits Rectangle {
             height: 18px;
         }
         if State.has-track : Rectangle {
-            width: State.right-panel-width * 1px - 28px;
+            width: State.right-panel-width * 1px - 24px;
             height: self.width;
             border-radius: 7px;
             clip: true;
@@ -661,6 +664,7 @@ component RightPanel inherits Rectangle {
                     color: Palette.text;
                     font-size: 15px;
                     font-weight: 750;
+                    letter-spacing: -0.25px;
                     overflow: elide;
                 }
                 Text {
@@ -686,7 +690,7 @@ component RightPanel inherits Rectangle {
         Rectangle { height: 1px; background: Palette.border; }
 
         HorizontalLayout {
-            height: 40px;
+            height: 30px;
             Rectangle { width: 2px; background: transparent; }
             PanelTab {
                 label: "Queue";
@@ -699,21 +703,37 @@ component RightPanel inherits Rectangle {
                 clicked => { Actions.set-right-tab("info"); }
             }
         }
+        Rectangle { height: 1px; background: Palette.border; }
 
         if State.right-panel-tab == "queue" : VerticalLayout {
             HorizontalLayout {
                 height: 34px;
+                alignment: center;
                 Text {
                     text: "Next in queue (\{State.queue-count})";
-                    color: Palette.muted-2;
-                    font-size: 10px;
+                    color: #d8ddd8;
+                    font-size: 11px;
+                    font-weight: 800;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
-                if State.queue-count > 0 : TextBtn {
-                    label: "Clear";
-                    height: 26px;
-                    clicked => { Actions.clear-queue(); }
+                if State.queue-count > 0 : Rectangle {
+                    width: 38px;
+                    height: 22px;
+                    border-radius: 4px;
+                    background: clear-area.has-hover ? Palette.border-soft : transparent;
+                    animate background { duration: 100ms; }
+                    Text {
+                        text: "Clear";
+                        color: clear-area.has-hover ? Palette.text : Palette.muted;
+                        font-size: 10px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    clear-area := TouchArea {
+                        clicked => { Actions.clear-queue(); }
+                    }
                 }
             }
             Rectangle {

@@ -2178,15 +2178,11 @@ impl App {
         };
 
         let state = self.ui.global::<State>();
-        let side_width = if state.get_navigation_collapsed() { 0 } else { state.get_navigation_width() };
-        let panel_width = if state.get_right_panel_open() { state.get_right_panel_width() } else { 0 };
-        let home_columns = (((state.get_window_width() - side_width - panel_width - 48 + 16) / 146)
-            .clamp(1, 5)) as usize;
         state.set_home_greeting(ss(greeting));
         state.set_home_subtitle(ss(subtitle));
         state.set_home_quick_rows(ui_model(chunk_home_tracks(quick_items)).into());
-        state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items, home_columns)).into());
-        state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards, home_columns)).into());
+        state.set_home_recent_album_rows(ui_model(chunk_home_cards(recent_album_items, 5)).into());
+        state.set_home_library_card_rows(ui_model(chunk_home_cards(library_cards, 5)).into());
         state.set_home_library_title(ss(library_title));
         state.set_home_library_view(ss(library_view));
     }

@@ -181,6 +181,64 @@ export component TextBtn inherits Rectangle {
     }
 }
 
+export component ActionBtn inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 17px;
+    background: root.primary
+        ? (area.has-hover ? #ffffff : #f4f6f3)
+        : (root.danger ? (area.has-hover ? #ff5b7444 : #ff5b7422) : (area.has-hover ? #303430 : #242724));
+    animate background { duration: 100ms; }
+
+    area := TouchArea { clicked => { root.clicked(); } }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        alignment: center;
+        Text {
+            text: root.label;
+            color: root.primary ? #0a0b0a : (root.danger ? #ff5b74 : #ffffff);
+            font-size: 11px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+export component CustomToggle inherits Rectangle {
+    in property <bool> checked: false;
+    callback toggled(bool);
+
+    width: 35px;
+    height: 20px;
+    border-radius: 10px;
+    background: root.checked ? State.accent.with-alpha(0.3) : Palette.control;
+    animate background { duration: 140ms; }
+
+    thumb := Rectangle {
+        x: root.checked ? 17px : 2px;
+        y: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: root.checked ? State.accent : #858d84;
+        animate x { duration: 140ms; }
+        animate background { duration: 140ms; }
+    }
+
+    TouchArea {
+        clicked => {
+            root.toggled(!root.checked);
+        }
+    }
+}
+
 export component HeaderCell inherits TouchArea {
     in property <string> label;
     in property <bool> active: false;
@@ -189,10 +247,11 @@ export component HeaderCell inherits TouchArea {
     callback sort();
 
     Text {
-        text: root.active ? (root.descending ? "\{root.label} \u{25BE}" : "\{root.label}") : root.label;
+        text: root.active ? (root.descending ? "\{root.label} \u{25BE}" : "\{root.label} \u{25B4}") : root.label;
         color: root.active ? State.accent : Palette.muted-2;
         font-size: 10px;
         font-weight: 700;
+        letter-spacing: 0.8px;
         vertical-alignment: center;
         horizontal-alignment: root.right-align ? right : left;
     }
@@ -382,7 +441,7 @@ export component TrackRow inherits Rectangle {
 
 // Sortable table header.
 export component TrackHeader inherits Rectangle {
-    in property <string> first-column: "Title";
+    in property <string> first-column: "TITLE";
     in property <string> first-sort: "Title";
     in property <bool> show-added: true;
     in property <bool> show-year: true;
@@ -415,7 +474,7 @@ export component TrackHeader inherits Rectangle {
         }
 
         if root.show-album && State.show-list-album : HeaderCell {
-            label: "Album";
+            label: "ALBUM";
             width: 25%;
             active: root.active-sort == "Album";
             descending: root.descending;
@@ -423,7 +482,7 @@ export component TrackHeader inherits Rectangle {
         }
 
         if State.show-list-added && root.show-added : HeaderCell {
-            label: "Added";
+            label: "ADDED";
             width: 100px;
             active: root.active-sort == "Added";
             descending: root.descending;
@@ -431,7 +490,7 @@ export component TrackHeader inherits Rectangle {
         }
 
         if State.show-list-year && root.show-year : HeaderCell {
-            label: "Year";
+            label: "YEAR";
             width: 70px;
             active: root.active-sort == "Year";
             descending: root.descending;
@@ -439,7 +498,7 @@ export component TrackHeader inherits Rectangle {
         }
 
         if root.show-plays : HeaderCell {
-            label: "Plays";
+            label: "PLAYS";
             width: 60px;
             active: root.active-sort == "PlayCount";
             descending: root.descending;
@@ -447,7 +506,7 @@ export component TrackHeader inherits Rectangle {
         }
 
         if State.show-list-duration : HeaderCell {
-            label: "Time";
+            label: "TIME";
             width: 64px;
             right-align: true;
             sort => { root.sort("Duration"); }
@@ -557,7 +616,7 @@ export component CardTile inherits Rectangle {
         spacing: 10px;
 
         card := Rectangle {
-            height: card.width;
+            height: self.width;
             border-radius: root.round ? self.width / 2 : 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
@@ -571,9 +630,10 @@ export component CardTile inherits Rectangle {
 
             if !root.item.has-cover : Text {
                 text: root.item.initials;
-                color: Palette.text;
-                font-size: 24px;
-                font-weight: 900;
+                color: #ffffffd0;
+                font-size: 20px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -613,7 +673,7 @@ export component CardTile inherits Rectangle {
                 font-weight: 750;
                 overflow: elide;
             }
-            Text {
+            if root.item.subtitle != "" : Text {
                 text: root.item.subtitle;
                 color: Palette.muted;
                 font-size: 11px;
@@ -645,7 +705,7 @@ export component HomeCardTile inherits Rectangle {
         spacing: 10px;
 
         card := Rectangle {
-            height: card.width;
+            height: self.width;
             border-radius: 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
@@ -657,9 +717,10 @@ export component HomeCardTile inherits Rectangle {
             }
             if !root.item.has-cover : Text {
                 text: root.item.initials;
-                color: Palette.text;
-                font-size: 28px;
-                font-weight: 900;
+                color: #ffffffd0;
+                font-size: 20px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -688,7 +749,7 @@ export component HomeCardTile inherits Rectangle {
             spacing: 3px;
             min-width: 0px;
             Text { text: root.item.title; color: Palette.text-strong; font-size: 13px; font-weight: 750; overflow: elide; }
-            Text { text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
+            if root.item.subtitle != "" : Text { text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
         }
     }
 }
@@ -751,59 +812,92 @@ export component HeroDetail inherits Rectangle {
     in property <string> subtitle: "";
     in property <image> cover;
     in property <bool> has-cover: false;
+    in property <bool> round: false;
+    in property <string> initials: "";
+    in property <int> gradient: 1;
 
-    height: 210px;
+    callback play();
+    callback shuffle();
+
+    height: 230px;
     border-radius: 8px;
-    background: @linear-gradient(110deg, Palette.overlay-strong 0%, Palette.border-soft 45%, #ffffff00 100%);
+    background: @linear-gradient(110deg, State.accent.with-alpha(0.11) 0%, #ffffff05 45%, #0e100e 100%);
 
     HorizontalLayout {
         padding: 20px;
         spacing: 24px;
-        alignment: start;
+        alignment: end;
 
         Rectangle {
             width: 190px;
-            border-radius: 6px;
+            height: 190px;
+            border-radius: root.round ? 95px : 8px;
             clip: true;
-            background: Palette.panel-2;
-            if !root.has-cover : Text {
-                text: root.title;
-                color: #ffffff88;
-                font-size: 34px;
-                font-weight: 900;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-alignment: center;
-            }
+            background: @linear-gradient(145deg, Palette.ga(root.gradient) 0%, Palette.gb(root.gradient) 100%);
             if root.has-cover : Image {
                 source: root.cover;
                 width: parent.width;
                 height: parent.height;
                 image-fit: ImageFit.cover;
             }
+            if !root.has-cover : Text {
+                text: root.initials != "" ? root.initials : root.title;
+                color: #ffffffcc;
+                font-size: 42px;
+                font-weight: 900;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
         }
 
         VerticalLayout {
             alignment: end;
-            spacing: 8px;
+            spacing: 0px;
+            horizontal-stretch: 1;
+            min-width: 0px;
 
-            Text {
+            if root.eyebrow != "" : Text {
                 text: root.eyebrow;
-                color: State.accent;
+                color: Palette.muted;
                 font-size: 10px;
                 font-weight: 700;
+                letter-spacing: 0.8px;
             }
+
+            Rectangle { height: 8px; }
+
             Text {
                 text: root.title;
                 color: Palette.text;
-                font-size: 28px;
+                font-size: 42px;
                 font-weight: 800;
+                letter-spacing: -1.8px;
                 overflow: elide;
             }
-            Text {
+
+            Rectangle { height: 6px; }
+
+            if root.subtitle != "" : Text {
                 text: root.subtitle;
                 color: Palette.muted;
                 font-size: 12px;
+                overflow: elide;
+            }
+
+            Rectangle { height: 18px; }
+
+            HorizontalLayout {
+                spacing: 8px;
+                ActionBtn {
+                    label: "Play";
+                    primary: true;
+                    clicked => { root.play(); }
+                }
+                ActionBtn {
+                    label: "Shuffle";
+                    clicked => { root.shuffle(); }
+                }
             }
         }
     }

@@ -5,7 +5,7 @@ import { State, Actions } from "state.slint";
 import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, NavSettingItem } from "models.slint";
 import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
 import {
-    Palette, IcBtn, TextBtn, TrackRow, TrackHeader, TrackTable, CardTile, HomeCardTile,
+    Palette, IcBtn, TextBtn, ActionBtn, CustomToggle, TrackRow, TrackHeader, TrackTable, CardTile, HomeCardTile,
     GroupGrid, HeroDetail, EmptyState, SectionTitle, Chip,
 } from "widgets.slint";
 
@@ -29,13 +29,14 @@ component HomeSectionHeader inherits Rectangle {
             height: 26px;
             Text {
                 text: root.action-label;
-                color: Palette.muted;
+                color: see-all-area.has-hover ? Palette.text : Palette.muted;
                 font-size: 11px;
                 font-weight: 700;
                 horizontal-alignment: right;
                 vertical-alignment: center;
+                animate color { duration: 100ms; }
             }
-            TouchArea { clicked => { Actions.set-view(root.view, "", "", ""); } }
+            see-all-area := TouchArea { clicked => { Actions.set-view(root.view, "", "", ""); } }
         }
     }
 }
@@ -51,7 +52,7 @@ component HomeQuickTrackTile inherits Rectangle {
     area := TouchArea { clicked => { root.play(); } }
 
     HorizontalLayout {
-        padding: 5px;
+        padding: 6px;
         spacing: 10px;
 
         Rectangle {
@@ -68,9 +69,9 @@ component HomeQuickTrackTile inherits Rectangle {
             }
             if !root.item.has-cover : Text {
                 text: root.item.initials;
-                color: Palette.text;
-                font-size: 15px;
-                font-weight: 800;
+                color: #ffffffd0;
+                font-size: 13px;
+                font-weight: 700;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -88,7 +89,7 @@ component HomeQuickTrackTile inherits Rectangle {
                 font-weight: 650;
                 overflow: elide;
             }
-            Text {
+            if root.item.artist != "" : Text {
                 text: root.item.artist;
                 color: Palette.muted;
                 font-size: 10px;
@@ -127,7 +128,7 @@ component HomeQuickRowView inherits Rectangle {
 
 component HomeLibraryTile inherits Rectangle {
     in property <HomeCardItem> item;
-    height: self.width + 50px;
+    height: self.width + 64px;
 
     HomeCardTile {
         width: parent.width;
@@ -170,6 +171,10 @@ component HomeCardRowView inherits Rectangle {
             horizontal-stretch: 1;
             item: root.card-row.e;
         }
+        if root.card-row.filled < 5 : Rectangle { horizontal-stretch: 1; }
+        if root.card-row.filled < 4 : Rectangle { horizontal-stretch: 1; }
+        if root.card-row.filled < 3 : Rectangle { horizontal-stretch: 1; }
+        if root.card-row.filled < 2 : Rectangle { horizontal-stretch: 1; }
     }
 }
 
@@ -254,12 +259,12 @@ component SongsView inherits Rectangle {
         HorizontalLayout {
             VerticalLayout {
                 spacing: 5px;
-                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 800; }
+                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
                 Text { text: State.view-subtitle; color: Palette.muted; font-size: 12px; }
             }
             Rectangle { horizontal-stretch: 1; }
-            TextBtn { label: "Play all"; clicked => { Actions.play-view(State.view); } }
-            TextBtn {
+            ActionBtn { label: "Play all"; primary: true; clicked => { Actions.play-view(State.view); } }
+            ActionBtn {
                 label: "Shuffle";
                 clicked => {
                     if (!State.shuffle) { Actions.toggle-shuffle(); }
@@ -281,7 +286,7 @@ component SongsView inherits Rectangle {
                 current-value: State.view-sort;
                 selected(value) => { Actions.sort-view(value); }
             }
-            TextBtn {
+            ActionBtn {
                 label: State.view-descending ? "Descending" : "Ascending";
                 clicked => { Actions.sort-view(State.view-sort); }
             }
@@ -302,13 +307,16 @@ component GridView inherits Rectangle {
     in property <string> empty-text: "Nothing here yet.";
 
     VerticalLayout {
-        padding: 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
         spacing: 12px;
 
         VerticalLayout {
-            spacing: 4px;
-            Text { text: root.title; color: Palette.text; font-size: 22px; font-weight: 800; }
-            Text { text: root.title == "Albums" ? "\{State.groups-total} albums" : (root.title == "Artists" ? "\{State.groups-total} artists" : "\{State.groups-total} genres"); color: Palette.muted; font-size: 11px; }
+            spacing: 5px;
+            Text { text: root.title; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+            Text { text: root.title == "Albums" ? "\{State.groups-total} albums" : (root.title == "Artists" ? "\{State.groups-total} artists" : "\{State.groups-total} genres"); color: Palette.muted; font-size: 12px; }
         }
 
         GroupGrid {
@@ -364,14 +372,40 @@ component FolderTile inherits Rectangle {
 component FoldersView inherits Rectangle {
     ScrollView {
         VerticalLayout {
-            padding: 20px;
-            spacing: 16px;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 20px;
 
-            Text {
-                text: "Folders";
-                color: Palette.text;
-                font-size: 22px;
-                font-weight: 800;
+            HorizontalLayout {
+                spacing: 10px;
+                VerticalLayout {
+                    spacing: 5px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "Folders";
+                        color: Palette.text;
+                        font-size: 30px;
+                        font-weight: 800;
+                        letter-spacing: -0.65px;
+                    }
+                }
+                ActionBtn {
+                    label: "＋ Add folder";
+                    primary: true;
+                    clicked => { Actions.open-modal("folders"); }
+                }
+                ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                ActionBtn {
+                    label: "Rebuild";
+                    clicked => { Actions.rebuild-library-index(); }
+                }
+                ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                ActionBtn {
+                    label: "Exclusions";
+                    clicked => { Actions.open-modal("exclusions"); }
+                }
             }
 
             if State.library-warning != "" : Text {
@@ -381,64 +415,49 @@ component FoldersView inherits Rectangle {
             }
 
             // Scan status row: dot + label + counters.
-            HorizontalLayout {
-                spacing: 10px;
-                alignment: start;
-                Rectangle {
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 4px;
-                    y: 6px;
-                    background: State.scan-active ? State.accent : (State.scan-paused ? #ffb04a : Palette.disabled);
-                }
-                Text {
-                    text: State.scan-active
-                        ? (State.scan-paused ? "Scan paused" : "Scanning library")
-                        : (State.scan-cancelling ? "Cancelling scan" : "Library up to date");
-                    color: State.scan-active ? Palette.text-strong : Palette.muted;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                }
-                if State.scan-path != "" : Text {
-                    text: "\{State.scan-path} · \{State.library-tracks} tracks · \{State.library-folders} folders";
-                    color: Palette.muted-2;
-                    font-size: 10px;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-                if State.scan-active : TextBtn {
-                    label: State.scan-paused ? "Resume" : "Pause";
-                    clicked => { Actions.pause-scan(); }
-                }
-                if State.scan-active : TextBtn {
-                    label: "Cancel";
-                    danger: true;
-                    clicked => { Actions.cancel-scan(); }
-                }
-                if !State.scan-active : TextBtn {
-                    label: "Rescan";
-                    clicked => { Actions.scan-library(); }
-                }
-            }
-
-            SectionTitle { text: "Library folders"; }
-            HorizontalLayout {
-                spacing: 8px;
-                TextBtn {
-                    label: "Add folder…";
-                    primary: true;
-                    clicked => { Actions.open-modal("folders"); }
-                }
-                TextBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
-                TextBtn {
-                    label: "Rebuild index";
-                    clicked => { Actions.rebuild-library-index(); }
-                }
-                TextBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
-                TextBtn {
-                    label: "Exclusions";
-                    clicked => { Actions.open-modal("exclusions"); }
+            if State.scan-active || State.scan-paused : Rectangle {
+                height: 64px;
+                border-radius: 8px;
+                background: Palette.raised;
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    alignment: center;
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 4px;
+                        background: State.scan-active ? State.accent : #ffb04a;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 3px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: State.scan-paused ? "Scan paused" : "Scanning library";
+                            color: Palette.text-strong;
+                            font-size: 12px;
+                            font-weight: 650;
+                        }
+                        Text {
+                            text: State.scan-path != ""
+                                ? "\{State.scan-path} · \{State.library-tracks} tracks · \{State.library-folders} folders"
+                                : "Scanning library files…";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            overflow: elide;
+                        }
+                    }
+                    if State.scan-active : ActionBtn {
+                        label: State.scan-paused ? "Resume" : "Pause";
+                        clicked => { Actions.pause-scan(); }
+                    }
+                    if State.scan-active : ActionBtn {
+                        label: "Cancel";
+                        danger: true;
+                        clicked => { Actions.cancel-scan(); }
+                    }
                 }
             }
 
@@ -458,7 +477,7 @@ component FoldersView inherits Rectangle {
                     }
                 }
             }
-            if State.groups-total > State.groups.length : TextBtn {
+            if State.groups-total > State.groups.length : ActionBtn {
                 label: "Load more folders";
                 clicked => { Actions.load-more-groups(); }
             }
@@ -466,33 +485,44 @@ component FoldersView inherits Rectangle {
             SectionTitle { text: "Library roots"; }
             if State.folder-roots.length == 0 : EmptyState { text: "No music folders added yet."; }
             for rootEntry in State.folder-roots : Rectangle {
-                height: 56px;
-                border-radius: 6px;
-                background: Palette.panel-2;
+                height: 64px;
+                border-radius: 8px;
+                background: Palette.raised;
                 HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 12px;
-                    spacing: 10px;
-                    Image {
-                        source: @image-url("../assets/icons/folder.svg");
-                        width: 18px;
-                        height: 18px;
-                        colorize: State.accent;
-                        vertical-alignment: center;
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    alignment: center;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Palette.border;
+                        background: Palette.hover;
+                        Image {
+                            source: @image-url("../assets/icons/folder.svg");
+                            width: 18px;
+                            height: 18px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            colorize: State.accent;
+                        }
                     }
                     VerticalLayout {
                         alignment: center;
-                        spacing: 2px;
+                        spacing: 3px;
                         horizontal-stretch: 1;
-                        Text { text: rootEntry.path; color: Palette.text-strong; font-size: 12px; overflow: elide; }
+                        Text { text: rootEntry.path; color: Palette.text-strong; font-size: 12px; font-weight: 650; overflow: elide; }
                         Text {
-                            text: rootEntry.is-available ? "Available" : "Reconnect this drive, then rescan the library.";
-                            color: rootEntry.is-available ? Palette.muted-2 : #ffb04a;
-                            font-size: 9px;
+                            text: rootEntry.is-available ? "\{rootEntry.path} · Available" : "Reconnect this drive, then rescan the library.";
+                            color: rootEntry.is-available ? Palette.muted : #ff5b74;
+                            font-size: 10px;
+                            overflow: elide;
                         }
                     }
-                    TextBtn { label: "Remove"; danger: true; clicked => { Actions.remove-root(rootEntry.path); } }
-                    TextBtn { label: "Rescan"; clicked => { Actions.rescan-root(rootEntry.path); } }
+                    ActionBtn { label: "Rescan"; clicked => { Actions.rescan-root(rootEntry.path); } }
+                    ActionBtn { label: "Remove"; danger: true; clicked => { Actions.remove-root(rootEntry.path); } }
                 }
             }
         }
@@ -505,10 +535,9 @@ component FoldersView inherits Rectangle {
 component SmartPlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
-    height: 64px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
-    animate background { duration: 120ms; }
+    animate background { duration: 140ms; }
 
     area := TouchArea {
         clicked => { Actions.set-view(root.card.id, "", "", ""); }
@@ -519,56 +548,80 @@ component SmartPlaylistTile inherits Rectangle {
         }
     }
 
-    HorizontalLayout {
-        padding: 9px;
+    VerticalLayout {
+        padding: 10px;
         spacing: 10px;
-        Rectangle {
-            width: 38px;
-            height: 38px;
-            border-radius: 6px;
+
+        smart-cover := Rectangle {
+            height: self.width;
+            border-radius: 12px;
+            clip: true;
             background: root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
                 : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
                 : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
                 : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%);
+
             Image {
                 source: root.card.id == "Most Played" ? @image-url("../assets/icons/spark.svg")
                     : root.card.id == "With Lyrics" ? @image-url("../assets/icons/lyrics.svg")
                     : root.card.id == "Videos" ? @image-url("../assets/icons/disc.svg")
                     : @image-url("../assets/icons/refresh.svg");
-                width: 20px;
-                height: 20px;
+                width: 36px;
+                height: 36px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 colorize: #ffffff;
             }
+
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 15px;
+                    height: 15px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+
+                TouchArea { clicked => { Actions.play-view(root.card.id); } }
+            }
         }
+
         VerticalLayout {
             spacing: 3px;
-            alignment: center;
-            horizontal-stretch: 1;
-            Text { text: root.card.name; color: Palette.text-strong; font-size: 11px; font-weight: 700; overflow: elide; }
-            Text { text: root.card.description; color: Palette.muted; font-size: 9px; overflow: elide; }
-        }
-        Rectangle {
-            width: 28px;
-            height: 28px;
-            border-radius: 14px;
-            background: area.has-hover ? State.accent : transparent;
-            Image {
-                source: @image-url("../assets/icons/play.svg");
-                width: 13px;
-                height: 13px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: area.has-hover ? Palette.accent-ink : Palette.muted-2;
+            min-width: 0px;
+            Text {
+                text: root.card.name;
+                color: Palette.text-strong;
+                font-size: 13px;
+                font-weight: 750;
+                overflow: elide;
             }
-            TouchArea { clicked => { Actions.play-view(root.card.id); } }
+            if root.card.description != "" : Text {
+                text: root.card.description;
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
         }
     }
 }
 
 component PlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
+
+    border-radius: 8px;
+    background: tile-area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
 
     tile-area := TouchArea {
         clicked => {
@@ -584,9 +637,11 @@ component PlaylistTile inherits Rectangle {
     }
 
     VerticalLayout {
-        spacing: 8px;
+        padding: 10px;
+        spacing: 10px;
+
         tile := Rectangle {
-            height: tile.width;
+            height: self.width;
             border-radius: 6px;
             clip: true;
             background: root.card.is-smart
@@ -595,11 +650,13 @@ component PlaylistTile inherits Rectangle {
                     : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
                     : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%))
                 : @linear-gradient(150deg, Palette.ga(root.card.gradient) 0%, Palette.gb(root.card.gradient) 100%);
+
             if !root.card.is-smart : Text {
                 text: root.card.initials;
-                color: Palette.text;
-                font-size: 24px;
-                font-weight: 900;
+                color: #ffffffd0;
+                font-size: 20px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -608,12 +665,13 @@ component PlaylistTile inherits Rectangle {
                     : root.card.id == "With Lyrics" ? @image-url("../assets/icons/lyrics.svg")
                     : root.card.id == "Videos" ? @image-url("../assets/icons/disc.svg")
                     : @image-url("../assets/icons/refresh.svg");
-                width: 42px;
-                height: 42px;
+                width: 36px;
+                height: 36px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 colorize: #ffffff;
             }
+
             Rectangle {
                 width: 38px;
                 height: 38px;
@@ -622,6 +680,8 @@ component PlaylistTile inherits Rectangle {
                 border-radius: 19px;
                 background: State.accent;
                 opacity: tile-area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+
                 Image {
                     source: @image-url("../assets/icons/play.svg");
                     width: 15px;
@@ -630,6 +690,7 @@ component PlaylistTile inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
+
                 TouchArea {
                     clicked => {
                         if (root.card.is-smart) { Actions.play-view(root.card.id); }
@@ -638,19 +699,21 @@ component PlaylistTile inherits Rectangle {
                 }
             }
         }
+
         VerticalLayout {
             spacing: 3px;
+            min-width: 0px;
             Text {
                 text: root.card.name;
                 color: Palette.text-strong;
-                font-size: 12px;
-                font-weight: 650;
+                font-size: 13px;
+                font-weight: 750;
                 overflow: elide;
             }
             Text {
                 text: "\{root.card.track-count} songs";
                 color: Palette.muted;
-                font-size: 10px;
+                font-size: 11px;
             }
             if root.card.is-smart : Text {
                 text: root.card.description;
@@ -677,23 +740,35 @@ component PlaylistsList inherits Rectangle {
 
 component PlaylistsView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
-        spacing: 12px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 16px;
 
         HorizontalLayout {
             spacing: 10px;
-            Text {
-                text: "Playlists";
-                color: Palette.text;
-                font-size: 22px;
-                font-weight: 800;
-                horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 5px;
+                Text {
+                    text: "Playlists";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "Your playlists are stored on this PC.";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
             }
-            TextBtn {
-                label: "Import M3U/M3U8";
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Import M3U / M3U8";
                 clicked => { Actions.import-m3u(); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "＋ New playlist";
                 primary: true;
                 clicked => { Actions.open-modal("new-playlist"); }
@@ -703,13 +778,13 @@ component PlaylistsView inherits Rectangle {
         ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 18px;
+                spacing: 24px;
                 if State.smart-playlists.length > 0 : VerticalLayout {
-                    spacing: 10px;
+                    spacing: 13px;
                     SectionTitle { text: "Smart playlists"; }
                     GridLayout {
                         width: 100%;
-                        spacing: 8px;
+                        spacing: 14px;
                         for card[index] in State.smart-playlists : SmartPlaylistTile {
                             card: card;
                             col: Math.mod(index, 3);
@@ -718,7 +793,7 @@ component PlaylistsView inherits Rectangle {
                     }
                 }
                 VerticalLayout {
-                    spacing: 10px;
+                    spacing: 13px;
                     SectionTitle { text: "Your playlists"; }
                     if State.playlists.length == 0 : EmptyState {
                         text: "No playlists yet. Create one from any track's menu.";
@@ -742,54 +817,60 @@ component PlaylistsView inherits Rectangle {
 // ---- Playlist detail ---------------------------------------------------------
 component PlaylistView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
         spacing: 12px;
 
         HorizontalLayout {
             spacing: 10px;
-            Text {
-                text: State.playlist-name;
-                color: Palette.text;
-                font-size: 22px;
-                font-weight: 800;
+            VerticalLayout {
+                spacing: 5px;
                 horizontal-stretch: 1;
-                overflow: elide;
+                Text {
+                    text: State.playlist-name;
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                    overflow: elide;
+                }
+                if State.playlist-empty-message != "" : Text {
+                    text: State.playlist-empty-message;
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Play";
                 primary: true;
                 clicked => { Actions.play-playlist(State.view-playlist-id); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Shuffle";
                 clicked => { Actions.play-playlist-shuffle(State.view-playlist-id); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Rename…";
                 clicked => { Actions.open-modal("rename-playlist"); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Export";
                 clicked => { Actions.export-m3u(State.view-playlist-id); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Delete";
                 danger: true;
                 clicked => { Actions.open-modal("delete-playlist"); }
             }
         }
 
-        if State.playlist-empty-message != "" : Text {
-            text: State.playlist-empty-message;
-            color: Palette.muted-2;
-            font-size: 11px;
-        }
-
         TrackTable {
             vertical-stretch: 1;
             show-added: false;
             show-year: false;
-            first-column: "Title";
+            first-column: "TITLE";
             show-remove: true;
             sort(column) => { Actions.sort-view(column); }
             empty-text: "This playlist is empty…";
@@ -803,7 +884,11 @@ component DetailView inherits Rectangle {
     in property <string> empty-text: "No tracks.";
 
     VerticalLayout {
-        spacing: 12px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 24px;
 
         HeroDetail {
             eyebrow: root.eyebrow;
@@ -811,45 +896,56 @@ component DetailView inherits Rectangle {
             subtitle: State.hero-subtitle;
             cover: State.hero-cover;
             has-cover: State.hero-has-cover;
+            round: State.view-group-column == "artist";
+            play => { Actions.play-group(State.view-group-column, State.view-group-value); }
+            shuffle => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
         }
 
-        HorizontalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
-            spacing: 10px;
-            alignment: start;
-            TextBtn {
-                label: "Play";
-                primary: true;
-                clicked => { Actions.play-group(State.view-group-column, State.view-group-value); }
+        if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
+            spacing: 13px;
+            Text {
+                text: "Albums";
+                color: Palette.text;
+                font-size: 19px;
+                font-weight: 750;
+                letter-spacing: -0.65px;
             }
-            TextBtn {
-                label: "Shuffle";
-                clicked => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
-            }
-        }
-
-        if State.view-group-column == "artist" && State.artist-albums.length > 0 : Rectangle {
-            height: 190px;
-            x: 20px;
-            width: parent.width - 40px;
-            ListView {
-                for album in State.artist-albums : CardTile {
-                    width: 150px;
-                    item: album;
-                    play => { Actions.play-group("album", album.name); }
-                    open => { Actions.set-view("Album", album.name, "album", 0); }
+            Rectangle {
+                height: 190px;
+                width: parent.width;
+                ListView {
+                    for album in State.artist-albums : CardTile {
+                        width: 150px;
+                        item: album;
+                        play => { Actions.play-group("album", album.name); }
+                        open => { Actions.set-view("Album", album.name, "album", 0); }
+                    }
                 }
             }
         }
 
-        TrackTable {
+        VerticalLayout {
+            spacing: 13px;
             vertical-stretch: 1;
-            show-added: false;
-            first-column: State.view-group-column == "album" ? "Track" : "Title";
-            first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
-            sort(column) => { Actions.sort-view(column); }
-            empty-text: root.empty-text;
+
+            Text {
+                text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
+                color: Palette.text;
+                font-size: 19px;
+                font-weight: 750;
+                letter-spacing: -0.65px;
+            }
+
+            TrackTable {
+                vertical-stretch: 1;
+                show-added: true;
+                show-year: false;
+                show-album: true;
+                first-column: "TITLE";
+                first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
+                sort(column) => { Actions.sort-view(column); }
+                empty-text: root.empty-text;
+            }
         }
     }
 }
@@ -1088,19 +1184,31 @@ component QueueRow inherits Rectangle {
 
 export component QueueView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
-        spacing: 10px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 12px;
 
         HorizontalLayout {
             spacing: 10px;
-            Text {
-                text: "Queue · \{State.queue-count} upcoming";
-                color: Palette.text;
-                font-size: 22px;
-                font-weight: 800;
+            VerticalLayout {
+                spacing: 5px;
                 horizontal-stretch: 1;
+                Text {
+                    text: "Playback queue";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "\{State.queue-count} upcoming tracks";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
             }
-            if State.queue-count > 0 : TextBtn {
+            if State.queue-count > 0 : ActionBtn {
                 label: "Clear upcoming";
                 danger: true;
                 clicked => { Actions.clear-queue(); }
@@ -1121,7 +1229,7 @@ export component QueueView inherits Rectangle {
             vertical-stretch: 1;
             text: "Queue is empty. Songs you add will appear here.";
         }
-        if State.queue-more-count > 0 : TextBtn {
+        if State.queue-more-count > 0 : ActionBtn {
             label: "Load more queued tracks (\{State.queue-more-count} remaining)";
             clicked => { Actions.load-more-queue(); }
         }
@@ -1224,37 +1332,36 @@ component NowPlayingView inherits Rectangle {
 // ---- Lyrics ------------------------------------------------------------------
 component LyricsView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
-        spacing: 10px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 12px;
 
         if State.has-track : HorizontalLayout {
             spacing: 10px;
-            Text {
-                text: "Lyrics";
-                color: Palette.text;
-                font-size: 20px;
-                font-weight: 800;
+            VerticalLayout {
+                spacing: 5px;
                 horizontal-stretch: 1;
+                Text {
+                    text: "Lyrics";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded tags" : "LRCLIB")) : "");
+                    color: Palette.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
             }
-            Text {
-                text: "\{State.current-title} · \{State.current-artist}";
-                color: Palette.muted-2;
-                font-size: 10px;
-                horizontal-stretch: 1;
-                overflow: elide;
-                vertical-alignment: center;
-            }
-            Text {
-                text: State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded audio tags" : (State.lyrics-source == "lrclib" ? "LRCLIB (online)" : "Not saved"));
-                color: Palette.muted-2;
-                font-size: 10px;
-                vertical-alignment: center;
-            }
-            TextBtn {
+            ActionBtn {
                 label: "Find lyrics…";
                 clicked => { Actions.open-find-lyrics(State.current-id); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Edit lyrics…";
                 clicked => { Actions.open-edit-lyrics(); }
             }
@@ -1328,13 +1435,16 @@ component LyricsView inherits Rectangle {
 export component AudioView inherits Rectangle {
     ScrollView {
         VerticalLayout {
-            padding: 20px;
-            spacing: 18px;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 20px;
 
             VerticalLayout {
-                spacing: 4px;
-                Text { text: "Equalizer"; color: Palette.text; font-size: 22px; font-weight: 800; }
-                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 11px; }
+                spacing: 5px;
+                Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; }
             }
 
             VerticalLayout {
@@ -1351,7 +1461,7 @@ export component AudioView inherits Rectangle {
                         changed value => { Actions.volume-changed(round(self.value)); }
                     }
                     Text { text: "\{State.volume}%"; color: Palette.muted; width: 42px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
-                    TextBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                    ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
                 }
                 Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; }
             }
@@ -1375,7 +1485,7 @@ export component AudioView inherits Rectangle {
                         horizontal-stretch: 1;
                         wrap: word-wrap;
                     }
-                    TextBtn {
+                    ActionBtn {
                         label: "Refresh";
                         clicked => { Actions.refresh-audio-devices(); }
                     }
@@ -1399,7 +1509,7 @@ export component AudioView inherits Rectangle {
             }
 
             VerticalLayout {
-                spacing: 10px;
+                spacing: 12px;
                 SectionTitle { text: "10-band equalizer"; }
                 HorizontalLayout {
                     spacing: 10px;
@@ -1410,39 +1520,22 @@ export component AudioView inherits Rectangle {
                         current-value: State.eq-preset;
                         selected(value) => { Actions.set-eq-preset(value); }
                     }
-                    TextBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
-                    TextBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Off"); } }
+                    ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
+                    ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Off"); } }
                 }
 
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Preamp"; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
-                        Rectangle {
-                            width: 44px;
-                            height: 220px;
-                            Slider {
-                                y: 10px;
-                                height: parent.height - 20px;
-                                width: parent.width;
-                                orientation: Orientation.vertical;
-                                minimum: -12.0;
-                                maximum: 12.0;
-                                value: State.eq-preamp;
-                                changed value => { Actions.set-eq-preamp(self.value); }
-                            }
-                            Text { text: "\{round(State.eq-preamp)}dB"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
-                        }
-                    }
+                Rectangle {
+                    border-radius: 12px;
+                    background: Palette.raised;
                     HorizontalLayout {
-                        spacing: 10px;
-                        for band[index] in State.eq-bands : VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
+                        alignment: start;
+                        VerticalLayout {
                             spacing: 4px;
-                            Text { text: band.label; color: Palette.muted; font-size: 9px; horizontal-alignment: center; }
+                            Text { text: "Preamp"; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
                             Rectangle {
-                                width: 36px;
+                                width: 44px;
                                 height: 220px;
                                 Slider {
                                     y: 10px;
@@ -1451,10 +1544,32 @@ export component AudioView inherits Rectangle {
                                     orientation: Orientation.vertical;
                                     minimum: -12.0;
                                     maximum: 12.0;
-                                    value: band.value;
-                                    changed value => { Actions.set-eq-band(index, self.value); }
+                                    value: State.eq-preamp;
+                                    changed value => { Actions.set-eq-preamp(self.value); }
                                 }
-                                Text { text: "\{round(band.value)}"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                                Text { text: "\{round(State.eq-preamp)}dB"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            for band[index] in State.eq-bands : VerticalLayout {
+                                spacing: 4px;
+                                Text { text: band.label; color: Palette.muted; font-size: 9px; horizontal-alignment: center; }
+                                Rectangle {
+                                    width: 36px;
+                                    height: 220px;
+                                    Slider {
+                                        y: 10px;
+                                        height: parent.height - 20px;
+                                        width: parent.width;
+                                        orientation: Orientation.vertical;
+                                        minimum: -12.0;
+                                        maximum: 12.0;
+                                        value: band.value;
+                                        changed value => { Actions.set-eq-band(index, self.value); }
+                                    }
+                                    Text { text: "\{round(band.value)}"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                                }
                             }
                         }
                     }
@@ -1504,9 +1619,9 @@ component SettingSwitchRow inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Switch {
+            CustomToggle {
                 checked: root.checked;
-                toggled => { root.toggled(self.checked); }
+                toggled(v) => { root.toggled(v); }
             }
         }
     }
@@ -1662,9 +1777,9 @@ component SettingNavOrderRow inherits Rectangle {
             font-size: 9px;
             vertical-alignment: center;
         }
-        if !root.item.always-visible : Switch {
+        if !root.item.always-visible : CustomToggle {
             checked: !root.item.hidden;
-            toggled => { Actions.toggle-navigation(root.item.view); }
+            toggled(v) => { Actions.toggle-navigation(root.item.view); }
         }
     }
     Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border-soft; }
@@ -1985,20 +2100,33 @@ component SettingsView inherits Rectangle {
 // ---- Duplicates --------------------------------------------------------------
 component DuplicatesView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
         spacing: 12px;
 
         HorizontalLayout {
             spacing: 10px;
-            Text {
-                text: "Duplicates";
-                color: Palette.text;
-                font-size: 22px;
-                font-weight: 800;
+            VerticalLayout {
+                spacing: 5px;
                 horizontal-stretch: 1;
+                Text {
+                    text: "Duplicates";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "Find and manage duplicate tracks across your collection.";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Rescan duplicates";
+                primary: true;
                 clicked => { Actions.prepare-duplicates(); }
             }
         }
