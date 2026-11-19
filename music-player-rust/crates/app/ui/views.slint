@@ -83,6 +83,7 @@ component HomeQuickTrackTile inherits Rectangle {
             alignment: center;
             spacing: 3px;
             Text {
+                min-width: 0px;
                 text: root.item.title;
                 color: Palette.text-strong;
                 font-size: 12px;
@@ -90,6 +91,7 @@ component HomeQuickTrackTile inherits Rectangle {
                 overflow: elide;
             }
             if root.item.artist != "" : Text {
+                min-width: 0px;
                 text: root.item.artist;
                 color: Palette.muted;
                 font-size: 10px;
@@ -99,10 +101,10 @@ component HomeQuickTrackTile inherits Rectangle {
 
         IcBtn {
             icon: @image-url("../assets/icons/play.svg");
-            icon-size: 14px;
-            tint: Palette.muted-2;
-            width: 28px;
-            height: 28px;
+            icon-size: 16px;
+            tint: Palette.icon-muted;
+            width: 30px;
+            height: 30px;
             clicked => { root.play(); }
         }
     }
@@ -110,24 +112,28 @@ component HomeQuickTrackTile inherits Rectangle {
 
 component HomeQuickRowView inherits Rectangle {
     in property <HomeTrackRow> track-row;
+    height: 58px;
     HorizontalLayout {
         spacing: 10px;
         if root.track-row.filled >= 1 : HomeQuickTrackTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.track-row.a;
             play => { Actions.play-track(root.track-row.a.id); }
         }
         if root.track-row.filled >= 2 : HomeQuickTrackTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.track-row.b;
             play => { Actions.play-track(root.track-row.b.id); }
         }
-        if root.track-row.filled == 1 : Rectangle { horizontal-stretch: 1; }
+        if root.track-row.filled == 1 : Rectangle { horizontal-stretch: 1; min-width: 0px; }
     }
 }
 
 component HomeLibraryTile inherits Rectangle {
     in property <HomeCardItem> item;
+    min-width: 0px;
     height: self.width + 64px;
 
     HomeCardTile {
@@ -153,28 +159,33 @@ component HomeCardRowView inherits Rectangle {
         spacing: 14px;
         if root.card-row.filled >= 1 : HomeLibraryTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.card-row.a;
         }
         if root.card-row.filled >= 2 : HomeLibraryTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.card-row.b;
         }
         if root.card-row.filled >= 3 : HomeLibraryTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.card-row.c;
         }
         if root.card-row.filled >= 4 : HomeLibraryTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.card-row.d;
         }
         if root.card-row.filled >= 5 : HomeLibraryTile {
             horizontal-stretch: 1;
+            min-width: 0px;
             item: root.card-row.e;
         }
-        if root.card-row.filled < 5 : Rectangle { horizontal-stretch: 1; }
-        if root.card-row.filled < 4 : Rectangle { horizontal-stretch: 1; }
-        if root.card-row.filled < 3 : Rectangle { horizontal-stretch: 1; }
-        if root.card-row.filled < 2 : Rectangle { horizontal-stretch: 1; }
+        if root.card-row.filled < 5 : Rectangle { horizontal-stretch: 1; min-width: 0px; }
+        if root.card-row.filled < 4 : Rectangle { horizontal-stretch: 1; min-width: 0px; }
+        if root.card-row.filled < 3 : Rectangle { horizontal-stretch: 1; min-width: 0px; }
+        if root.card-row.filled < 2 : Rectangle { horizontal-stretch: 1; min-width: 0px; }
     }
 }
 
@@ -197,12 +208,15 @@ component HomeEmptyState inherits Rectangle {
             font-size: 11px;
             horizontal-alignment: center;
         }
-        if !State.scan-active : TextBtn {
-            label: State.has-roots ? "Scan folders" : "Add music folder";
-            primary: true;
-            clicked => {
-                if (State.has-roots) { Actions.scan-library(); }
-                else { Actions.open-modal("folders"); }
+        if !State.scan-active : HorizontalLayout {
+            alignment: center;
+            ActionBtn {
+                label: State.has-roots ? "Scan folders" : "Add music folder";
+                primary: true;
+                clicked => {
+                    if (State.has-roots) { Actions.scan-library(); }
+                    else { Actions.open-modal("folders"); }
+                }
             }
         }
     }
@@ -423,7 +437,6 @@ component FoldersView inherits Rectangle {
                     padding-left: 14px;
                     padding-right: 14px;
                     spacing: 12px;
-                    alignment: center;
                     Rectangle {
                         width: 7px;
                         height: 7px;
@@ -492,7 +505,6 @@ component FoldersView inherits Rectangle {
                     padding-left: 14px;
                     padding-right: 14px;
                     spacing: 12px;
-                    alignment: center;
                     Rectangle {
                         width: 36px;
                         height: 36px;
@@ -554,7 +566,7 @@ component SmartPlaylistTile inherits Rectangle {
 
         smart-cover := Rectangle {
             height: self.width;
-            border-radius: 12px;
+            border-radius: 6px;
             clip: true;
             background: root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
                 : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
@@ -585,9 +597,9 @@ component SmartPlaylistTile inherits Rectangle {
 
                 Image {
                     source: @image-url("../assets/icons/play.svg");
-                    width: 15px;
-                    height: 15px;
-                    x: (parent.width - self.width) / 2;
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
@@ -684,9 +696,9 @@ component PlaylistTile inherits Rectangle {
 
                 Image {
                     source: @image-url("../assets/icons/play.svg");
-                    width: 15px;
-                    height: 15px;
-                    x: (parent.width - self.width) / 2;
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
@@ -989,7 +1001,7 @@ component SearchView inherits Rectangle {
             spacing: 8px;
             HorizontalLayout {
                 Text { text: "Recent searches"; color: Palette.text-strong; font-size: 13px; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
-                TextBtn { label: "Clear all"; clicked => { Actions.clear-recent-searches(); } }
+                ActionBtn { label: "Clear all"; clicked => { Actions.clear-recent-searches(); } }
             }
             for term in State.recent-searches : HorizontalLayout {
                 spacing: 4px;
@@ -1309,15 +1321,15 @@ component NowPlayingView inherits Rectangle {
                     tint: State.current-favorite ? State.accent : Palette.muted;
                     clicked => { Actions.toggle-favorite(State.current-id); }
                 }
-                TextBtn {
+                ActionBtn {
                     label: "Track details";
                     clicked => { Actions.open-details(State.current-id); }
                 }
-                TextBtn {
+                ActionBtn {
                     label: "Show in folder";
                     clicked => { Actions.open-file-location(State.current-id); }
                 }
-                TextBtn {
+                ActionBtn {
                     label: "Lyrics";
                     clicked => { Actions.set-view("Lyrics", "", "", ""); }
                 }
@@ -1583,7 +1595,7 @@ export component AudioView inherits Rectangle {
 component SettingRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
-    height: 48px;
+    height: 52px;
 
     VerticalLayout {
         alignment: center;
@@ -1591,13 +1603,13 @@ component SettingRow inherits Rectangle {
         Text {
             text: root.label;
             color: Palette.text-strong;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 650;
         }
         if root.description != "" : Text {
             text: root.description;
             color: Palette.muted;
-            font-size: 9px;
+            font-size: 10px;
             overflow: elide;
         }
     }
@@ -1609,7 +1621,7 @@ component SettingSwitchRow inherits Rectangle {
     in property <bool> checked: false;
     callback toggled(bool);
 
-    height: 48px;
+    height: 52px;
     HorizontalLayout {
         spacing: 18px;
         SettingRow {
@@ -1628,7 +1640,7 @@ component SettingSwitchRow inherits Rectangle {
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: Palette.border-soft;
+        background: Palette.border;
     }
 }
 
@@ -1639,7 +1651,7 @@ component SettingComboRow inherits Rectangle {
     in property <string> value;
     callback changed(string);
 
-    height: 48px;
+    height: 52px;
     HorizontalLayout {
         spacing: 18px;
         SettingRow {
@@ -1660,7 +1672,7 @@ component SettingComboRow inherits Rectangle {
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: Palette.border-soft;
+        background: Palette.border;
     }
 }
 
@@ -1672,14 +1684,14 @@ component SettingsNavTab inherits Rectangle {
     horizontal-stretch: 1;
     min-width: 48px;
     height: 38px;
-    border-radius: 7px;
-    background: area.pressed ? Palette.overlay-strong : (root.selected ? Palette.hover : (area.has-hover ? Palette.overlay : transparent));
+    border-radius: 8px;
+    background: area.pressed ? #222622 : (root.selected ? #222622 : (area.has-hover ? #222622 : transparent));
     animate background { duration: 110ms; }
     area := TouchArea { clicked => { root.clicked(); } }
     Text {
         text: root.label;
         color: root.selected ? Palette.text : Palette.muted;
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -1714,7 +1726,7 @@ component SettingColorRow inherits Rectangle {
             accepted(value) => { Actions.set-setting(root.setting, value); }
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border-soft; }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
 component SettingSliderRow inherits Rectangle {
@@ -1747,7 +1759,7 @@ component SettingSliderRow inherits Rectangle {
             vertical-alignment: center;
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border-soft; }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
 component SettingNavOrderRow inherits Rectangle {
@@ -1782,7 +1794,7 @@ component SettingNavOrderRow inherits Rectangle {
             toggled(v) => { Actions.toggle-navigation(root.item.view); }
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border-soft; }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
 component SettingsView inherits Rectangle {
@@ -1919,7 +1931,7 @@ component SettingsView inherits Rectangle {
                             }
                         }
                         Rectangle { height: 10px; }
-                        TextBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
+                        ActionBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
                     }
 
                     library-section := VerticalLayout {
@@ -1949,14 +1961,14 @@ component SettingsView inherits Rectangle {
                         SectionTitle { text: "Library tools"; }
                         HorizontalLayout {
                             spacing: 8px;
-                            TextBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
-                            TextBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
-                            TextBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
+                            ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
+                            ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
+                            ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
                         }
                         HorizontalLayout {
                             spacing: 8px;
-                            TextBtn { label: "Scan library"; primary: true; clicked => { Actions.scan-library(); } }
-                            TextBtn { label: "Rebuild index"; clicked => { Actions.rebuild-library-index(); } }
+                            ActionBtn { label: "Scan library"; primary: true; clicked => { Actions.scan-library(); } }
+                            ActionBtn { label: "Rebuild index"; clicked => { Actions.rebuild-library-index(); } }
                         }
                         Text {
                             text: "Rebuilding refreshes artwork and removes files confirmed missing from reachable locations. Offline drives are kept until they reconnect.";
@@ -1996,7 +2008,7 @@ component SettingsView inherits Rectangle {
                             toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
                         }
                         Rectangle { height: 10px; }
-                        TextBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                        ActionBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
                     }
 
                     advanced-section := VerticalLayout {
@@ -2036,9 +2048,9 @@ component SettingsView inherits Rectangle {
                         }
                         HorizontalLayout {
                             spacing: 8px;
-                            TextBtn { label: "Default music app settings"; clicked => { Actions.open-default-apps(); } }
-                            TextBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
-                            TextBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                            ActionBtn { label: "Default music app settings"; clicked => { Actions.open-default-apps(); } }
+                            ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
+                            ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
                         }
                         SectionTitle { text: "Navigation order and visibility"; }
                         Text { text: "Use the arrows to reorder destinations or hide items from the sidebar."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
@@ -2058,12 +2070,12 @@ component SettingsView inherits Rectangle {
                             Text { text: "Music Player"; color: Palette.text; font-size: 18px; font-weight: 800; vertical-alignment: center; }
                             Text { text: State.about-rows.length > 0 ? State.about-rows[0].value : "Version unavailable"; color: Palette.muted; font-size: 10px; vertical-alignment: center; }
                             Rectangle { horizontal-stretch: 1; }
-                            TextBtn { label: "View repository"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); } }
+                            ActionBtn { label: "View repository"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); } }
                         }
                         HorizontalLayout {
                             height: 56px;
                             SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · installs are always manual."; horizontal-stretch: 1; }
-                            TextBtn { label: "View release history"; clicked => { Actions.open-release(); } }
+                            ActionBtn { label: "View release history"; clicked => { Actions.open-release(); } }
                         }
                         SettingSwitchRow {
                             label: "Check for updates automatically";
@@ -2073,9 +2085,9 @@ component SettingsView inherits Rectangle {
                         }
                         HorizontalLayout {
                             spacing: 8px;
-                            TextBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
-                            TextBtn { label: "MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
-                            TextBtn { label: "Third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
+                            ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
+                            ActionBtn { label: "MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
+                            ActionBtn { label: "Third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
                         }
                         SectionTitle { text: "Privacy and network use"; }
                         Text {
@@ -2195,7 +2207,7 @@ component DuplicatesView inherits Rectangle {
             HorizontalLayout {
                 spacing: 10px;
                 alignment: center;
-                TextBtn {
+                ActionBtn {
                     label: "Previous";
                     clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page - 1); }
                 }
@@ -2205,7 +2217,7 @@ component DuplicatesView inherits Rectangle {
                     font-size: 11px;
                     vertical-alignment: center;
                 }
-                TextBtn {
+                ActionBtn {
                     label: "Next";
                     clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page + 1); }
                 }

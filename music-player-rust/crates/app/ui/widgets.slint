@@ -20,6 +20,7 @@ export global Palette {
     in property <color> text-subtle: State.artwork-palette ? #e0dfd8 : (State.light-theme ? #343b34 : #cdd2cc);
     in property <color> muted: State.artwork-palette ? #d1d0c9 : (State.light-theme ? #545c54 : #a0a79f);
     in property <color> muted-2: State.artwork-palette ? #aaa9a2 : (State.light-theme ? #747c74 : #717970);
+    in property <color> row-hover: State.artwork-palette ? State.art-hover : (State.light-theme ? #e5e8e4 : #131613);
     in property <color> icon-muted: State.light-theme && !State.artwork-palette ? #727a72 : #939a93;
     in property <color> disabled: State.light-theme && !State.artwork-palette ? #aab2aa : #3a403a;
     in property <color> border: State.light-theme && !State.artwork-palette ? #1219121f : #ffffff14;
@@ -275,13 +276,13 @@ export component TrackRow inherits Rectangle {
     callback remove();
 
     height: 58px;
-    background: area.pressed ? Palette.hover : (area.has-hover ? Palette.panel-2 : (root.track.is-playing ? Palette.panel-2 : transparent));
+    background: area.pressed ? Palette.hover : (area.has-hover ? Palette.row-hover : (root.track.is-playing ? Palette.panel-2 : transparent));
     animate background { duration: 120ms; }
 
     Rectangle {
         y: parent.height - 1px;
         height: 1px;
-        background: Palette.border-soft;
+        background: Palette.border;
     }
 
     area := TouchArea {
@@ -453,6 +454,13 @@ export component TrackHeader inherits Rectangle {
     callback sort(string);
 
     height: 37px;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
 
     HorizontalLayout {
         padding-left: 12px;
@@ -639,6 +647,12 @@ export component CardTile inherits Rectangle {
             }
 
             Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
+            }
+
+            Rectangle {
                 width: 38px;
                 height: 38px;
                 x: parent.width - self.width - 10px;
@@ -650,9 +664,9 @@ export component CardTile inherits Rectangle {
 
                 Image {
                     source: @image-url("../assets/icons/play.svg");
-                    width: 15px;
-                    height: 15px;
-                    x: (parent.width - self.width) / 2;
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
@@ -667,6 +681,7 @@ export component CardTile inherits Rectangle {
             spacing: 3px;
             min-width: 0px;
             Text {
+                min-width: 0px;
                 text: root.item.name;
                 color: Palette.text-strong;
                 font-size: 13px;
@@ -674,6 +689,7 @@ export component CardTile inherits Rectangle {
                 overflow: elide;
             }
             if root.item.subtitle != "" : Text {
+                min-width: 0px;
                 text: root.item.subtitle;
                 color: Palette.muted;
                 font-size: 11px;
@@ -725,6 +741,11 @@ export component HomeCardTile inherits Rectangle {
                 horizontal-alignment: center;
             }
             Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
+            }
+            Rectangle {
                 width: 38px;
                 height: 38px;
                 x: parent.width - self.width - 10px;
@@ -735,9 +756,9 @@ export component HomeCardTile inherits Rectangle {
                 animate opacity { duration: 150ms; }
                 Image {
                     source: @image-url("../assets/icons/play.svg");
-                    width: 15px;
-                    height: 15px;
-                    x: (parent.width - self.width) / 2;
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
@@ -748,8 +769,8 @@ export component HomeCardTile inherits Rectangle {
         VerticalLayout {
             spacing: 3px;
             min-width: 0px;
-            Text { text: root.item.title; color: Palette.text-strong; font-size: 13px; font-weight: 750; overflow: elide; }
-            if root.item.subtitle != "" : Text { text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
+            Text { min-width: 0px; text: root.item.title; color: Palette.text-strong; font-size: 13px; font-weight: 750; overflow: elide; }
+            if root.item.subtitle != "" : Text { min-width: 0px; text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
         }
     }
 }
@@ -793,12 +814,8 @@ export component GroupGrid inherits Rectangle {
         }
         if root.show-load-more && State.groups-total > root.items.length : Rectangle {
             height: 44px;
-            TextBtn {
+            ActionBtn {
                 label: "Load more";
-                height: 30px;
-                width: 120px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
                 clicked => { Actions.load-more-groups(); }
             }
         }
@@ -826,7 +843,6 @@ export component HeroDetail inherits Rectangle {
     HorizontalLayout {
         padding: 20px;
         spacing: 24px;
-        alignment: end;
 
         Rectangle {
             width: 190px;
@@ -905,24 +921,38 @@ export component HeroDetail inherits Rectangle {
 
 export component EmptyState inherits Rectangle {
     in property <string> text: "Nothing here yet.";
+    in property <string> subtitle: "";
     in property <string> action-label: "";
     callback action();
 
     VerticalLayout {
         alignment: center;
-        spacing: 12px;
+        spacing: 6px;
+        padding-top: 70px;
+        padding-bottom: 70px;
+        padding-left: 20px;
+        padding-right: 20px;
         Text {
             text: root.text;
-            color: Palette.muted;
-            font-size: 13px;
+            color: Palette.text;
+            font-size: 16px;
+            font-weight: 700;
             horizontal-alignment: center;
         }
-        if root.action-label != "" : TextBtn {
-            label: root.action-label;
-            width: 170px;
-            x: (parent.width - self.width) / 2;
-            primary: true;
-            clicked => { root.action(); }
+        if root.subtitle != "" : Text {
+            text: root.subtitle;
+            color: Palette.muted;
+            font-size: 11px;
+            horizontal-alignment: center;
+        }
+        if root.action-label != "" : Rectangle { height: 8px; }
+        if root.action-label != "" : HorizontalLayout {
+            alignment: center;
+            ActionBtn {
+                label: root.action-label;
+                primary: true;
+                clicked => { root.action(); }
+            }
         }
     }
 }

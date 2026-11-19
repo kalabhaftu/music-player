@@ -25,24 +25,30 @@ component NavEntryRow inherits Rectangle {
     in property <string> label;
     in property <string> section-title;
 
-    height: root.section-title == "" ? 44px : 70px;
+    height: root.section-title == "" ? 44px : 79px;
 
     VerticalLayout {
         spacing: 0px;
-        if root.section-title != "" : Text {
-            text: root.section-title;
-            color: Palette.muted-2;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 1.1px;
-            x: 12px;
-            height: 26px;
-            vertical-alignment: bottom;
+        if root.section-title != "" : HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 9px;
+            padding-bottom: 7px;
+            height: 35px;
+            alignment: start;
+            Text {
+                text: root.section-title;
+                color: Palette.muted-2;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1.1px;
+                vertical-alignment: center;
+            }
         }
         Rectangle {
             height: 44px;
             border-radius: 6px;
-            background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? Palette.border-soft : (State.view == root.view ? Palette.raised : transparent));
+            background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? #ffffff0d : (State.view == root.view ? Palette.raised : transparent));
             animate background { duration: 120ms; }
 
             nav-area := TouchArea {
@@ -54,22 +60,28 @@ component NavEntryRow inherits Rectangle {
                 padding-right: 12px;
                 spacing: 13px;
 
-                Image {
-                    source: root.view == "Home" ? @image-url("../assets/icons/home.svg")
-                        : root.view == "Search" ? @image-url("../assets/icons/search.svg")
-                        : root.view == "Favorites" ? @image-url("../assets/icons/heart.svg")
-                        : root.view == "Albums" ? @image-url("../assets/icons/disc.svg")
-                        : root.view == "Artists" ? @image-url("../assets/icons/users.svg")
-                        : root.view == "Genres" ? @image-url("../assets/icons/tag.svg")
-                        : root.view == "Playlists" ? @image-url("../assets/icons/list.svg")
-                        : root.view == "Folders" ? @image-url("../assets/icons/folder.svg")
-                        : root.view == "Recently Added" ? @image-url("../assets/icons/spark.svg")
-                        : @image-url("../assets/icons/music.svg");
+                Rectangle {
                     width: 20px;
                     height: 20px;
-                    colorize: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
-                    animate colorize { duration: 120ms; }
-                    vertical-alignment: center;
+                    y: (parent.height - self.height) / 2;
+
+                    Image {
+                        source: root.view == "Home" ? @image-url("../assets/icons/home.svg")
+                            : root.view == "Search" ? @image-url("../assets/icons/search.svg")
+                            : root.view == "Favorites" ? @image-url("../assets/icons/heart.svg")
+                            : root.view == "Albums" ? @image-url("../assets/icons/disc.svg")
+                            : root.view == "Artists" ? @image-url("../assets/icons/users.svg")
+                            : root.view == "Genres" ? @image-url("../assets/icons/tag.svg")
+                            : root.view == "Playlists" ? @image-url("../assets/icons/list.svg")
+                            : root.view == "Folders" ? @image-url("../assets/icons/folder.svg")
+                            : root.view == "Recently Added" ? @image-url("../assets/icons/spark.svg")
+                            : @image-url("../assets/icons/music.svg");
+                        width: 20px;
+                        height: 20px;
+                        colorize: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
+                        animate colorize { duration: 120ms; }
+                        vertical-alignment: center;
+                    }
                 }
 
                 Text {
@@ -81,22 +93,11 @@ component NavEntryRow inherits Rectangle {
                     horizontal-stretch: 1;
                     overflow: elide;
                 }
-                if root.view == "Search" : Rectangle {
-                    height: 18px;
-                    border-radius: 4px;
-                    background: Palette.border-soft;
-                    border-width: 1px;
-                    border-color: Palette.border;
-                    HorizontalLayout {
-                        padding-left: 5px;
-                        padding-right: 5px;
-                        Text {
-                            text: "ctrl K";
-                            color: Palette.muted-2;
-                            font-size: 9px;
-                            vertical-alignment: center;
-                        }
-                    }
+                if root.view == "Search" : Text {
+                    text: "Ctrl K";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                    vertical-alignment: center;
                 }
             }
         }
@@ -221,7 +222,6 @@ component TopBar inherits Rectangle {
         padding-left: 16px;
         padding-right: 16px;
         spacing: 9px;
-        alignment: center;
 
         IcBtn {
             icon: @image-url("../assets/icons/panel-left.svg");
@@ -231,13 +231,13 @@ component TopBar inherits Rectangle {
         }
         IcBtn {
             icon: @image-url("../assets/icons/chevron-left.svg");
-            icon-size: 14px;
+            icon-size: 16px;
             tint: State.can-go-back ? Palette.muted : Palette.disabled;
             clicked => { if (State.can-go-back) { Actions.go-back(); } }
         }
         IcBtn {
             icon: @image-url("../assets/icons/chevron-right.svg");
-            icon-size: 14px;
+            icon-size: 16px;
             tint: State.can-go-forward ? Palette.muted : Palette.disabled;
             clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
         }
@@ -257,7 +257,6 @@ component TopBar inherits Rectangle {
                 padding-left: 13px;
                 padding-right: 13px;
                 spacing: 9px;
-                alignment: center;
 
                 Image {
                     source: @image-url("../assets/icons/search.svg");
@@ -299,23 +298,11 @@ component TopBar inherits Rectangle {
                     }
                 }
 
-                if State.view-search == "" : Rectangle {
-                    height: 18px;
-                    border-radius: 4px;
-                    background: Palette.border-soft;
-                    border-width: 1px;
-                    border-color: Palette.border;
-                    HorizontalLayout {
-                        padding-left: 5px;
-                        padding-right: 5px;
-                        Text {
-                            text: "ctrl K";
-                            color: Palette.muted-2;
-                            font-size: 9px;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                        }
-                    }
+                if State.view-search == "" : Text {
+                    text: "Ctrl K";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                    vertical-alignment: center;
                 }
 
                 if State.view-search != "" : IcBtn {
@@ -357,10 +344,10 @@ component TopBar inherits Rectangle {
             tint: Palette.muted;
             clicked => { Actions.scan-library(); }
         }
-        IcBtn {
+        if !State.right-panel-open : IcBtn {
             icon: @image-url("../assets/icons/queue.svg");
             icon-size: 16px;
-            active: State.right-panel-open;
+            tint: Palette.muted;
             clicked => { Actions.toggle-right-panel(); }
         }
         IcBtn {
@@ -708,7 +695,6 @@ component RightPanel inherits Rectangle {
         if State.right-panel-tab == "queue" : VerticalLayout {
             HorizontalLayout {
                 height: 34px;
-                alignment: center;
                 Text {
                     text: "Next in queue (\{State.queue-count})";
                     color: #d8ddd8;
@@ -809,12 +795,10 @@ component PlayerBar inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
-        alignment: center;
 
         HorizontalLayout {
             horizontal-stretch: 1;
             min-width: 200px;
-            max-width: 320px;
             spacing: 11px;
             alignment: start;
 
@@ -1021,6 +1005,38 @@ component PlayerBar inherits Rectangle {
     }
 }
 
+component ContextMenuItemRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    in property <bool> separator: false;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 5px;
+    background: area.has-hover && !root.separator ? #202420 : transparent;
+
+    area := TouchArea {
+        enabled: !root.separator && root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    if root.separator : Rectangle {
+        height: 1px;
+        y: 16px;
+        background: Palette.border;
+    }
+    if !root.separator : Text {
+        text: root.label;
+        color: root.danger ? #ff5b74 : (root.enabled ? Palette.text-strong : Palette.disabled);
+        font-size: 11px;
+        x: 12px;
+        width: parent.width - 24px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
 // ---- Context menu ----------------------------------------------------------------
 component ContextMenuOverlay inherits Rectangle {
     background: #00000000;
@@ -1033,36 +1049,23 @@ component ContextMenuOverlay inherits Rectangle {
     Rectangle {
         x: min(max(8px, State.context-x), parent.width - 240px);
         y: min(max(8px, State.context-y), parent.height - self.height - 8px);
-        width: 230px;
-        height: State.context-items.length * 30px + 16px;
-        border-radius: 8px;
-        background: Palette.raised;
+        width: 220px;
+        height: State.context-items.length * 34px + 14px;
+        border-radius: 7px;
+        background: #181b19;
         border-width: 1px;
         border-color: Palette.border;
         clip: true;
 
         ListView {
-            y: 8px;
-            height: parent.height - 16px;
-            for item[index] in State.context-items : Rectangle {
-                height: 30px;
-                if item.separator : Rectangle {
-                    height: 1px;
-                    y: 14px;
-                    background: Palette.border;
-                }
-                if !item.separator : TouchArea {
-                    clicked => { Actions.context-action(index); }
-                }
-                if !item.separator : Text {
-                    text: item.label;
-                    color: item.danger ? #ff5b74 : (item.enabled ? Palette.text-strong : Palette.disabled);
-                    font-size: 12px;
-                    x: 14px;
-                    width: parent.width - 28px;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
+            y: 7px;
+            height: parent.height - 14px;
+            for item[index] in State.context-items : ContextMenuItemRow {
+                label: item.label;
+                enabled: item.enabled;
+                danger: item.danger;
+                separator: item.separator;
+                clicked => { Actions.context-action(index); }
             }
         }
     }
@@ -2162,7 +2165,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
 }
 
 component ModalHost inherits Rectangle {
-    background: #00000059;
+    background: #00000094;
 
     // Body per modal kind, sized by the header.
     in property <length> modal-width: 460px;
@@ -2177,7 +2180,7 @@ component ModalHost inherits Rectangle {
         height: root.modal-height;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        border-radius: 12px;
+        border-radius: 13px;
         background: Palette.panel;
         border-width: 1px;
         border-color: Palette.border;
@@ -2205,6 +2208,7 @@ component ModalHost inherits Rectangle {
                     clicked => { Actions.close-modal(); }
                 }
             }
+            Rectangle { height: 1px; background: Palette.border; }
 
             // Body
             Rectangle {
