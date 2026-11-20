@@ -10,7 +10,12 @@ pub mod playlists;
 pub mod scanner;
 pub mod settings;
 
-pub use audio::{AudioEngine, EqualizerState, PlaybackStatus, QueueCoordinator, RepeatMode, EQUALIZER_BANDS};
+pub use audio::{
+    canonical_preset_by_name, canonical_preset_names, quadratic_volume_curve, AudioEngine,
+    EqualizerState, PlaybackStatus, QueueCoordinator, RepeatMode, CANONICAL_PRESETS,
+    EQUALIZER_BANDS, EQUALIZER_BAND_FREQUENCIES_HZ, EQUALIZER_BAND_LABELS, EQUALIZER_PREAMP_MAX,
+    EQUALIZER_PREAMP_MIN,
+};
 pub use db::LibraryStore;
 pub use db::tracks::TrackQuery;
 pub use duplicates::{DuplicateDetector, ExactDuplicateGroup, ExactDuplicateGroupPage};

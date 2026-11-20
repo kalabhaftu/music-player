@@ -371,9 +371,16 @@ component GridView inherits Rectangle {
         GroupGrid {
             vertical-stretch: 1;
             round: root.round;
+            kind: root.title == "Albums" ? "album" : (root.title == "Artists" ? "artist" : (root.title == "Genres" ? "genre" : "folder"));
             empty-text: root.empty-text;
         }
     }
+}
+
+component ArtistsView inherits GridView {
+    title: "Artists";
+    round: true;
+    empty-text: "No artists indexed yet.";
 }
 
 // ---- Folders ---------------------------------------------------------------
@@ -386,7 +393,7 @@ component FolderTile inherits Rectangle {
     animate background { duration: 140ms; }
 
     area := TouchArea {
-        clicked => { Actions.set-view("Folder", item.name, "folder", 0); }
+        clicked => { Actions.set-view("Folder", item.name, "folder", ""); }
     }
 
     VerticalLayout {
@@ -497,15 +504,18 @@ component FoldersView inherits Rectangle {
                         spacing: 3px;
                         horizontal-stretch: 1;
                         Text {
-                            text: State.scan-paused ? "Scan paused" : "Scanning library";
+                            text: State.scan-cancelling ? "Cancelling scan…"
+                                : State.scan-paused ? "Scan paused" : "Scanning library";
                             color: Palette.text-strong;
                             font-size: 12px;
                             font-weight: 650;
                         }
                         Text {
-                            text: State.scan-path != ""
-                                ? "\{State.scan-path} · \{State.library-tracks} tracks · \{State.library-folders} folders"
-                                : "Scanning library files…";
+                            text: State.scan-scanned > 0
+                                ? "\{State.scan-scanned} files scanned · \{State.library-tracks} tracks · \{State.scan-path}"
+                                : (State.scan-path != ""
+                                    ? "\{State.scan-path} · \{State.library-tracks} tracks"
+                                    : "Scanning library files…");
                             color: Palette.muted;
                             font-size: 10px;
                             overflow: elide;
@@ -985,7 +995,7 @@ component DetailView inherits Rectangle {
                         width: 150px;
                         item: album;
                         play => { Actions.play-group("album", album.name); }
-                        open => { Actions.set-view("Album", album.name, "album", 0); }
+                        open => { Actions.set-view("Album", album.name, "album", ""); }
                     }
                 }
             }
@@ -1018,11 +1028,82 @@ component DetailView inherits Rectangle {
 }
 
 // ---- Search -----------------------------------------------------------------
+component SearchSectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <int> count: 0;
+    in property <bool> show-see-all: true;
+    callback see-all();
+
+    height: 26px;
+    HorizontalLayout {
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.title;
+                color: Palette.text-strong;
+                font-size: 19px;
+                font-weight: 750;
+                letter-spacing: -0.65px;
+                vertical-alignment: center;
+            }
+            if root.count > 0 : Text {
+                text: "\{root.count}";
+                color: Palette.muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.show-see-all : Rectangle {
+            width: 56px;
+            height: 26px;
+            Text {
+                text: "See all";
+                color: see-all-area.has-hover ? Palette.text : Palette.muted;
+                font-size: 11px;
+                font-weight: 700;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                animate color { duration: 100ms; }
+            }
+            see-all-area := TouchArea { clicked => { root.see-all(); } }
+        }
+    }
+}
+
 component SearchView inherits Rectangle {
     VerticalLayout {
-        padding: 20px;
-        spacing: 12px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 16px;
 
+        // View Header: Title and subtitle matching WebUI
+        VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: "Search";
+                color: Palette.text;
+                font-size: 30px;
+                font-weight: 800;
+                letter-spacing: -0.65px;
+            }
+            Text {
+                text: State.view-search != ""
+                    ? "Results in your local library for “\{State.view-search}”"
+                    : "Find songs, artists, albums, and playlists.";
+                color: Palette.muted;
+                font-size: 12px;
+            }
+        }
+
+        // Filter chips: All, Songs, Albums, Artists, Playlists (height 28px, border-radius 99px)
         if State.view-search != "" : HorizontalLayout {
             spacing: 6px;
             Chip {
@@ -1052,40 +1133,100 @@ component SearchView inherits Rectangle {
             }
         }
 
+        // Recent searches when query is empty
         if State.view-search == "" && State.recent-searches.length > 0 : VerticalLayout {
-            spacing: 8px;
+            spacing: 12px;
             HorizontalLayout {
-                Text { text: "Recent searches"; color: Palette.text-strong; font-size: 13px; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
-                ActionBtn { label: "Clear all"; clicked => { Actions.clear-recent-searches(); } }
-            }
-            for term in State.recent-searches : HorizontalLayout {
-                spacing: 4px;
-                Chip {
-                    label: term;
-                    clicked => { Actions.search(term, "all"); }
+                Text {
+                    text: "Recent searches";
+                    color: Palette.text-strong;
+                    font-size: 19px;
+                    font-weight: 750;
+                    letter-spacing: -0.65px;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
                 }
-                IcBtn {
-                    icon: @image-url("../assets/icons/close.svg");
-                    icon-size: 11px;
-                    tint: Palette.muted-2;
-                    hover-tint: Palette.text;
-                    clicked => { Actions.remove-recent-search(term); }
+                ActionBtn {
+                    label: "Clear all";
+                    clicked => { Actions.clear-recent-searches(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                for term in State.recent-searches : Rectangle {
+                    height: 28px;
+                    border-radius: 99px;
+                    background: Palette.panel-2;
+                    border-width: 1px;
+                    border-color: Palette.border-soft;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 6px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        TouchArea {
+                            clicked => { Actions.search(term, "all"); }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Image {
+                                    source: @image-url("../assets/icons/search.svg");
+                                    width: 12px;
+                                    height: 12px;
+                                    colorize: Palette.muted;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: term;
+                                    color: Palette.text;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            close-area := TouchArea {
+                                clicked => { Actions.remove-recent-search(term); }
+                            }
+                            Text {
+                                text: "×";
+                                color: close-area.has-hover ? #ff5b74 : Palette.muted;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                 }
             }
         }
 
+        // Empty state when search query is empty
         if State.view-search == "" : EmptyState {
             vertical-stretch: 1;
-            text: "Search songs, albums, artists, and playlists from your library.";
+            text: "Search your library";
+            subtitle: "Type in the search field above to find songs, albums, and artists.";
         }
 
+        // All results: sections with section headers and "See all" buttons
         if State.view-search != "" && State.search-filter == "all" : ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 16px;
+                spacing: 24px;
+
+                // Songs table for matched songs
                 if State.search-song-count > 0 : VerticalLayout {
-                    spacing: 8px;
-                    SectionTitle { text: "Songs · \{State.search-song-count}"; }
+                    spacing: 12px;
+                    SearchSectionHeader {
+                        title: "Songs";
+                        count: State.search-song-count;
+                        see-all => { Actions.search(State.view-search, "song"); }
+                    }
                     TrackTable {
                         height: 360px;
                         show-added: false;
@@ -1094,47 +1235,124 @@ component SearchView inherits Rectangle {
                         empty-text: "No matching songs.";
                     }
                 }
+
+                // Card grid for matched albums
                 if State.search-album-count > 0 : VerticalLayout {
-                    spacing: 8px;
-                    SectionTitle { text: "Albums · \{State.search-album-count}"; }
-                    GroupGrid { height: 280px; items: State.search-albums; show-load-more: false; empty-text: "No matching albums."; }
+                    spacing: 12px;
+                    SearchSectionHeader {
+                        title: "Albums";
+                        count: State.search-album-count;
+                        see-all => { Actions.search(State.view-search, "album"); }
+                    }
+                    GroupGrid {
+                        height: 280px;
+                        kind: "album";
+                        items: State.search-albums;
+                        show-load-more: false;
+                        empty-text: "No matching albums.";
+                    }
                 }
+
+                // Round avatar grid for matched artists
                 if State.search-artist-count > 0 : VerticalLayout {
-                    spacing: 8px;
-                    SectionTitle { text: "Artists · \{State.search-artist-count}"; }
-                    GroupGrid { height: 280px; round: true; items: State.search-artists; show-load-more: false; empty-text: "No matching artists."; }
+                    spacing: 12px;
+                    SearchSectionHeader {
+                        title: "Artists";
+                        count: State.search-artist-count;
+                        see-all => { Actions.search(State.view-search, "artist"); }
+                    }
+                    GroupGrid {
+                        height: 280px;
+                        round: true;
+                        kind: "artist";
+                        items: State.search-artists;
+                        show-load-more: false;
+                        empty-text: "No matching artists.";
+                    }
                 }
+
+                // Playlists grid
                 if State.search-playlist-count > 0 : VerticalLayout {
-                    spacing: 8px;
-                    SectionTitle { text: "Playlists · \{State.search-playlist-count}"; }
-                    PlaylistsList { height: 220px; }
+                    spacing: 12px;
+                    SearchSectionHeader {
+                        title: "Playlists";
+                        count: State.search-playlist-count;
+                        see-all => { Actions.search(State.view-search, "playlist"); }
+                    }
+                    PlaylistsList {
+                        height: 220px;
+                    }
                 }
+
                 if State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count == 0 : EmptyState {
-                    text: "No results for “\{State.view-search}”. Try another title, artist, album, or playlist.";
+                    text: "No results for “\{State.view-search}”";
+                    subtitle: "Try another song, artist, album, or playlist name.";
                 }
             }
         }
 
-        if State.view-search != "" && State.search-filter == "song" : TrackTable {
+        // Filtered views
+        if State.view-search != "" && State.search-filter == "song" : VerticalLayout {
             vertical-stretch: 1;
-            show-added: false;
-            first-column: "Title";
-            sort(column) => { Actions.sort-view(column); }
-            empty-text: "No matching songs.";
+            spacing: 12px;
+            SearchSectionHeader {
+                title: "Songs";
+                count: State.search-song-count;
+                show-see-all: false;
+            }
+            TrackTable {
+                vertical-stretch: 1;
+                show-added: false;
+                first-column: "Title";
+                sort(column) => { Actions.sort-view(column); }
+                empty-text: "No matching songs.";
+            }
         }
-        if State.view-search != "" && State.search-filter == "album" : GroupGrid {
+
+        if State.view-search != "" && State.search-filter == "album" : VerticalLayout {
             vertical-stretch: 1;
-            items: State.search-albums;
-            empty-text: "No matching albums.";
+            spacing: 12px;
+            SearchSectionHeader {
+                title: "Albums";
+                count: State.search-album-count;
+                show-see-all: false;
+            }
+            GroupGrid {
+                vertical-stretch: 1;
+                kind: "album";
+                items: State.search-albums;
+                empty-text: "No matching albums.";
+            }
         }
-        if State.view-search != "" && State.search-filter == "artist" : GroupGrid {
+
+        if State.view-search != "" && State.search-filter == "artist" : VerticalLayout {
             vertical-stretch: 1;
-            items: State.search-artists;
-            round: true;
-            empty-text: "No matching artists.";
+            spacing: 12px;
+            SearchSectionHeader {
+                title: "Artists";
+                count: State.search-artist-count;
+                show-see-all: false;
+            }
+            GroupGrid {
+                vertical-stretch: 1;
+                round: true;
+                kind: "artist";
+                items: State.search-artists;
+                empty-text: "No matching artists.";
+            }
         }
-        if State.view-search != "" && State.search-filter == "playlist" : PlaylistsList {
+
+        if State.view-search != "" && State.search-filter == "playlist" : VerticalLayout {
             vertical-stretch: 1;
+            spacing: 12px;
+            SearchSectionHeader {
+                title: "Playlists";
+                count: State.search-playlist-count;
+                show-see-all: false;
+            }
+            PlaylistsList {
+                vertical-stretch: 1;
+            }
         }
     }
 }
@@ -2485,12 +2703,9 @@ export component ContentArea inherits Rectangle {
         title: "Albums";
         empty-text: "No albums indexed yet.";
     }
-    if State.view == "Artists" : GridView {
+    if State.view == "Artists" : ArtistsView {
         width: 100%;
         height: 100%;
-        title: "Artists";
-        round: true;
-        empty-text: "No artists indexed yet.";
     }
     if State.view == "Genres" : GridView {
         width: 100%;
@@ -2504,25 +2719,25 @@ export component ContentArea inherits Rectangle {
     if State.view == "Album" : DetailView {
         width: 100%;
         height: 100%;
-        eyebrow: "Album";
+        eyebrow: "ALBUM";
         empty-text: "No tracks in this album.";
     }
     if State.view == "Artist" : DetailView {
         width: 100%;
         height: 100%;
-        eyebrow: "Artist";
+        eyebrow: "ARTIST";
         empty-text: "No tracks by this artist.";
     }
     if State.view == "Genre" : DetailView {
         width: 100%;
         height: 100%;
-        eyebrow: "Genre";
+        eyebrow: "GENRE";
         empty-text: "No tracks in this genre.";
     }
     if State.view == "Folder" : DetailView {
         width: 100%;
         height: 100%;
-        eyebrow: "Folder";
+        eyebrow: "FOLDER";
         empty-text: "No tracks in this folder.";
     }
     if State.view == "Queue" : QueueView { width: 100%; height: 100%; }

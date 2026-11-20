@@ -403,6 +403,9 @@ struct App {
     audio_devices: Vec<os_shell::AudioOutputDevice>,
     search_debounce: Option<(Instant, String)>,
     update_rx: Option<Receiver<UpdateOutcome>>,
+    unmuted_volume: Option<u32>,
+    scan_outcome_time: Option<Instant>,
+    track_cache: HashMap<String, Track>,
 }
 
 impl App {
@@ -484,6 +487,9 @@ impl App {
             audio_devices: Vec::new(),
             search_debounce: None,
             update_rx: None,
+            unmuted_volume: None,
+            scan_outcome_time: None,
+            track_cache: HashMap::new(),
         }
     }
 
@@ -736,6 +742,15 @@ impl App {
             }
         }
 
+        // Scan outcome dismissal after 8s (matching C# MainWindow.WebUi.Events.cs).
+        if let Some(t) = self.scan_outcome_time {
+            if t.elapsed() >= Duration::from_secs(8) {
+                self.scan_outcome_time = None;
+                self.ui.global::<State>().set_scan_outcome(ss(""));
+                self.ui.global::<State>().set_scan_details_open(false);
+            }
+        }
+
         // Secondary-instance activation files.
         for payload in os::poll_activations() {
             if payload.verb == "addtoqueue" {
@@ -746,7 +761,7 @@ impl App {
                 self.play_external_files(&payload.paths);
             }
         }
-        let position = self.engine.position_ms().max(0);
+        let mut position = self.engine.position_ms().max(0);
         let duration = self.engine.duration_ms().max(0);
 
         // A–B repeat: seek back to A once position reaches B.
@@ -757,6 +772,7 @@ impl App {
             ) {
                 if position >= b {
                     let _ = self.engine.seek(a);
+                    position = self.engine.position_ms().max(0);
                 }
             }
         }
@@ -1050,6 +1066,8 @@ impl App {
             format!("Library scan complete: {} tracks indexed", index.indexed)
         };
         self.ui.global::<State>().set_scan_outcome(ss(message));
+        self.scan_outcome_time = Some(Instant::now());
+        self.track_cache.clear();
         self.settings
             .set_raw(music_player_core::settings::keys::LIBRARY_LAST_SCAN_UTC, &chrono::Utc::now().to_rfc3339());
         self.load_roots();
@@ -1125,7 +1143,35 @@ impl App {
 
     fn track_by_id(&self, id: &str) -> Option<Track> {
         let path = self.id_to_path.get(id)?.clone();
+        if let Some(track) = self.track_cache.get(&path) {
+            return Some(track.clone());
+        }
         self.store.get_track(&path).ok().flatten()
+    }
+
+    fn resolve_track(&mut self, path: &str) -> Option<Track> {
+        if let Some(track) = self.track_cache.get(path) {
+            return Some(track.clone());
+        }
+        if let Ok(Some(track)) = self.store.get_track(path) {
+            self.track_cache.insert(path.to_string(), track.clone());
+            Some(track)
+        } else {
+            None
+        }
+    }
+
+    fn prefetch_upcoming_tracks(&mut self) {
+        let entries = self.coordinator.queue().entries().to_vec();
+        let current_index = self.coordinator.queue().current_index();
+        let upcoming_start = current_index.map(|i| i + 1).unwrap_or(0);
+        for path in entries.iter().skip(upcoming_start).take(10) {
+            if !self.track_cache.contains_key(path) {
+                if let Ok(Some(track)) = self.store.get_track(path) {
+                    self.track_cache.insert(path.clone(), track);
+                }
+            }
+        }
     }
 
     fn play_track(&mut self, track: Track, reset_queue: bool, index: Option<usize>) {
@@ -1161,9 +1207,10 @@ impl App {
                 self.crossfade_in_progress = false;
                 self.crossfade_failure_source = None;
                 self.crossfade_source_index = None;
-                if let Some(track) = self.store.get_track(&path).ok().flatten() {
+                if let Some(track) = self.resolve_track(&path) {
                     self.update_current_track(&track);
                 }
+                self.prefetch_upcoming_tracks();
                 if result.persist_session {
                     self.save_session();
                 }
@@ -1305,9 +1352,10 @@ impl App {
             self.crossfade_failure_source = None;
             self.listening.reset_for_track();
             if let Some(path) = self.current.as_ref().map(|t| t.path.clone()) {
-                if let Some(track) = self.store.get_track(&path).ok().flatten() {
+                if let Some(track) = self.resolve_track(&path) {
                     self.update_current_track(&track);
                 }
+                self.prefetch_upcoming_tracks();
             }
             return;
         }
@@ -1752,7 +1800,7 @@ impl App {
         let mut items = Vec::new();
         for (offset, path) in entries.iter().skip(start).take(display_limit).enumerate() {
             let is_current = current_index == Some(start + offset);
-            let item = match self.store.get_track(path).ok().flatten() {
+            let item = match self.resolve_track(path) {
                 Some(track) => self.queue_item(&track, start + offset, is_current, &playing_path),
                 None => {
                     let id = music_player_core::track_id_for_path(path);
@@ -1778,7 +1826,7 @@ impl App {
         let upcoming_start = current_index.map(|i| i + 1).unwrap_or(0);
         let mut panel_items = Vec::new();
         for (offset, path) in entries.iter().skip(upcoming_start).take(30).enumerate() {
-            let item = match self.store.get_track(path).ok().flatten() {
+            let item = match self.resolve_track(path) {
                 Some(track) => self.queue_item(&track, upcoming_start + offset, false, &playing_path),
                 None => {
                     let id = music_player_core::track_id_for_path(path);
@@ -2157,6 +2205,7 @@ impl App {
         self.id_to_path.clear();
         for t in &tracks {
             self.id_to_path.insert(t.id(), t.path.clone());
+            self.track_cache.insert(t.path.clone(), t.clone());
         }
         for item in &items {
             self.id_to_path.insert(item.id.to_string(), item.id.to_string());
@@ -2784,34 +2833,41 @@ impl App {
 
     // ---- Context menu -------------------------------------------------------
 
-    const CONTEXT_ITEMS: [&'static str; 15] = [
-        "Play",
-        "Play next",
-        "Add to queue",
-        "Add to playlist",
-        "Create playlist with this song…",
-        "Toggle favorite",
-        "Set rating…",
-        "—",
-        "Lyrics",
-        "Find lyrics…",
-        "Edit lyrics…",
-        "Edit tags",
-        "Restore previous tags",
-        "Track details",
-        "Show in File Explorer",
-    ];
-
     fn open_context_menu(&mut self, id: &str, x: i32, y: i32) {
         self.context_target = Some(id.to_string());
-        let items: Vec<ContextMenuItem> = Self::CONTEXT_ITEMS
-            .iter()
-            .enumerate()
-            .map(|(i, label)| ContextMenuItem {
-                label: ss(*label),
-                danger: false,
-                separator: i == 7,
-                enabled: true,
+        let track = self.track_by_id(id);
+        let is_fav = track.as_ref().map(|t| t.favorite).unwrap_or(false);
+        let fav_label = if is_fav { "Remove from favorites" } else { "Favorite" };
+        let has_album = track.as_ref().map(|t| !t.album.trim().is_empty()).unwrap_or(false);
+        let has_artist = track.as_ref().map(|t| !t.artist.trim().is_empty()).unwrap_or(false);
+
+        let menu_defs = vec![
+            ("Play", false, false, true),
+            ("Play next", false, false, true),
+            ("Add to queue", false, false, true),
+            ("Add to playlist…", false, false, true),
+            ("Create playlist with this song…", false, false, true),
+            ("Go to album", false, false, has_album),
+            ("Go to artist", false, false, has_artist),
+            (fav_label, false, false, true),
+            ("Set rating…", false, false, true),
+            ("—", false, true, false),
+            ("Lyrics", false, false, true),
+            ("Find lyrics…", false, false, true),
+            ("Edit lyrics…", false, false, true),
+            ("Edit tags", false, false, true),
+            ("Restore previous tags", false, false, true),
+            ("Track details", false, false, true),
+            ("Show file in Explorer", false, false, true),
+        ];
+
+        let items: Vec<ContextMenuItem> = menu_defs
+            .into_iter()
+            .map(|(label, danger, separator, enabled)| ContextMenuItem {
+                label: ss(label),
+                danger,
+                separator,
+                enabled,
             })
             .collect();
         let state = self.ui.global::<State>();
@@ -2855,16 +2911,30 @@ impl App {
                     }
                 }
             }
-            5 => self.toggle_favorite(&id),
-            6 => { self.ui.global::<State>().set_modal(ss("rating")); self.ui.global::<State>().set_rate_value(0); }
-            8 => self.set_view("Lyrics", "", "", ""),
-            9 => self.open_find_lyrics(&id),
-            10 => {
+            5 => {
+                if let Some(t) = self.track_by_id(&id) {
+                    if !t.album.trim().is_empty() {
+                        self.set_view("Album", "", &t.album, "");
+                    }
+                }
+            }
+            6 => {
+                if let Some(t) = self.track_by_id(&id) {
+                    if !t.artist.trim().is_empty() {
+                        self.set_view("Artist", "", &t.artist, "");
+                    }
+                }
+            }
+            7 => self.toggle_favorite(&id),
+            8 => { self.ui.global::<State>().set_modal(ss("rating")); self.ui.global::<State>().set_rate_value(0); }
+            10 => self.set_view("Lyrics", "", "", ""),
+            11 => self.open_find_lyrics(&id),
+            12 => {
                 self.edit_target = self.track_by_id(&id).map(|t| t.path.clone());
                 self.open_edit_lyrics();
             }
-            11 => self.open_tags(&id),
-            12 => {
+            13 => self.open_tags(&id),
+            14 => {
                 if let Some(t) = self.track_by_id(&id) {
                     self.confirm_action = Some(ConfirmAction::RestoreBackup(String::new()));
                     let backups = TagEditor::new(tag_backups_dir()).list_backups(&t.path);
@@ -2877,8 +2947,8 @@ impl App {
                     state.set_modal(ss("confirm"));
                 }
             }
-            13 => self.open_details(&id),
-            14 => { if let Some(t) = self.track_by_id(&id) { open_in_explorer(&t.path); } }
+            15 => self.open_details(&id),
+            16 => { if let Some(t) = self.track_by_id(&id) { open_in_explorer(&t.path); } }
             _ => {}
         }
     }
@@ -3043,6 +3113,7 @@ impl App {
             Ok(_) => {
                 self.show_notice("Tags saved. A backup of the original was kept.", NoticeSeverity::Success);
                 if let Ok(Some(track)) = self.store.get_track(&path) {
+                    self.track_cache.insert(path.clone(), track.clone());
                     self.update_current_track(&track);
                 }
                 self.close_modal();
@@ -3333,15 +3404,8 @@ impl App {
         } else if let Some((bands, preamp)) = self.settings.saved_eq_preset(name) {
             self.eq_bands = bands;
             self.eq_preamp = preamp;
-        } else {
-            match name {
-                "Flat" => self.eq_bands = [0.0; 10],
-                "Bass boost" | "Bass Boost" => self.eq_bands = EqualizerStatePreset::bass(),
-                "Rock" => self.eq_bands = EqualizerStatePreset::rock(),
-                "Vocal" => self.eq_bands = EqualizerStatePreset::vocal(),
-                "Electronic" => self.eq_bands = EqualizerStatePreset::electronic(),
-                _ => {}
-            }
+        } else if let Some(gains) = music_player_core::canonical_preset_by_name(name) {
+            self.eq_bands = gains;
         }
         self.settings.set_eq_state(name, self.eq_bands, self.eq_preamp);
         self.ui.global::<State>().set_eq_preset(ss(name));
@@ -3668,14 +3732,7 @@ impl App {
     }
 }
 
-// Stand-in for the small preset tables in core's EqualizerState.
-struct EqualizerStatePreset;
-impl EqualizerStatePreset {
-    fn bass() -> [f32; 10] { [4.0, 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
-    fn rock() -> [f32; 10] { [2.0, 1.0, 0.0, -1.0, -2.0, 0.0, 1.0, 2.0, 2.0, 2.0] }
-    fn vocal() -> [f32; 10] { [-1.0, -1.0, 0.0, 1.0, 3.0, 3.0, 2.0, 0.0, 0.0, 0.0] }
-    fn electronic() -> [f32; 10] { [3.0, 2.0, 0.0, -1.0, 0.0, 2.0, 3.0, 2.0, 1.0, 0.0] }
-}
+
 
 
 fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
@@ -4115,6 +4172,18 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
     {
         let a = app.clone();
+        ui.global::<Actions>().on_seek_relative(move |delta_seconds| {
+            let mut app = a.borrow_mut();
+            app.cancel_crossfade();
+            let duration = app.engine.duration_ms();
+            let current = app.engine.position_ms();
+            let target = ((current as i64) + (delta_seconds as i64 * 1000)).clamp(0, duration as i64) as u64;
+            let _ = app.engine.seek(target);
+            app.publish_playback();
+        });
+    }
+    {
+        let a = app.clone();
         ui.global::<Actions>().on_volume_changed(move |value| {
             let mut app = a.borrow_mut();
             app.volume = (value as u32).clamp(0, 100);
@@ -4128,7 +4197,12 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let a = app.clone();
         ui.global::<Actions>().on_set_volume_muted(move || {
             let mut app = a.borrow_mut();
-            app.volume = if app.volume > 0 { 0 } else { 75 };
+            if app.volume > 0 {
+                app.unmuted_volume = Some(app.volume);
+                app.volume = 0;
+            } else {
+                app.volume = app.unmuted_volume.take().unwrap_or(75).clamp(1, 100);
+            }
             let vol = app.volume; let _ = app.engine.set_volume(vol);
             app.pending_volume = Some(app.volume);
             app.last_vol_debounce = Instant::now();
@@ -4163,17 +4237,12 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             app.cancel_crossfade();
             let position = app.engine.position_ms();
             let queue = app.coordinator.queue_mut();
+            queue.toggle_ab_repeat_point(position);
             let (a_ms, b_ms) = (queue.repeat_a_ms(), queue.repeat_b_ms());
-            let next = match (a_ms, b_ms) {
-                (None, _) => (Some(position), None),
-                (Some(_), None) if position > 0 => (Some(a_ms.unwrap()), Some(position)),
-                _ => (None, None),
-            };
-            queue.set_ab_repeat_points(next.0, next.1);
 
             let state = app.ui.global::<State>();
-            state.set_repeat_a(ss(next.0.map(fmt_time).unwrap_or_default()));
-            state.set_repeat_b(ss(next.1.map(fmt_time).unwrap_or_default()));
+            state.set_repeat_a(ss(a_ms.map(fmt_time).unwrap_or_default()));
+            state.set_repeat_b(ss(b_ms.map(fmt_time).unwrap_or_default()));
         });
     }
     {

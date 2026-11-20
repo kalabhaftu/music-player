@@ -347,6 +347,22 @@ impl QueueCoordinator {
         self.repeat_b_ms = None;
     }
 
+    /// Mirrors `PlaybackQueueCoordinator.ToggleAbRepeatPoint`:
+    /// When A is None: sets A = position, B = None.
+    /// When A is Some and B is None and position > A: sets B = position.
+    /// Otherwise: clears both A and B.
+    pub fn toggle_ab_repeat_point(&mut self, position_ms: u64) {
+        if self.repeat_a_ms.is_none() {
+            self.repeat_a_ms = Some(position_ms);
+            self.repeat_b_ms = None;
+        } else if self.repeat_b_ms.is_none() && Some(position_ms) > self.repeat_a_ms {
+            self.repeat_b_ms = Some(position_ms);
+        } else {
+            self.repeat_a_ms = None;
+            self.repeat_b_ms = None;
+        }
+    }
+
     /// Mirrors `PlaybackQueueCoordinator.NextIndex`: the removed-entry flag
     /// downgrades an automatic advance to a manual one.
     pub fn next_index(&self, automatic: bool) -> Option<usize> {

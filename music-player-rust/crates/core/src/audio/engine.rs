@@ -190,6 +190,8 @@ struct VlcContext {
     fn_equalizer_preset_name: unsafe extern "C" fn(u32) -> *const c_char,
     fn_equalizer_band_count: unsafe extern "C" fn() -> u32,
     fn_equalizer_band_frequency: unsafe extern "C" fn(u32) -> f32,
+    fn_player_set_rate: unsafe extern "C" fn(*mut c_void, f32) -> i32,
+    fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32,
 }
 
 impl Drop for VlcContext {
@@ -257,6 +259,8 @@ pub struct AudioEngine {
     equalizer_preset: Option<String>,
     equalizer_bands: Option<[f32; 10]>,
     equalizer_preamp: f32,
+    /// Playback rate (0.5x to 2.0x, normal 1.0)
+    playback_rate: f32,
     /// DirectSound device GUID selected in Settings (empty = system default).
     audio_output_device: String,
     /// Flags used when LibVLC is unavailable and playback runs through MCI.
@@ -286,6 +290,7 @@ impl AudioEngine {
             equalizer_preset: None,
             equalizer_bands: None,
             equalizer_preamp: NEUTRAL_EQUALIZER_PREAMP,
+            playback_rate: 1.0,
             audio_output_device: String::new(),
             fallback_flags: EventFlags::default(),
             mci_last_position: AtomicU64::new(0),
@@ -408,6 +413,10 @@ impl AudioEngine {
                 *lib.get(b"libvlc_audio_equalizer_get_band_count").ok()?;
             let fn_equalizer_band_frequency: unsafe extern "C" fn(u32) -> f32 =
                 *lib.get(b"libvlc_audio_equalizer_get_band_frequency").ok()?;
+            let fn_player_set_rate: unsafe extern "C" fn(*mut c_void, f32) -> i32 =
+                *lib.get(b"libvlc_media_player_set_rate").ok()?;
+            let fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32 =
+                *lib.get(b"libvlc_media_player_get_rate").ok()?;
 
             let instance = fn_new(0, std::ptr::null());
             if instance.is_null() {
@@ -451,6 +460,8 @@ impl AudioEngine {
                 fn_equalizer_preset_name,
                 fn_equalizer_band_count,
                 fn_equalizer_band_frequency,
+                fn_player_set_rate,
+                fn_player_get_rate,
             })
         }
     }
@@ -565,6 +576,7 @@ impl AudioEngine {
 
                 Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
                 (vlc.fn_audio_set_volume)(handle.player, volume as i32);
+                (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
 
                 let played = (vlc.fn_player_play)(handle.player) == 0;
@@ -661,6 +673,7 @@ impl AudioEngine {
             handle.flags.generation.store(generation, Ordering::SeqCst);
             Self::apply_audio_output(vlc, handle.player, &device);
             (vlc.fn_audio_set_volume)(handle.player, volume as i32);
+            (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
             Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
 
             if (vlc.fn_player_play)(handle.player) != 0 {
@@ -809,6 +822,62 @@ impl AudioEngine {
             let _ = Self::send_mci(&cmd);
         }
         Ok(())
+    }
+
+    /// Returns the normalized perceived loudness power curve (0.0 to 1.0)
+    /// for the current volume, matching C# `Math.Pow(volume / 100.0, 2.0)`.
+    pub fn perceived_volume(&self) -> f64 {
+        super::volume::quadratic_volume_curve(self.volume as f64)
+    }
+
+    /// Sets volume via perceived loudness mapping (0..=100) using the quadratic curve
+    /// so that low volumes do not drop off precipitously.
+    pub fn set_perceived_volume(&mut self, volume: u32) -> Result<(), String> {
+        let linear = super::volume::perceived_to_linear_volume(volume);
+        self.set_volume(linear)
+    }
+
+    /// Playback rate (0.5x to 2.0x) matching LibVLC rate control and C# SetVideoPlaybackRate.
+    pub fn set_rate(&mut self, rate: f32) -> Result<(), String> {
+        let clamped = rate.clamp(0.5, 2.0);
+        self.playback_rate = clamped;
+
+        if let Some(ref vlc) = self.vlc {
+            if let Some(ref active) = vlc.active {
+                unsafe {
+                    if (vlc.fn_player_set_rate)(active.player, clamped) != 0 {
+                        return Err("LibVLC could not set playback rate".into());
+                    }
+                }
+            }
+            if let Some(ref spare) = vlc.spare {
+                unsafe {
+                    let _ = (vlc.fn_player_set_rate)(spare.player, clamped);
+                }
+            }
+            return Ok(());
+        }
+
+        #[cfg(windows)]
+        {
+            let mci_speed = (clamped * 1000.0) as u32; // 1000 = normal
+            let cmd = format!("set mp_audio speed {}", mci_speed);
+            let _ = Self::send_mci(&cmd);
+        }
+        Ok(())
+    }
+
+    /// Returns the current playback rate (1.0 = normal).
+    pub fn rate(&self) -> f32 {
+        if let Some(ref vlc) = self.vlc {
+            if let Some(ref active) = vlc.active {
+                let r = unsafe { (vlc.fn_player_get_rate)(active.player) };
+                if r > 0.0 {
+                    return r;
+                }
+            }
+        }
+        self.playback_rate
     }
 
     pub fn position_ms(&self) -> u64 {
@@ -961,22 +1030,25 @@ impl AudioEngine {
     /// Port of `PlaybackService.EqualizerPresets`: the built-in VLC preset
     /// labels in order. Empty when LibVLC is unavailable.
     pub fn built_in_preset_names(&self) -> Vec<String> {
-        let Some(ref vlc) = self.vlc else {
-            return Vec::new();
-        };
-        unsafe {
-            let count = (vlc.fn_equalizer_preset_count)();
-            (0..count)
-                .map(|index| {
+        let mut names: Vec<String> = super::equalizer::canonical_preset_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        if let Some(ref vlc) = self.vlc {
+            unsafe {
+                let count = (vlc.fn_equalizer_preset_count)();
+                for index in 0..count {
                     let name_ptr = (vlc.fn_equalizer_preset_name)(index);
-                    if name_ptr.is_null() {
-                        format!("Preset {}", index + 1)
-                    } else {
-                        CStr::from_ptr(name_ptr).to_string_lossy().into_owned()
+                    if !name_ptr.is_null() {
+                        let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+                        if !names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                            names.push(name);
+                        }
                     }
-                })
-                .collect()
+                }
+            }
         }
+        names
     }
 
     /// Port of `PlaybackService.EqualizerBands` semantics, as raw
@@ -1024,7 +1096,8 @@ impl AudioEngine {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
-        self.equalizer_bands = bands;
+        let canonical_bands = preset_name.and_then(super::equalizer::canonical_preset_by_name);
+        self.equalizer_bands = bands.or(canonical_bands);
         if self.equalizer_preset.is_some() {
             self.equalizer_preamp = if preamp.is_finite() {
                 preamp.clamp(-EQUALIZER_PREAMP_LIMIT, EQUALIZER_PREAMP_LIMIT)
@@ -1036,6 +1109,44 @@ impl AudioEngine {
         } else if bands.is_none() {
             self.equalizer_preamp = NEUTRAL_EQUALIZER_PREAMP;
         }
+
+        let Some(ref vlc) = self.vlc else { return };
+        let preset = self.equalizer_preset.clone();
+        let preamp = self.equalizer_preamp;
+        if let Some(ref active) = vlc.active {
+            Self::apply_equalizer_to_player(vlc, &preset, &self.equalizer_bands, preamp, active.player);
+        }
+        if let Some(ref spare) = vlc.spare {
+            Self::apply_equalizer_to_player(vlc, &preset, &self.equalizer_bands, preamp, spare.player);
+        }
+    }
+
+    /// Sets the equalizer preamp in real time (-20 dB to +20 dB).
+    pub fn set_equalizer_preamp(&mut self, preamp: f32) {
+        if preamp.is_finite() {
+            self.equalizer_preamp = preamp.clamp(-EQUALIZER_PREAMP_LIMIT, EQUALIZER_PREAMP_LIMIT);
+        } else {
+            self.equalizer_preamp = NEUTRAL_EQUALIZER_PREAMP;
+        }
+        let Some(ref vlc) = self.vlc else { return };
+        let preset = self.equalizer_preset.clone();
+        let preamp = self.equalizer_preamp;
+        if let Some(ref active) = vlc.active {
+            Self::apply_equalizer_to_player(vlc, &preset, &self.equalizer_bands, preamp, active.player);
+        }
+        if let Some(ref spare) = vlc.spare {
+            Self::apply_equalizer_to_player(vlc, &preset, &self.equalizer_bands, preamp, spare.player);
+        }
+    }
+
+    /// Sets an individual equalizer band gain in real time (-20 dB to +20 dB).
+    pub fn set_equalizer_band(&mut self, band_index: usize, gain_db: f32) {
+        if band_index >= 10 {
+            return;
+        }
+        let mut bands = self.equalizer_bands.unwrap_or([0.0; 10]);
+        bands[band_index] = gain_db.clamp(-EQUALIZER_PREAMP_LIMIT, EQUALIZER_PREAMP_LIMIT);
+        self.equalizer_bands = Some(bands);
 
         let Some(ref vlc) = self.vlc else { return };
         let preset = self.equalizer_preset.clone();
@@ -1170,6 +1281,7 @@ impl AudioEngine {
                 (vlc.fn_player_stop)(handle.player);
                 Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
                 (vlc.fn_audio_set_volume)(handle.player, 0);
+                (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
                 if (vlc.fn_player_play)(handle.player) != 0 {
                     drop(handle);

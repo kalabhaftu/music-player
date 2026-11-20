@@ -210,7 +210,7 @@ pub fn open_in_explorer(path: &str) {
         return;
     }
     let _ = std::process::Command::new("explorer")
-        .arg(format!("/select,\"{}\"", path))
+        .arg(format!("/select,{}", path))
         .spawn();
 }
 
@@ -222,10 +222,14 @@ struct ArtworkCache(std::sync::Mutex<HashMap<PathBuf, slint::Image>>);
 unsafe impl Send for ArtworkCache {}
 unsafe impl Sync for ArtworkCache {}
 
-impl std::ops::Deref for ArtworkCache {
-    type Target = std::sync::Mutex<HashMap<PathBuf, slint::Image>>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl ArtworkCache {
+    fn lock(
+        &self,
+    ) -> Result<
+        std::sync::MutexGuard<'_, HashMap<PathBuf, slint::Image>>,
+        std::sync::PoisonError<std::sync::MutexGuard<'_, HashMap<PathBuf, slint::Image>>>,
+    > {
+        self.0.lock()
     }
 }
 

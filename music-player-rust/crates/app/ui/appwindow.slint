@@ -207,6 +207,11 @@ component PanelResizeHandle inherits Rectangle {
 
 // ---- Top bar -----------------------------------------------------------------
 component TopBar inherits Rectangle {
+    out property <bool> search-has-focus: search-input.has-focus;
+    public function focus-search() {
+        search-input.focus();
+    }
+
     height: 56px;
     background: Palette.surface;
 
@@ -330,17 +335,17 @@ component TopBar inherits Rectangle {
         // Spacer to push right actions to the edge
         Rectangle { horizontal-stretch: 1; }
 
-        if State.scan-active : HorizontalLayout {
+        if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
             Rectangle {
                 width: 32px;
                 height: 32px;
                 border-radius: 16px;
                 background: scan-area.has-hover ? Palette.overlay : transparent;
                 border-width: 2px;
-                border-color: State.scan-paused ? #ffb04a : State.accent;
+                border-color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
                 Text {
-                    text: State.scan-paused ? "Ⅱ" : "•";
-                    color: State.scan-paused ? #ffb04a : State.accent;
+                    text: State.scan-paused ? "Ⅱ" : (State.scan-cancelling ? "×" : "•");
+                    color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
                     font-size: State.scan-paused ? 10px : 16px;
                     vertical-alignment: center;
                     horizontal-alignment: center;
@@ -371,10 +376,10 @@ component TopBar inherits Rectangle {
     }
 
     if State.scan-details-open : Rectangle {
-        x: parent.width - 310px;
+        x: parent.width - 320px;
         y: 64px;
-        width: 292px;
-        height: 118px;
+        width: 300px;
+        height: 128px;
         border-radius: 8px;
         background: Palette.panel;
         border-width: 1px;
@@ -383,23 +388,39 @@ component TopBar inherits Rectangle {
             padding: 12px;
             spacing: 7px;
             Text {
-                text: State.scan-paused ? "Library scan paused" : "Scanning library";
+                text: State.scan-cancelling ? "Cancelling scan"
+                    : State.scan-paused ? "Library scan paused"
+                    : State.scan-outcome != "" ? "Library scan complete"
+                    : "Scanning library";
                 color: Palette.text;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: 700;
             }
             Text {
-                text: State.scan-message == "" ? State.scan-path : State.scan-message;
+                text: State.scan-outcome != "" ? State.scan-outcome
+                    : (State.scan-scanned > 0 ? "\{State.scan-scanned} files scanned" + (State.scan-path != "" ? " · \{State.scan-path}" : "")
+                    : (State.scan-path != "" ? State.scan-path : "Scanning library files…"));
                 color: Palette.muted;
-                font-size: 10px;
+                font-size: 11px;
                 overflow: elide;
             }
             HorizontalLayout {
                 spacing: 8px;
-                TextBtn { label: State.scan-paused ? "Resume" : "Pause"; clicked => { Actions.pause-scan(); } }
-                TextBtn { label: "Cancel"; danger: true; clicked => { Actions.cancel-scan(); State.scan-details-open = false; } }
+                if State.scan-active : TextBtn {
+                    label: State.scan-paused ? "Resume" : "Pause";
+                    clicked => { Actions.pause-scan(); }
+                }
+                if State.scan-active : TextBtn {
+                    label: "Cancel";
+                    danger: true;
+                    clicked => { Actions.cancel-scan(); State.scan-details-open = false; }
+                }
                 Rectangle { horizontal-stretch: 1; }
-                IcBtn { icon: @image-url("../assets/icons/close.svg"); icon-size: 12px; clicked => { State.scan-details-open = false; } }
+                IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 12px;
+                    clicked => { State.scan-details-open = false; }
+                }
             }
         }
     }
@@ -2399,30 +2420,87 @@ export component AppWindow inherits Window {
                     Actions.close-immersive-player();
                     return accept;
                 }
+                if (State.immersive-fullscreen) {
+                    Actions.toggle-immersive-fullscreen();
+                    return accept;
+                }
+                if (State.scan-details-open) {
+                    State.scan-details-open = false;
+                    return accept;
+                }
             }
-            if (State.modal == "" && !State.context-visible) {
+
+            // Global Ctrl+K: focus global search (navigates to Search view if not in Search/Settings)
+            if (event.modifiers.control && (event.text == "k" || event.text == "K")) {
+                if (State.view != "Search" && State.view != "Settings") {
+                    Actions.set-view("Search", State.view-search, "", "");
+                }
+                topbar.focus-search();
+                return accept;
+            }
+
+            // Global F11: toggle fullscreen
+            if (event.text == Key.F11) {
+                Actions.toggle-immersive-fullscreen();
+                return accept;
+            }
+
+            if (State.modal == "" && !State.context-visible && !topbar.search-has-focus) {
+                // Space: toggle play/pause
                 if (event.text == " ") {
                     Actions.toggle-play();
                     return accept;
                 }
+                // Left / Right arrows: seek backward/forward (5s; 10s if shift)
+                // Ctrl+Left / Ctrl+Right: previous / next track
                 if (event.text == Key.LeftArrow) {
-                    Actions.seek-fraction(max(0.0, State.progress - 0.05));
+                    if (event.modifiers.control) {
+                        Actions.previous();
+                    } else {
+                        Actions.seek-relative(event.modifiers.shift ? -10 : -5);
+                    }
                     return accept;
                 }
                 if (event.text == Key.RightArrow) {
-                    Actions.seek-fraction(min(1.0, State.progress + 0.05));
+                    if (event.modifiers.control) {
+                        Actions.next();
+                    } else {
+                        Actions.seek-relative(event.modifiers.shift ? 10 : 5);
+                    }
                     return accept;
                 }
+                // Up / Down arrows: volume up / down (5%; 10% if shift)
                 if (event.text == Key.UpArrow) {
-                    Actions.volume-changed(min(100.0, State.volume + 5.0));
+                    Actions.volume-changed(min(100, State.volume + (event.modifiers.shift ? 10 : 5)));
                     return accept;
                 }
                 if (event.text == Key.DownArrow) {
-                    Actions.volume-changed(max(0.0, State.volume - 5.0));
+                    Actions.volume-changed(max(0, State.volume - (event.modifiers.shift ? 10 : 5)));
                     return accept;
                 }
+                // M: toggle mute
                 if (event.text == "m" || event.text == "M") {
                     Actions.set-volume-muted();
+                    return accept;
+                }
+                // L: toggle lyrics view (navigates to Lyrics in normal view; toggles lyrics in immersive player)
+                if (event.text == "l" || event.text == "L") {
+                    if (State.immersive-player-open) {
+                        Actions.toggle-immersive-lyrics();
+                    } else if (State.view == "Lyrics") {
+                        Actions.go-back();
+                    } else {
+                        Actions.set-view("Lyrics", "", "", "");
+                    }
+                    return accept;
+                }
+                // F11 or I: toggle immersive player / fullscreen
+                if (event.text == "i" || event.text == "I") {
+                    if (State.immersive-player-open) {
+                        Actions.close-immersive-player();
+                    } else {
+                        Actions.open-immersive-player();
+                    }
                     return accept;
                 }
                 if (event.text == "s" || event.text == "S") {
@@ -2444,7 +2522,7 @@ export component AppWindow inherits Window {
             NavRail { }
             VerticalLayout {
                 vertical-stretch: 1;
-                TopBar { }
+                topbar := TopBar { }
                 HorizontalLayout {
                     vertical-stretch: 1;
                     Rectangle {

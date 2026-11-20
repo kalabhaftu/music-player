@@ -193,7 +193,7 @@ export component ActionBtn inherits Rectangle {
     callback clicked();
 
     height: 34px;
-    border-radius: 17px;
+    border-radius: 999px;
     background: root.primary
         ? (area.has-hover ? #ffffff : #f4f6f3)
         : (root.danger ? (area.has-hover ? #ff5b7444 : #ff5b7422) : (area.has-hover ? #303430 : #242724));
@@ -716,6 +716,7 @@ export component CardTile inherits Rectangle {
 
 export component HomeCardTile inherits Rectangle {
     in property <HomeCardItem> item;
+    in property <bool> round: false;
     callback open();
     callback play();
 
@@ -740,7 +741,7 @@ export component HomeCardTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 6px;
+            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
             if root.item.has-cover : Image {
@@ -797,6 +798,7 @@ export component HomeCardTile inherits Rectangle {
 // minimum card size; leave a little room for the card gap when deriving columns.
 export component GroupGrid inherits Rectangle {
     in property <bool> round: false;
+    in property <string> kind: "";
     in property <string> empty-text: "Nothing here yet.";
     in property <[GroupItem]> items: State.groups;
     in property <bool> show-load-more: true;
@@ -822,11 +824,21 @@ export component GroupGrid inherits Rectangle {
                 spacing: 14px;
                 for item[index] in root.items : CardTile {
                     item: item;
-                    round: root.round;
+                    round: root.round || root.kind == "artist" || State.view == "Artists";
                     col: Math.mod(index, State.card-columns);
                     row: index / State.card-columns;
-                    play => { Actions.play-group("", item.name); }
-                    open => { Actions.open-group("", item.name); }
+                    play => {
+                        Actions.play-group(
+                            root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                            item.name
+                        );
+                    }
+                    open => {
+                        Actions.open-group(
+                            root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                            item.name
+                        );
+                    }
                 }
             }
         }
@@ -854,18 +866,20 @@ export component HeroDetail inherits Rectangle {
     callback play();
     callback shuffle();
 
-    height: 230px;
+    height: 200px;
     border-radius: 8px;
-    background: @linear-gradient(110deg, State.accent.with-alpha(0.11) 0%, #ffffff05 45%, #0e100e 100%);
+    background: State.light-theme
+        ? @linear-gradient(110deg, State.accent.with-alpha(0.08) 0%, #00000005 45%, Palette.panel 100%)
+        : @linear-gradient(110deg, State.accent.with-alpha(0.11) 0%, #ffffff05 45%, #0e100e 100%);
 
     HorizontalLayout {
         padding: 20px;
         spacing: 24px;
 
         Rectangle {
-            width: 190px;
-            height: 190px;
-            border-radius: root.round ? 95px : 8px;
+            width: 160px;
+            height: 160px;
+            border-radius: root.round ? self.width / 2 : 8px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.gradient) 0%, Palette.gb(root.gradient) 100%);
             if root.has-cover : Image {
@@ -877,7 +891,7 @@ export component HeroDetail inherits Rectangle {
             if !root.has-cover : Text {
                 text: root.initials != "" ? root.initials : root.title;
                 color: #ffffffcc;
-                font-size: 42px;
+                font-size: 36px;
                 font-weight: 900;
                 overflow: elide;
                 vertical-alignment: center;
@@ -892,9 +906,14 @@ export component HeroDetail inherits Rectangle {
             min-width: 0px;
 
             if root.eyebrow != "" : Text {
-                text: root.eyebrow;
+                text: root.eyebrow == "album" || root.eyebrow == "Album" ? "ALBUM"
+                    : (root.eyebrow == "artist" || root.eyebrow == "Artist" ? "ARTIST"
+                    : (root.eyebrow == "playlist" || root.eyebrow == "Playlist" ? "PLAYLIST"
+                    : (root.eyebrow == "folder" || root.eyebrow == "Folder" ? "FOLDER"
+                    : (root.eyebrow == "genre" || root.eyebrow == "Genre" ? "GENRE"
+                    : root.eyebrow))));
                 color: Palette.muted;
-                font-size: 10px;
+                font-size: 11px;
                 font-weight: 700;
                 letter-spacing: 0.8px;
             }
@@ -904,9 +923,9 @@ export component HeroDetail inherits Rectangle {
             Text {
                 text: root.title;
                 color: Palette.text;
-                font-size: 42px;
+                font-size: 30px;
                 font-weight: 800;
-                letter-spacing: -1.8px;
+                letter-spacing: -0.65px;
                 overflow: elide;
             }
 
@@ -994,18 +1013,23 @@ export component Chip inherits Rectangle {
 
     height: 28px;
     min-width: 40px;
-    border-radius: 14px;
-    background: root.active ? Palette.overlay-strong : Palette.panel-2;
+    border-radius: 99px;
+    background: root.active ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : Palette.panel-2);
     animate background { duration: 100ms; }
 
     area := TouchArea { clicked => { root.clicked(); } }
 
-    Text {
-        text: root.label;
-        color: root.active ? Palette.text : Palette.muted;
-        font-size: 10px;
-        font-weight: 700;
-        vertical-alignment: center;
-        horizontal-alignment: center;
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        alignment: center;
+        Text {
+            text: root.label;
+            color: (root.active || area.has-hover) ? Palette.text : Palette.muted;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
     }
 }
