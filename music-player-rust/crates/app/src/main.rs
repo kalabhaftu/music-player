@@ -46,6 +46,18 @@ slint::include_modules!();
 
 const TRACK_PAGE_SIZE: usize = 200;
 
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmSetWindowAttribute(
+        hwnd: isize,
+        dwAttribute: u32,
+        pvAttribute: *const std::ffi::c_void,
+        cbAttribute: u32,
+    ) -> i32;
+}
+const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
+const DWMWA_CAPTION_COLOR: u32 = 35;
+
 // ---------------------------------------------------------------------------
 // Helpers (WebUI DTO formatting, faithful to the original JS/C# display code)
 // ---------------------------------------------------------------------------
@@ -547,6 +559,39 @@ impl App {
             _ => "Lime",
         };
         state.set_accent_preset_name(ss(accent_preset));
+
+        let hwnd = self
+            .ui
+            .window()
+            .window_handle()
+            .window_handle()
+            .ok()
+            .and_then(|handle| match handle.as_raw() {
+                RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+                _ => None,
+            });
+        if let Some(hwnd) = hwnd {
+            self.sync_titlebar_theme(hwnd, light);
+        }
+    }
+
+    fn sync_titlebar_theme(&self, hwnd: isize, light: bool) {
+        let dark_mode: u32 = if light { 0 } else { 1 };
+        let caption_color: u32 = if light { 0x00E6EAE7 } else { 0x00090A09 };
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &dark_mode as *const u32 as *const std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_CAPTION_COLOR,
+                &caption_color as *const u32 as *const std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
     }
 
     fn load_roots(&mut self) {
@@ -852,10 +897,6 @@ impl App {
         if self.os_attached {
             return;
         }
-        let Some(os) = &self.os else {
-            self.os_attached = true;
-            return;
-        };
         let hwnd = self
             .ui
             .window()
@@ -867,6 +908,18 @@ impl App {
                 _ => None,
             });
         let Some(hwnd) = hwnd else {
+            return;
+        };
+
+        let light = match self.settings.raw(music_player_core::settings::keys::THEME).as_deref() {
+            Some("Light") => true,
+            Some("Dark") => false,
+            _ => native_io::prefers_light_theme(),
+        };
+        self.sync_titlebar_theme(hwnd, light);
+
+        let Some(os) = &self.os else {
+            self.os_attached = true;
             return;
         };
         let smtc = os_shell::attach_main_window(hwnd, os.command_sender());
@@ -2377,7 +2430,7 @@ impl App {
             "Genre" => "genre",
             _ => "folder",
         };
-        if let Ok((groups, _)) = self.store.query_group_page(column, None, 0, 10000) {
+        if let Ok((groups, _)) = self.store.query_group_page(column, Some(value), 0, 10) {
             if let Some(g) = groups.iter().find(|g| g.name.eq_ignore_ascii_case(value)) {
                 subtitle = format!("{} song{}", g.track_count, if g.track_count == 1 { "" } else { "s" });
                 if let Some(art) = &g.artwork_path {

@@ -130,7 +130,7 @@ export component PlayerSlider inherits Rectangle {
         y: (parent.height - 4px) / 2;
         height: 4px;
         width: parent.width;
-        border-radius: 2px;
+        border-radius: 99px;
         background: root.track-color;
 
         // Filled progress portion
@@ -139,7 +139,7 @@ export component PlayerSlider inherits Rectangle {
             y: 0px;
             height: 4px;
             width: parent.width * clamp((root.value - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0);
-            border-radius: 2px;
+            border-radius: 99px;
             background: area.has-hover || area.pressed ? State.accent : root.fill-color;
             animate background { duration: 100ms; }
         }
@@ -374,12 +374,20 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        if root.show-album && State.show-list-album : Text {
-            text: root.track.album;
-            color: Palette.text-subtle;
-            font-size: 11px;
-            overflow: elide;
+        if root.show-album && State.show-list-album : Rectangle {
             width: 25%;
+            album-area := TouchArea {
+                clicked => { Actions.set-view("Album", root.track.album, "album", ""); }
+            }
+            Text {
+                width: 100%;
+                text: root.track.album;
+                color: album-area.has-hover ? Palette.text : Palette.text-subtle;
+                font-size: 11px;
+                overflow: elide;
+                vertical-alignment: center;
+                animate color { duration: 100ms; }
+            }
         }
 
         if State.show-list-added && root.show-added : Text {
@@ -610,6 +618,7 @@ export component CardTile inherits Rectangle {
     callback play();
     callback open();
 
+    vertical-stretch: 0;
     border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
@@ -628,7 +637,9 @@ export component CardTile inherits Rectangle {
         spacing: 10px;
 
         card := Rectangle {
+            width: 100%;
             height: self.width;
+            vertical-stretch: 0;
             border-radius: root.round ? self.width / 2 : 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
@@ -708,6 +719,7 @@ export component HomeCardTile inherits Rectangle {
     callback open();
     callback play();
 
+    vertical-stretch: 0;
     border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
@@ -725,7 +737,9 @@ export component HomeCardTile inherits Rectangle {
         spacing: 10px;
 
         card := Rectangle {
+            width: 100%;
             height: self.width;
+            vertical-stretch: 0;
             border-radius: 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);

@@ -2,7 +2,7 @@
 // State.view. Shared widgets come from widgets.slint.
 
 import { State, Actions } from "state.slint";
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, NavSettingItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavSettingItem } from "models.slint";
 import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
 import {
     Palette, IcBtn, TextBtn, ActionBtn, CustomToggle, TrackRow, TrackHeader, TrackTable, CardTile, HomeCardTile,
@@ -380,6 +380,7 @@ component GridView inherits Rectangle {
 component FolderTile inherits Rectangle {
     in property <GroupItem> item;
 
+    vertical-stretch: 0;
     border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
@@ -393,7 +394,9 @@ component FolderTile inherits Rectangle {
         spacing: 10px;
 
         folder-card := Rectangle {
+            width: 100%;
             height: self.width;
+            vertical-stretch: 0;
             border-radius: 6px;
             clip: true;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
@@ -593,6 +596,7 @@ component FoldersView inherits Rectangle {
 component SmartPlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
+    vertical-stretch: 0;
     border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
@@ -611,7 +615,9 @@ component SmartPlaylistTile inherits Rectangle {
         spacing: 10px;
 
         smart-cover := Rectangle {
+            width: 100%;
             height: self.width;
+            vertical-stretch: 0;
             border-radius: 6px;
             clip: true;
             background: root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
@@ -677,6 +683,7 @@ component SmartPlaylistTile inherits Rectangle {
 component PlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
+    vertical-stretch: 0;
     border-radius: 8px;
     background: tile-area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
@@ -699,7 +706,9 @@ component PlaylistTile inherits Rectangle {
         spacing: 10px;
 
         tile := Rectangle {
+            width: 100%;
             height: self.width;
+            vertical-stretch: 0;
             border-radius: 6px;
             clip: true;
             background: root.card.is-smart
@@ -1650,7 +1659,7 @@ component SettingRow inherits Rectangle {
             text: root.label;
             color: Palette.text-strong;
             font-size: 12px;
-            font-weight: 650;
+            font-weight: 700;
         }
         if root.description != "" : Text {
             text: root.description;
@@ -1854,217 +1863,51 @@ component SettingsView inherits Rectangle {
             Text { text: "Choose how Music Player looks and behaves."; color: Palette.muted; font-size: 11px; }
         }
 
+        // Sidebar/Tabs: "General", "Appearance", "Library", "Playback", "Audio", "Shortcuts", "About".
         Rectangle {
-            height: 48px;
+            height: 52px;
             border-radius: 8px;
-            background: Palette.panel;
+            background: Palette.raised;
             HorizontalLayout {
-                padding: 5px;
-                spacing: 3px;
+                padding: 7px;
+                spacing: 4px;
+                SettingsNavTab { label: "General"; selected: State.settings-section == "General"; clicked => { State.settings-section = "General"; } }
                 SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
                 SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
                 SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
-                SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
+                SettingsNavTab { label: "Audio"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                SettingsNavTab { label: "Shortcuts"; selected: State.settings-section == "Shortcuts"; clicked => { State.settings-section = "Shortcuts"; } }
                 SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
             }
         }
 
+        // Settings panel container: padding 20px, background #171917 (Palette.raised), border-radius 8px.
         Rectangle {
             vertical-stretch: 1;
             border-radius: 8px;
-            background: Palette.panel;
+            background: Palette.raised;
             clip: true;
             settings-scroll := ScrollView {
-                content-y: State.settings-section == "Library" ? -library-section.y
+                content-y: (State.settings-section == "General" || State.settings-section == "Advanced") ? -general-section.y
+                    : State.settings-section == "Appearance" ? -appearance-section.y
+                    : State.settings-section == "Library" ? -library-section.y
                     : State.settings-section == "Playback" ? -playback-section.y
-                    : State.settings-section == "Advanced" ? -advanced-section.y
+                    : State.settings-section == "Shortcuts" ? -shortcuts-section.y
                     : State.settings-section == "About" ? -about-section.y
                     : 0px;
+                animate content-y { duration: 200ms; easing: ease-out; }
                 VerticalLayout {
-                    padding: 18px;
-                    spacing: 3px;
+                    padding: 20px;
+                    spacing: 24px;
 
-                    appearance-section := VerticalLayout {
+                    general-section := VerticalLayout {
                         spacing: 0px;
-                        Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 750; }
-                        Text { text: "Match the player to your desktop."; color: Palette.muted; font-size: 10px; }
-                        Rectangle { height: 8px; }
-                        SettingComboRow {
-                            label: "Color theme";
-                            description: "System, light, or dark.";
-                            options: ["System", "Light", "Dark"];
-                            value: State.theme;
-                            changed(value) => { Actions.set-setting("theme", value); }
-                        }
-                        HorizontalLayout {
-                            height: 58px;
-                            spacing: 18px;
-                            SettingRow { label: "Accent style"; description: "Keep the Music Player lime or use color from album artwork."; horizontal-stretch: 1; }
-                            HorizontalLayout {
-                                spacing: 6px;
-                                TextBtn { label: "Lime"; primary: State.accent-mode == "Native"; clicked => { Actions.set-setting("accent-mode", "Native"); } }
-                                TextBtn { label: "Album artwork"; primary: State.accent-mode == "Artwork"; clicked => { Actions.set-setting("accent-mode", "Artwork"); } }
-                            }
-                        }
-                        SettingSwitchRow {
-                            label: "Use a custom accent";
-                            description: "Choose the color used by active controls.";
-                            checked: State.accent-manual-enabled;
-                            toggled(value) => { Actions.set-setting("accent-manual", value ? "true" : "false"); }
-                        }
-                        SettingColorRow {
-                            label: "Custom accent color";
-                            description: "Used while the custom accent is enabled.";
-                            value: State.accent-color;
-                            swatch: State.accent-manual;
-                            enabled: State.accent-manual-enabled;
-                            setting: "accent-color";
-                        }
-                        SettingComboRow {
-                            label: "Text selection color";
-                            description: "Follow the active accent or choose a custom color.";
-                            options: ["Theme", "Custom"];
-                            value: State.selection-color-mode;
-                            changed(value) => { Actions.set-setting("selection-color-mode", value); }
-                        }
-                        SettingColorRow {
-                            label: "Custom selection color";
-                            description: "Used when text selection is set to Custom.";
-                            value: State.selection-color;
-                            swatch: State.selection-color-value;
-                            enabled: State.selection-color-mode == "Custom";
-                            setting: "selection-color";
-                        }
-                        SettingSwitchRow {
-                            label: "Transparent window";
-                            description: "Show the desktop behind the player. Off by default.";
-                            checked: State.transparent-window;
-                            toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
-                        }
-                        SettingSliderRow {
-                            label: "Window transparency";
-                            description: "0% is opaque; the player stays at least 40% solid.";
-                            value: State.window-transparency;
-                            minimum: 0;
-                            maximum: 60;
-                            enabled: State.transparent-window;
-                            suffix: "%";
-                            setting: "window-transparency";
-                        }
-                        SettingComboRow {
-                            label: "Navigation motion";
-                            description: "Respect accessibility animation preferences.";
-                            options: ["Off", "Subtle", "Expressive"];
-                            value: State.motion-style;
-                            changed(value) => { Actions.set-setting("motion-style", value); }
-                        }
-                        HorizontalLayout {
-                            height: 58px;
-                            spacing: 18px;
-                            SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
-                                    width: 28px;
-                                    height: 28px;
-                                    border-radius: 14px;
-                                    border-width: State.accent-preset-name == preset ? 2px : 1px;
-                                    border-color: State.accent-preset-name == preset ? Palette.text : Palette.border;
-                                    background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
-                                    TouchArea { clicked => { Actions.set-accent-preset(preset); } }
-                                }
-                            }
-                        }
-                        Rectangle { height: 10px; }
-                        ActionBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
-                    }
-
-                    library-section := VerticalLayout {
-                        spacing: 0px;
-                        Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 750; }
-                        Text { text: "Local folders and indexed tracks."; color: Palette.muted; font-size: 10px; }
-                        Rectangle { height: 8px; }
-                        HorizontalLayout {
-                            height: 54px;
-                            SettingRow { label: "Indexed library"; description: "Total size of tracks currently indexed."; horizontal-stretch: 1; }
-                            Text { text: State.indexed-library-size; color: Palette.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
-                        }
-                        SettingSwitchRow {
-                            label: "Hide exact duplicates";
-                            description: "Hide identical files in library views; queued and playlist entries stay visible.";
-                            checked: State.hide-exact-duplicates;
-                            toggled(value) => { Actions.set-setting("hide-exact-duplicates", value ? "true" : "false"); }
-                        }
-                        SectionTitle { text: "Song columns"; }
-                        SettingSwitchRow { label: "Artwork"; description: "Show this column when the window is wide enough."; checked: State.show-list-artwork; toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Artist"; description: "Show this column when the window is wide enough."; checked: State.show-list-artist; toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Album"; description: "Show this column when the window is wide enough."; checked: State.show-list-album; toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Added date"; description: "Show this column when the window is wide enough."; checked: State.show-list-added; toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Year"; description: "Show this column when the window is wide enough."; checked: State.show-list-year; toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Duration"; description: "Show this column when the window is wide enough."; checked: State.show-list-duration; toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Favorite button"; description: "Show favorite hearts in song rows."; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
-                        SectionTitle { text: "Library tools"; }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
-                            ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
-                            ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            ActionBtn { label: "Scan library"; primary: true; clicked => { Actions.scan-library(); } }
-                            ActionBtn { label: "Rebuild index"; clicked => { Actions.rebuild-library-index(); } }
-                        }
-                        Text {
-                            text: "Rebuilding refreshes artwork and removes files confirmed missing from reachable locations. Offline drives are kept until they reconnect.";
-                            color: Palette.muted;
-                            font-size: 10px;
-                            wrap: word-wrap;
-                        }
-                    }
-
-                    playback-section := VerticalLayout {
-                        spacing: 0px;
-                        Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 750; }
-                        Text { text: "Keep playback state and the queue easy to reach."; color: Palette.muted; font-size: 10px; }
-                        Rectangle { height: 8px; }
-                        SettingSwitchRow {
-                            label: "Autoplay similar music";
-                            description: "Queue similar genres, artists, and favorites when playback ends.";
-                            checked: State.autoplay-similar;
-                            toggled(value) => { Actions.set-setting("autoplay-similar", value ? "true" : "false"); }
-                        }
-                        SettingSwitchRow {
-                            label: "Open the Now Playing pane when a song starts";
-                            description: "Show the current track and upcoming queue.";
-                            checked: State.auto-open-side-panel;
-                            toggled(value) => { Actions.set-setting("auto-open-side-panel", value ? "true" : "false"); }
-                        }
-                        SettingSwitchRow {
-                            label: "Automatically find lyrics";
-                            description: "When no saved lyrics exist, search LRCLIB using the track title and artist.";
-                            checked: State.auto-load-lyrics;
-                            toggled(value) => { Actions.set-setting("auto-load-lyrics", value ? "true" : "false"); }
-                        }
-                        SettingSwitchRow {
-                            label: "Seek when selecting a lyric line";
-                            description: "Timed lyrics can move playback to that point.";
-                            checked: State.seek-from-lyrics;
-                            toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
-                        }
-                        Rectangle { height: 10px; }
-                        ActionBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                    }
-
-                    advanced-section := VerticalLayout {
-                        spacing: 0px;
-                        Text { text: "Advanced"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "General"; color: Palette.text; font-size: 15px; font-weight: 750; }
                         Text { text: "Application behavior, navigation, and diagnostics."; color: Palette.muted; font-size: 10px; }
                         Rectangle { height: 8px; }
                         SettingSwitchRow {
-                            label: "Keep running in the notification area";
-                            description: "Closing the window keeps Music Player and playback running.";
+                            label: "Keep running in notification area";
+                            description: "Closing the window keeps Music Player and playback running. Use the tray icon to reopen.";
                             checked: State.minimize-to-tray;
                             toggled(value) => { Actions.set-setting("minimize-to-tray", value ? "true" : "false"); }
                         }
@@ -2092,17 +1935,343 @@ component SettingsView inherits Rectangle {
                             maximum: 460;
                             setting: "right-panel-width";
                         }
+                        Rectangle { height: 8px; }
                         HorizontalLayout {
                             spacing: 8px;
-                            ActionBtn { label: "Default music app settings"; clicked => { Actions.open-default-apps(); } }
+                            ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
                             ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
                             ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
                         }
+                        Rectangle { height: 6px; }
                         SectionTitle { text: "Navigation order and visibility"; }
-                        Text { text: "Use the arrows to reorder destinations or hide items from the sidebar."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                        Text { text: "Drag the grip or use the arrows to reorder. Use the switch to hide a destination."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
                         VerticalLayout {
                             spacing: 0px;
                             for item in State.navigation-settings : SettingNavOrderRow { item: item; }
+                        }
+                    }
+
+                    appearance-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Match the player to your desktop."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 8px; }
+                        SettingComboRow {
+                            label: "Color theme";
+                            description: "System, light, or dark.";
+                            options: ["System", "Light", "Dark"];
+                            value: State.theme;
+                            changed(value) => { Actions.set-setting("theme", value); }
+                        }
+                        HorizontalLayout {
+                            height: 52px;
+                            spacing: 18px;
+                            SettingRow { label: "Accent style"; description: "Keep the Music Player lime or use color from album artwork."; horizontal-stretch: 1; }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                TextBtn { label: "Lime"; primary: State.accent-mode == "Native"; clicked => { Actions.set-setting("accent-mode", "Native"); } }
+                                TextBtn { label: "Album artwork"; primary: State.accent-mode == "Artwork"; clicked => { Actions.set-setting("accent-mode", "Artwork"); } }
+                            }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; }
+                        SettingSwitchRow {
+                            label: "Use a custom accent";
+                            description: "Choose a color for active controls.";
+                            checked: State.accent-manual-enabled;
+                            toggled(value) => { Actions.set-setting("accent-manual", value ? "true" : "false"); }
+                        }
+                        SettingColorRow {
+                            label: "Custom accent color";
+                            description: "Applied to controls when enabled; artwork still colors the interface.";
+                            value: State.accent-color;
+                            swatch: State.accent-manual;
+                            enabled: State.accent-manual-enabled;
+                            setting: "accent-color";
+                        }
+                        SettingComboRow {
+                            label: "Text selection color";
+                            description: "Follow the active theme accent or choose your own.";
+                            options: ["Theme", "Custom"];
+                            value: State.selection-color-mode;
+                            changed(value) => { Actions.set-setting("selection-color-mode", value); }
+                        }
+                        SettingColorRow {
+                            label: "Custom selection color";
+                            description: "Used when text selection is set to Custom.";
+                            value: State.selection-color;
+                            swatch: State.selection-color-value;
+                            enabled: State.selection-color-mode == "Custom";
+                            setting: "selection-color";
+                        }
+                        SettingSwitchRow {
+                            label: "Transparent window";
+                            description: "Show the desktop behind the player. Off by default.";
+                            checked: State.transparent-window;
+                            toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
+                        }
+                        SettingSliderRow {
+                            label: "Window transparency";
+                            description: "0% is opaque. The player always remains at least 40% solid.";
+                            value: State.window-transparency;
+                            minimum: 0;
+                            maximum: 60;
+                            enabled: State.transparent-window;
+                            suffix: "%";
+                            setting: "window-transparency";
+                        }
+                        SettingComboRow {
+                            label: "Navigation motion";
+                            description: "Respect accessibility animation preferences.";
+                            options: ["Off", "Subtle", "Expressive"];
+                            value: State.motion-style;
+                            changed(value) => { Actions.set-setting("motion-style", value); }
+                        }
+                        HorizontalLayout {
+                            height: 52px;
+                            spacing: 18px;
+                            SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: center;
+                                for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
+                                    width: 24px;
+                                    height: 24px;
+                                    border-radius: 12px;
+                                    border-width: State.accent-preset-name == preset ? 2px : 0px;
+                                    border-color: #ffffff;
+                                    background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
+                                    TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                                }
+                            }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; }
+                        Rectangle { height: 10px; }
+                        ActionBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
+                    }
+
+                    library-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Local folders and indexed tracks."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 8px; }
+                        HorizontalLayout {
+                            height: 52px;
+                            SettingRow { label: "Indexed library"; description: "Total size of tracks currently indexed."; horizontal-stretch: 1; }
+                            Text { text: State.indexed-library-size; color: Palette.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; }
+                        SettingSwitchRow {
+                            label: "Hide exact duplicates";
+                            description: "Hide verified identical files in song, album, artist, genre, and folder views. Explicit queue and playlist entries are retained.";
+                            checked: State.hide-exact-duplicates;
+                            toggled(value) => { Actions.set-setting("hide-exact-duplicates", value ? "true" : "false"); }
+                        }
+                        SectionTitle { text: "Song columns"; }
+                        SettingSwitchRow { label: "Artwork"; description: "Show this column when the window is wide enough."; checked: State.show-list-artwork; toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Artist"; description: "Show this column when the window is wide enough."; checked: State.show-list-artist; toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Album"; description: "Show this column when the window is wide enough."; checked: State.show-list-album; toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Added date"; description: "Show this column when the window is wide enough."; checked: State.show-list-added; toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Year"; description: "Show this column when the window is wide enough."; checked: State.show-list-year; toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Duration"; description: "Show this column when the window is wide enough."; checked: State.show-list-duration; toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); } }
+                        SettingSwitchRow { label: "Favorite button"; description: "Show favorite hearts in song rows."; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
+
+                        SectionTitle { text: "Monitored Folders"; }
+                        Text { text: "Music Player automatically monitors these folders for new, updated, and deleted tracks."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 6px; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Add folder…"; primary: true; clicked => { Actions.pick-library-root(); } }
+                            ActionBtn { label: "Rescan library"; clicked => { Actions.scan-library(); } }
+                        }
+                        Rectangle { height: 6px; }
+                        if State.folder-roots.length == 0 : Text {
+                            text: "No music folders added yet. Add a folder to scan your local collection.";
+                            color: Palette.muted;
+                            font-size: 11px;
+                        }
+                        for rootEntry in State.folder-roots : Rectangle {
+                            height: 48px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../assets/icons/folder.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: State.accent;
+                                    vertical-alignment: center;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: rootEntry.path;
+                                        color: Palette.text-strong;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: rootEntry.is-available ? "Available" : "Unavailable — reconnect this drive.";
+                                        color: rootEntry.is-available ? Palette.muted : #ffb04a;
+                                        font-size: 9px;
+                                    }
+                                }
+                                ActionBtn {
+                                    label: "Remove";
+                                    danger: true;
+                                    clicked => { Actions.confirm-remove-root(rootEntry.path); }
+                                }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+                        }
+
+                        SectionTitle { text: "Scan exclusions"; }
+                        Text { text: "Audio files are included by default. Video files are off until enabled. Playback depends on codec support."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 6px; }
+                        for ext in State.exclusion-extensions : Rectangle {
+                            height: 44px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                alignment: center;
+                                Text {
+                                    text: ext.extension;
+                                    color: Palette.text-strong;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    width: 70px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: ext.kind + (ext.enabled ? " file · included in scans" : " file · excluded from scans");
+                                    color: ext.enabled ? Palette.text-subtle : Palette.muted;
+                                    font-size: 10px;
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                }
+                                CustomToggle {
+                                    checked: ext.enabled;
+                                    toggled(v) => { Actions.set-extension-enabled(ext.extension, v); }
+                                }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+                        }
+                        Rectangle { height: 6px; }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            LineEdit {
+                                width: 120px;
+                                height: 30px;
+                                placeholder-text: ".mkv";
+                                text <=> State.exclusion-new-extension;
+                            }
+                            ComboBox {
+                                width: 110px;
+                                model: ["Audio", "Video"];
+                                current-value: State.exclusion-new-kind;
+                                selected(value) => { State.exclusion-new-kind = value; }
+                            }
+                            ActionBtn {
+                                label: "Add file type";
+                                clicked => { Actions.add-extension(); }
+                            }
+                        }
+
+                        SectionTitle { text: "Library maintenance"; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
+                            ActionBtn { label: "Scan library"; clicked => { Actions.scan-library(); } }
+                            ActionBtn { label: "Rebuild index"; clicked => { Actions.rebuild-library-index(); } }
+                        }
+                        Rectangle { height: 4px; }
+                        Text {
+                            text: "Rebuilding refreshes artwork and removes files confirmed missing from reachable locations. Confirmed deletions are removed from playlists, the queue and saved history. Offline drives are retained and hidden until they reconnect.";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    playback-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Keep playback state and the queue easy to reach."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 8px; }
+                        SettingSwitchRow {
+                            label: "Autoplay similar music";
+                            description: "Automatically queue and play songs from similar genres, artists, and favorites when playback ends.";
+                            checked: State.autoplay-similar;
+                            toggled(value) => { Actions.set-setting("autoplay-similar", value ? "true" : "false"); }
+                        }
+                        SettingSwitchRow {
+                            label: "Open the Now Playing pane when a song starts";
+                            description: "Show the current track and upcoming queue.";
+                            checked: State.auto-open-side-panel;
+                            toggled(value) => { Actions.set-setting("auto-open-side-panel", value ? "true" : "false"); }
+                        }
+                        SettingSwitchRow {
+                            label: "Automatically find lyrics";
+                            description: "If no saved lyrics exist, look for a likely LRCLIB match when playback starts. Sends the track title and artist; manual search remains available.";
+                            checked: State.auto-load-lyrics;
+                            toggled(value) => { Actions.set-setting("auto-load-lyrics", value ? "true" : "false"); }
+                        }
+                        SettingSwitchRow {
+                            label: "Seek when selecting a lyric line";
+                            description: "Jump playback to a timed lyric. Plain, untimed lyrics cannot seek.";
+                            checked: State.seek-from-lyrics;
+                            toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
+                        }
+                        Rectangle { height: 10px; }
+                        ActionBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                    }
+
+                    shortcuts-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Shortcuts"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Keyboard shortcuts for quick playback and navigation control."; color: Palette.muted; font-size: 10px; }
+                        Rectangle { height: 8px; }
+                        for sc in [
+                            { key: "Space", desc: "Play or pause playback" },
+                            { key: "Left Arrow", desc: "Seek backward 5 seconds" },
+                            { key: "Right Arrow", desc: "Seek forward 5 seconds" },
+                            { key: "Up Arrow", desc: "Increase volume 5%" },
+                            { key: "Down Arrow", desc: "Decrease volume 5%" },
+                            { key: "M", desc: "Toggle mute audio" },
+                            { key: "S", desc: "Toggle shuffle mode" },
+                            { key: "R", desc: "Cycle repeat mode (Off / All / Track)" },
+                            { key: "Escape", desc: "Close dialogs, menus, or full-screen player" }
+                        ] : Rectangle {
+                            height: 44px;
+                            HorizontalLayout {
+                                spacing: 16px;
+                                alignment: center;
+                                Rectangle {
+                                    width: 100px;
+                                    height: 28px;
+                                    border-radius: 6px;
+                                    background: Palette.control;
+                                    border-width: 1px;
+                                    border-color: Palette.border;
+                                    Text {
+                                        text: sc.key;
+                                        color: Palette.text-strong;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: sc.desc;
+                                    color: Palette.text-subtle;
+                                    font-size: 11px;
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
                         }
                     }
 
@@ -2120,12 +2289,12 @@ component SettingsView inherits Rectangle {
                         }
                         HorizontalLayout {
                             height: 56px;
-                            SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · installs are always manual."; horizontal-stretch: 1; }
+                            SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · updates are never installed automatically."; horizontal-stretch: 1; }
                             ActionBtn { label: "View release history"; clicked => { Actions.open-release(); } }
                         }
                         SettingSwitchRow {
                             label: "Check for updates automatically";
-                            description: "Checks GitHub release metadata; installs are always manual.";
+                            description: "Checks GitHub release metadata every six hours; installs are always manual.";
                             checked: State.check-updates;
                             toggled(value) => { Actions.set-setting("check-updates", value ? "true" : "false"); }
                         }
@@ -2137,7 +2306,7 @@ component SettingsView inherits Rectangle {
                         }
                         SectionTitle { text: "Privacy and network use"; }
                         Text {
-                            text: "Your music library stays on this device. Update checks contact GitHub for release information. Lyrics search sends the current track title and artist to LRCLIB.";
+                            text: "Your music library stays on this device. Manual checks, and automatic checks when enabled, contact GitHub for release information. Searching LRCLIB sends the current track title and artist to LRCLIB to find matching lyrics.";
                             color: Palette.muted;
                             font-size: 10px;
                             wrap: word-wrap;

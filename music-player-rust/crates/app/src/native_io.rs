@@ -1,13 +1,13 @@
 //! Native Win32 dialogs, clipboard, and shell operations.
 //! Eliminates fragile PowerShell subprocesses and provides instant response.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use windows::core::w;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
     COINIT_APARTMENTTHREADED,
 };
-use windows::Win32::Graphics::Gdi::{GetSysColor, COLOR_WINDOW};
 use windows::Win32::UI::Shell::{
     Common::COMDLG_FILTERSPEC, FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog,
     FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, ShellExecuteW, SIGDN_FILESYSPATH,
@@ -35,12 +35,61 @@ impl Drop for ComApartment {
     }
 }
 
+#[link(name = "advapi32")]
+extern "system" {
+    fn RegOpenKeyExW(
+        hKey: isize,
+        lpSubKey: *const u16,
+        ulOptions: u32,
+        samDesired: u32,
+        phkResult: *mut isize,
+    ) -> i32;
+
+    fn RegQueryValueExW(
+        hKey: isize,
+        lpValueName: *const u16,
+        lpReserved: *const u32,
+        lpType: *mut u32,
+        lpData: *mut u8,
+        lpcbData: *mut u32,
+    ) -> i32;
+
+    fn RegCloseKey(hKey: isize) -> i32;
+}
+
+const HKEY_CURRENT_USER: isize = -2147483647isize; // 0x80000001 as i32 as isize
+const KEY_QUERY_VALUE: u32 = 0x0001;
+
 pub fn prefers_light_theme() -> bool {
-    let color = unsafe { GetSysColor(COLOR_WINDOW) };
-    let red = (color & 0xff) as f32;
-    let green = ((color >> 8) & 0xff) as f32;
-    let blue = ((color >> 16) & 0xff) as f32;
-    (0.2126 * red + 0.7152 * green + 0.0722 * blue) >= 128.0
+    unsafe {
+        let subkey = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+        let value_name = w!("AppsUseLightTheme");
+        let mut hkey: isize = 0;
+        if RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            subkey.as_ptr(),
+            0,
+            KEY_QUERY_VALUE,
+            &mut hkey,
+        ) != 0
+        {
+            return false;
+        }
+
+        let mut data: u32 = 0;
+        let mut data_len = std::mem::size_of::<u32>() as u32;
+        let res = RegQueryValueExW(
+            hkey,
+            value_name.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            &mut data as *mut u32 as *mut u8,
+            &mut data_len,
+        );
+        RegCloseKey(hkey);
+
+        res == 0 && data == 1
+    }
 }
 
 fn display_path(item: windows::Win32::UI::Shell::IShellItem) -> Option<String> {
@@ -169,24 +218,67 @@ pub fn open_folder(path: &Path) {
     let _ = std::process::Command::new("explorer").arg(path).spawn();
 }
 
+struct ArtworkCache(std::sync::Mutex<HashMap<PathBuf, slint::Image>>);
+unsafe impl Send for ArtworkCache {}
+unsafe impl Sync for ArtworkCache {}
+
+impl std::ops::Deref for ArtworkCache {
+    type Target = std::sync::Mutex<HashMap<PathBuf, slint::Image>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+static ARTWORK_CACHE: std::sync::OnceLock<ArtworkCache> = std::sync::OnceLock::new();
+
 /// Safely decodes any image format (JPEG, PNG, JFIF, BMP, WebP) directly from
-/// memory bytes without relying on file extensions, preventing crashes on `.img` files.
+/// memory bytes or file paths, caching in memory to avoid UI thread lag.
 pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
-    let bytes = std::fs::read(path).ok()?;
-    let dyn_img = image::load_from_memory(&bytes).ok()?;
-    let dyn_img = dyn_img.thumbnail(384, 384);
-    let rgba = dyn_img.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    if width == 0 || height == 0 {
-        return None;
+    let cache = ARTWORK_CACHE.get_or_init(|| ArtworkCache(std::sync::Mutex::new(HashMap::new())));
+    if let Ok(guard) = cache.lock() {
+        if let Some(cached) = guard.get(path) {
+            return Some(cached.clone());
+        }
     }
-    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
-    for (dest, src) in buffer.make_mut_slice().iter_mut().zip(rgba.chunks_exact(4)) {
-        dest.r = src[0];
-        dest.g = src[1];
-        dest.b = src[2];
-        dest.a = src[3];
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    let is_standard_ext = matches!(ext.as_deref(), Some("jpg") | Some("jpeg") | Some("png"));
+
+    let loaded = if is_standard_ext {
+        slint::Image::load_from_path(path).ok()
+    } else {
+        None
+    };
+
+    let image = match loaded {
+        Some(img) => img,
+        None => {
+            let bytes = std::fs::read(path).ok()?;
+            let dyn_img = image::load_from_memory(&bytes).ok()?;
+            let dyn_img = dyn_img.resize(384, 384, image::imageops::FilterType::Triangle);
+            let rgba = dyn_img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            if width == 0 || height == 0 {
+                return None;
+            }
+            let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+            for (dest, src) in buffer.make_mut_slice().iter_mut().zip(rgba.chunks_exact(4)) {
+                dest.r = src[0];
+                dest.g = src[1];
+                dest.b = src[2];
+                dest.a = src[3];
+            }
+            slint::Image::from_rgba8(buffer)
+        }
+    };
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(path.to_path_buf(), image.clone());
     }
-    Some(slint::Image::from_rgba8(buffer))
+
+    Some(image)
 }
 
