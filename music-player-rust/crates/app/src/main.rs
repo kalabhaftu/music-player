@@ -9,6 +9,7 @@ mod native_io;
 mod os;
 mod os_shell;
 mod splash;
+mod updates;
 
 use chrono::Timelike;
 use music_player_core::audio::coordinator::{
@@ -327,6 +328,11 @@ enum ConfirmAction {
     Reset(String),
 }
 
+struct UpdateOutcome {
+    channel: String,
+    result: std::result::Result<updates::UpdateCheck, updates::UpdateError>,
+}
+
 struct App {
     ui: AppWindow,
     store: LibraryStore,
@@ -384,6 +390,7 @@ struct App {
     os_attached: bool,
     audio_devices: Vec<os_shell::AudioOutputDevice>,
     search_debounce: Option<(Instant, String)>,
+    update_rx: Option<Receiver<UpdateOutcome>>,
 }
 
 impl App {
@@ -464,6 +471,7 @@ impl App {
             os_attached: false,
             audio_devices: Vec::new(),
             search_debounce: None,
+            update_rx: None,
         }
     }
 
@@ -834,6 +842,7 @@ impl App {
         }
         self.poll_scan();
         self.poll_lyrics_search();
+        self.poll_update_check();
         self.poll_os_commands();
     }
 
@@ -1203,20 +1212,12 @@ impl App {
     }
 
     fn reconcile_missing(&mut self, path: &str) -> bool {
-        let exists_in_expected_root = self
-            .settings
-            .library_roots()
-            .iter()
-            .any(|root| Path::new(root).join(path.trim_start_matches(root)).exists());
-        if exists_in_expected_root {
-            self.availability.mark_unavailable(path);
-            false
-        } else {
-            let _ = self.store.purge_deleted_tracks(&[path.to_string()]);
+        let confirmed_missing = self.availability.mark_unavailable(path);
+        if confirmed_missing {
             self.coordinator.queue_mut().remove_paths(&[path.to_string()]);
             self.refresh_view();
-            true
         }
+        confirmed_missing
     }
 
     fn handle_playback_failure(&mut self, track: &Track) {
@@ -1355,32 +1356,82 @@ impl App {
     }
 
     fn restore_session(&mut self) {
-        let Some(mut session) = self.store.load_session().ok().flatten() else { return };
-        session.queue.retain(|p| {
-            if Path::new(p).exists() {
-                true
-            } else {
-                // Purge files confirmed deleted; keep temporarily unavailable ones.
-                let parent_exists = Path::new(p)
-                    .parent()
-                    .map(|d| d.exists())
-                    .unwrap_or(false);
-                if parent_exists {
-                    let _ = self.store.purge_deleted_tracks(&[p.clone()]);
-                    false
-                } else {
-                    false
-                }
+        let Some(session) = self.store.load_session().ok().flatten() else { return };
+
+        let saved_queue = session.queue.clone();
+        let saved_index = if session.queue_index >= 0 {
+            Some(session.queue_index as usize)
+        } else {
+            None
+        };
+        let saved_current_path = session.track_path.clone();
+
+        // Preserve the occurrence of the current track at the saved index so
+        // duplicate queue entries restore to the intended position.
+        let current_occurrence = saved_index
+            .and_then(|idx| saved_queue.get(idx))
+            .filter(|path| {
+                saved_current_path
+                    .as_deref()
+                    .map(|c| c.eq_ignore_ascii_case(path))
+                    .unwrap_or(false)
+            })
+            .map(|_| {
+                let idx = saved_index.unwrap_or(0).min(saved_queue.len());
+                saved_queue[..=idx]
+                    .iter()
+                    .filter(|p| {
+                        saved_current_path
+                            .as_deref()
+                            .map(|c| c.eq_ignore_ascii_case(p))
+                            .unwrap_or(false)
+                    })
+                    .count()
+                    .saturating_sub(1)
+            })
+            .unwrap_or(0usize);
+
+        let mut filtered_queue = Vec::with_capacity(saved_queue.len());
+        for path in saved_queue {
+            if Path::new(&path).exists() {
+                filtered_queue.push(path);
+                continue;
             }
-        });
-        let current = session
-            .track_path
-            .as_ref()
-            .filter(|p| Path::new(p).exists())
-            .and_then(|p| self.store.get_track(p).ok().flatten());
-        self.coordinator
-            .queue_mut()
-            .replace(session.queue, if session.queue_index >= 0 { Some(session.queue_index as usize) } else { None });
+            let parent_exists = Path::new(&path)
+                .parent()
+                .map(|d| d.exists())
+                .unwrap_or(false);
+            if parent_exists {
+                // File is missing from a reachable folder: treat as deleted.
+                let _ = self.store.purge_deleted_tracks(std::slice::from_ref(&path));
+            } else {
+                // Parent is unreachable (e.g. removed drive/folder): keep the
+                // entry so it can become available again.
+                filtered_queue.push(path);
+            }
+        }
+
+        let resolved_index = if let Some(ref current_path) = saved_current_path {
+            if let Some(mut occ) = Some(current_occurrence) {
+                let mut found = None;
+                for (i, p) in filtered_queue.iter().enumerate() {
+                    if p.eq_ignore_ascii_case(current_path) {
+                        if occ == 0 {
+                            found = Some(i);
+                            break;
+                        }
+                        occ -= 1;
+                    }
+                }
+                found.or_else(|| filtered_queue.iter().position(|p| p.eq_ignore_ascii_case(current_path)))
+            } else {
+                filtered_queue.iter().position(|p| p.eq_ignore_ascii_case(current_path))
+            }
+        } else {
+            saved_index.filter(|i| *i < filtered_queue.len())
+        };
+
+        self.coordinator.queue_mut().replace(filtered_queue, resolved_index);
         self.coordinator.queue_mut().set_shuffle(session.shuffle);
         self.coordinator
             .queue_mut()
@@ -1388,6 +1439,11 @@ impl App {
         self.coordinator
             .queue_mut()
             .set_ab_repeat_points(session.repeat_a_ms, session.repeat_b_ms);
+
+        let current = saved_current_path
+            .as_ref()
+            .filter(|p| Path::new(p).exists())
+            .and_then(|p| self.store.get_track(p).ok().flatten());
         if let Some(track) = current {
             if self.engine.play_track(&track.path).is_ok() {
                 let _ = self.engine.pause();
@@ -1395,6 +1451,10 @@ impl App {
                 self.update_current_track(&track);
                 self.listening.restore_paused(session.position_ms as i64);
             }
+        } else if let Some(ref path) = saved_current_path {
+            // If the saved track is unavailable but still in the queue, keep
+            // the coordinator/app current path aligned with the session.
+            self.coordinator.set_current_track_path(Some(path.clone()));
         }
     }
 
@@ -1988,7 +2048,7 @@ impl App {
         let stats = self.store.get_library_stats().unwrap_or(LibraryStats { total_tracks: 0, total_bytes: 0 });
         let rows = vec![
             DetailRowItem { label: ss("Version"), value: ss(env!("CARGO_PKG_VERSION")) },
-            DetailRowItem { label: "Repository".into(), value: ss("https://github.com/kalabhaftu/music-player") },
+            DetailRowItem { label: "Repository".into(), value: ss(updates::REPOSITORY_URL) },
             DetailRowItem { label: ss("Library"), value: ss(self.store.db_path().to_string_lossy()) },
             DetailRowItem { label: ss("Log folder"), value: ss(self.log_folder.to_string_lossy()) },
             DetailRowItem { label: ss("Indexed tracks"), value: ss(stats.total_tracks.to_string()) },
@@ -2713,8 +2773,22 @@ impl App {
         self.ui.global::<State>().set_context_visible(false);
         match index {
             0 => { if let Some(t) = self.track_by_id(&id) { self.play_track(t, true, None); } }
-            1 => { if let Some(t) = self.track_by_id(&id) { self.coordinator.queue_mut().insert_next(t.path); self.publish_queue(true); } }
-            2 => { if let Some(t) = self.track_by_id(&id) { self.coordinator.queue_mut().append_one(t.path); self.publish_queue(true); } }
+            1 => {
+                if let Some(t) = self.track_by_id(&id) {
+                    let current = self.current.as_ref().map(|c| c.path.as_str());
+                    self.coordinator.queue_mut().insert_next(t.path, current);
+                    self.publish_queue(true);
+                    self.save_session();
+                }
+            }
+            2 => {
+                if let Some(t) = self.track_by_id(&id) {
+                    let current = self.current.as_ref().map(|c| c.path.as_str());
+                    self.coordinator.queue_mut().append_one(t.path, current);
+                    self.publish_queue(true);
+                    self.save_session();
+                }
+            }
             3 => self.open_add_to_playlist(&id),
             4 => {
                 if let Some(t) = self.track_by_id(&id) {
@@ -3248,13 +3322,110 @@ impl App {
         self.ui.global::<State>().set_recent_searches(ui_model(searches).into());
     }
 
+    /// Port of `MainWindow.WindowsShell.CheckForUpdatesAsync(force: false)`.
+    /// The GitHub request runs on a worker thread and is applied by `tick`.
     fn check_updates_if_enabled(&mut self) {
-        if !self.settings.bool_or(music_player_core::settings::keys::CHECK_UPDATES, true) {
+        use music_player_core::settings::keys as k;
+        if !self.settings.bool_or(k::CHECK_UPDATES, true) {
             return;
         }
-        let tag = self.settings.raw(music_player_core::settings::keys::UPDATE_RELEASE_TAG);
-        if let Some(tag) = tag {
-            self.ui.global::<State>().set_update_tag(ss(tag));
+        if self.update_rx.is_some() || !self.update_check_due() {
+            return;
+        }
+        let Some(version) = updates::ReleaseVersion::parse(updates::current_version()) else {
+            LocalAppLog::shared()
+                .warning("updates", "The installed version could not be determined.");
+            return;
+        };
+        let channel = if version.is_prerelease() { "preview" } else { "stable" };
+        let same_channel = self.settings.raw(k::UPDATE_RELEASE_CHANNEL).as_deref() == Some(channel);
+        // Only reuse the cache when it belongs to this release channel.
+        let cached = if same_channel {
+            updates::read_cached_release(
+                self.settings.raw(k::UPDATE_RELEASE_TAG).as_deref(),
+                self.settings.raw(k::UPDATE_RELEASE_URL).as_deref(),
+            )
+        } else {
+            None
+        };
+        let etag = if same_channel { self.settings.raw(k::UPDATE_ETAG) } else { None };
+        let cached_for_request = cached.clone();
+        let (sender, receiver) = mpsc::channel();
+        self.update_rx = Some(receiver);
+        std::thread::spawn(move || {
+            let result = updates::get_latest(
+                version.is_prerelease(),
+                etag.as_deref(),
+                cached_for_request.as_ref(),
+                same_channel,
+            );
+            let _ = sender.send(UpdateOutcome { channel: channel.to_string(), result });
+        });
+    }
+
+    fn update_check_due(&self) -> bool {
+        use music_player_core::settings::keys as k;
+        let Some(raw) = self.settings.raw(k::LAST_UPDATE_CHECK) else {
+            return true;
+        };
+        let Ok(last) = chrono::DateTime::parse_from_rfc3339(raw.trim()) else {
+            return true;
+        };
+        let elapsed = chrono::Utc::now()
+            .signed_duration_since(last.with_timezone(&chrono::Utc));
+        elapsed >= chrono::Duration::hours(6)
+    }
+
+    fn poll_update_check(&mut self) {
+        let Some(receiver) = self.update_rx.take() else { return };
+        let outcome = match receiver.try_recv() {
+            Ok(outcome) => outcome,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                self.update_rx = Some(receiver);
+                return;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+        };
+        use music_player_core::settings::keys as k;
+        match outcome.result {
+            Ok(check) => {
+                // Only a completed response is recorded. An offline start must
+                // not suppress the next attempt for six hours.
+                let timestamp = chrono::Utc::now()
+                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                self.settings.set_raw(k::LAST_UPDATE_CHECK, &timestamp);
+                self.settings.set_raw(k::UPDATE_ETAG, check.etag.as_deref().unwrap_or(""));
+                let tag = check
+                    .release
+                    .as_ref()
+                    .map(|release| release.tag.clone())
+                    .unwrap_or_default();
+                let url = check
+                    .release
+                    .as_ref()
+                    .map(|release| release.url.clone())
+                    .unwrap_or_default();
+                self.settings.set_raw(k::UPDATE_RELEASE_TAG, &tag);
+                self.settings.set_raw(k::UPDATE_RELEASE_URL, &url);
+                self.settings.set_raw(k::UPDATE_RELEASE_CHANNEL, &outcome.channel);
+                self.ui.global::<State>().set_update_tag(ss(tag));
+            }
+            Err(error) => {
+                let reason = match error.kind {
+                    updates::UpdateErrorKind::RateLimited => {
+                        "GitHub is limiting update checks right now."
+                    }
+                    updates::UpdateErrorKind::Timeout => "The GitHub update check timed out.",
+                    updates::UpdateErrorKind::Network => "Could not reach GitHub.",
+                    updates::UpdateErrorKind::InvalidData => {
+                        "GitHub returned an update response Music Player could not read."
+                    }
+                };
+                LocalAppLog::shared().warning(
+                    "updates",
+                    &format!("{reason} {}", error.message),
+                );
+            }
         }
     }
 
@@ -3416,6 +3587,7 @@ impl App {
         let retained = self.current.as_ref().map(|t| t.path.as_str());
         self.coordinator.queue_mut().insert_next_range(&track_paths, retained);
         self.publish_queue(true);
+        self.save_session();
         self.show_notice(
             format!("Added {} {} to the queue.", tracks.len(), if tracks.len() == 1 { "track" } else { "tracks" }),
             NoticeSeverity::Informational,
@@ -4014,8 +4186,10 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         ui.global::<Actions>().on_add_to_queue(move |id| {
             let mut app = a.borrow_mut();
             if let Some(track) = app.track_by_id(&id) {
-                app.coordinator.queue_mut().append_one(track.path);
+                let current = app.current.as_ref().map(|t| t.path.clone());
+                app.coordinator.queue_mut().append_one(track.path, current.as_deref());
                 app.publish_queue(true);
+                app.save_session();
             }
         });
     }
@@ -4024,8 +4198,10 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         ui.global::<Actions>().on_play_next_in_queue(move |id| {
             let mut app = a.borrow_mut();
             if let Some(track) = app.track_by_id(&id) {
-                app.coordinator.queue_mut().insert_next(track.path);
+                let current = app.current.as_ref().map(|t| t.path.clone());
+                app.coordinator.queue_mut().insert_next(track.path, current.as_deref());
                 app.publish_queue(true);
+                app.save_session();
             }
         });
     }
@@ -4850,8 +5026,20 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let a = app.clone();
         ui.global::<Actions>().on_open_release(move || {
-            let url = a.borrow().settings.raw(music_player_core::settings::keys::UPDATE_RELEASE_URL)
-                .unwrap_or_else(|| "https://github.com/kalabhaftu/music-player/releases".into());
+            let app = a.borrow();
+            // The About row is the release history; the update dialog targets
+            // the exact cached release. Both reject anything outside GitHub.
+            let url = if app.ui.global::<State>().get_modal() == "update" {
+                app.settings
+                    .raw(music_player_core::settings::keys::UPDATE_RELEASE_URL)
+                    .filter(|url| {
+                        updates::is_release_page(url) || updates::is_repository_info_page(url)
+                    })
+                    .unwrap_or_else(|| updates::RELEASES_URL.to_string())
+            } else {
+                updates::RELEASES_URL.to_string()
+            };
+            drop(app);
             open_url(&url);
         });
     }

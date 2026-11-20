@@ -268,16 +268,38 @@ impl QueueCoordinator {
         self.current_track_path()
     }
 
-    pub fn insert_next(&mut self, path: String) {
-        let insert_at = match self.current_index {
-            Some(idx) => (idx + 1).min(self.entries.len()),
-            None => 0,
-        };
+    /// Mirrors `InsertNext`: ensures the current track is present, inserts the
+    /// path immediately after the current entry, and re-shuffles the upcoming
+    /// tail when shuffle is active so the inserted item stays next.
+    pub fn insert_next(&mut self, path: String, current_track_path: Option<&str>) {
+        if self.entries.is_empty() {
+            if let Some(current) = current_track_path {
+                if !current.trim().is_empty() {
+                    self.entries.push(current.to_string());
+                    self.current_index = Some(0);
+                }
+            }
+        }
+        let insert_at = self
+            .current_index
+            .map_or(0, |idx| idx + 1)
+            .min(self.entries.len());
         self.entries.insert(insert_at, path);
         self.revision += 1;
+        if let Some(current) = self.current_index {
+            if insert_at <= current {
+                self.current_index = Some(current + 1);
+            }
+        }
+        if self.shuffle {
+            self.shuffle_upcoming(insert_at + 1);
+        }
     }
 
-    pub fn append_one(&mut self, path: String) {
+    /// Mirrors single-item `Append`: ensures the current track is present, then
+    /// appends one path to the end of the queue.
+    pub fn append_one(&mut self, path: String, current_track_path: Option<&str>) {
+        self.ensure_current_track(current_track_path);
         self.entries.push(path);
         self.revision += 1;
     }
