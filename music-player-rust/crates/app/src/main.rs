@@ -491,6 +491,7 @@ impl App {
             unmuted_volume: None,
             scan_outcome_time: None,
             track_cache: HashMap::new(),
+            startup_scan_deferred: true,
         }
     }
 
@@ -502,13 +503,11 @@ impl App {
         self.refresh_playlists();
         self.load_roots();
         self.restore_session();
-        self.startup_scan();
         self.refresh_view();
         self.publish_playback();
         self.publish_queue(true);
         self.publish_scan();
         self.publish_about();
-        self.check_updates_if_enabled();
     }
 
     fn publish_appearance(&self) {
@@ -567,7 +566,7 @@ impl App {
         };
         state.set_accent_preset_name(ss(accent_preset));
 
-        let custom_caption = if !light && accent_mode == "Artwork" {
+        let custom_caption = if accent_mode == "Artwork" {
             artwork_palette.as_ref().map(|p| (p.sidebar.r, p.sidebar.g, p.sidebar.b))
         } else {
             None
@@ -588,7 +587,7 @@ impl App {
     }
 
     fn sync_titlebar_theme(&self, hwnd: isize, light: bool, custom_color: Option<(u8, u8, u8)>) {
-        let dark_mode: u32 = if light { 0 } else { 1 };
+        let dark_mode: u32 = if custom_color.is_some() || !light { 1 } else { 0 };
         let caption_color: u32 = if let Some((r, g, b)) = custom_color {
             ((b as u32) << 16) | ((g as u32) << 8) | (r as u32)
         } else if light {
@@ -596,6 +595,8 @@ impl App {
         } else {
             0x00090A09
         };
+        const DWMWA_TEXT_COLOR: u32 = 36;
+        let text_color: u32 = if dark_mode == 1 { 0x00F6F8F7 } else { 0x00191D19 };
         unsafe {
             DwmSetWindowAttribute(
                 hwnd,
@@ -607,6 +608,12 @@ impl App {
                 hwnd,
                 DWMWA_CAPTION_COLOR,
                 &caption_color as *const u32 as *const std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_TEXT_COLOR,
+                &text_color as *const u32 as *const std::ffi::c_void,
                 std::mem::size_of::<u32>() as u32,
             );
         }
@@ -917,6 +924,11 @@ impl App {
         self.poll_lyrics_search();
         self.poll_update_check();
         self.poll_os_commands();
+        if self.startup_scan_deferred {
+            self.startup_scan_deferred = false;
+            self.startup_scan();
+            self.check_updates_if_enabled();
+        }
     }
 
     /// Attaches SMTC/taskbar once the Slint window has a native handle. The
@@ -939,12 +951,7 @@ impl App {
             return;
         };
 
-        let light = match self.settings.raw(music_player_core::settings::keys::THEME).as_deref() {
-            Some("Light") => true,
-            Some("Dark") => false,
-            _ => native_io::prefers_light_theme(),
-        };
-        self.sync_titlebar_theme(hwnd, light, None);
+        self.publish_appearance();
 
         let Some(os) = &self.os else {
             self.os_attached = true;

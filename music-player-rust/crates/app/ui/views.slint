@@ -1228,7 +1228,7 @@ component SearchView inherits Rectangle {
                         see-all => { Actions.search(State.view-search, "song"); }
                     }
                     TrackTable {
-                        height: 360px;
+                        scrollable: false;
                         show-added: false;
                         first-column: "Title";
                         sort(column) => { Actions.sort-view(column); }
@@ -1279,9 +1279,7 @@ component SearchView inherits Rectangle {
                         count: State.search-playlist-count;
                         see-all => { Actions.search(State.view-search, "playlist"); }
                     }
-                    PlaylistsList {
-                        height: 220px;
-                    }
+                    PlaylistsList { }
                 }
 
                 if State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count == 0 : EmptyState {

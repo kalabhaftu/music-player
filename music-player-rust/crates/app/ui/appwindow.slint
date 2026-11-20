@@ -2085,6 +2085,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
                 }
             }
             Rectangle {
+                width: 86px;
                 height: 36px;
                 border-radius: 18px;
                 background: close-ta.has-hover ? #ffffff2a : #00000052;
@@ -2100,7 +2101,6 @@ component ImmersivePlayerOverlay inherits Rectangle {
                         width: 14px;
                         height: 14px;
                         colorize: #ffffff;
-                        vertical-alignment: center;
                     }
                     Text {
                         text: "Close";
@@ -2252,7 +2252,7 @@ component ImmersivePlayerOverlay inherits Rectangle {
 
             HorizontalLayout {
                 width: min(parent.width, 920px);
-                alignment: center;
+                spacing: 12px;
                 Text { text: State.current-time; color: #d0d2ce; width: 44px; font-size: 12px; vertical-alignment: center; }
                 PlayerSlider {
                     horizontal-stretch: 1;

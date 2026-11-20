@@ -570,6 +570,7 @@ export component TrackTable inherits Rectangle {
     in property <string> first-sort: "Title";
     in property <bool> show-remove: false;
     in property <string> empty-text: "No tracks to show.";
+    in property <bool> scrollable: true;
 
     callback sort(string);
 
@@ -589,7 +590,23 @@ export component TrackTable inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
 
-            ListView {
+            if root.scrollable : ListView {
+                for row[index] in State.tracks : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: root.show-added;
+                    show-year: root.show-year;
+                    show-album: root.show-album;
+                    show-plays: root.show-plays;
+                    show-remove: root.show-remove;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
+                    remove => { Actions.remove-from-playlist(index); }
+                }
+            }
+
+            if !root.scrollable : VerticalLayout {
                 for row[index] in State.tracks : TrackRow {
                     track: row;
                     index: index + 1;
