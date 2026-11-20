@@ -542,7 +542,7 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_theme(ss(theme));
         state.set_light_theme(light);
-        state.set_accent_mode(ss(accent_mode));
+        state.set_accent_mode(ss(&accent_mode));
         state.set_accent_manual_enabled(manual);
         state.set_accent_manual(parse_hex_color(&self.settings.raw(k::ACCENT_COLOR).unwrap_or_else(|| "#b7ff2d".into())));
         state.set_artwork_palette(artwork_palette.is_some());
@@ -566,6 +566,11 @@ impl App {
         };
         state.set_accent_preset_name(ss(accent_preset));
 
+        let custom_caption = if !light && accent_mode == "Artwork" {
+            artwork_palette.as_ref().map(|p| (p.sidebar.r, p.sidebar.g, p.sidebar.b))
+        } else {
+            None
+        };
         let hwnd = self
             .ui
             .window()
@@ -577,13 +582,19 @@ impl App {
                 _ => None,
             });
         if let Some(hwnd) = hwnd {
-            self.sync_titlebar_theme(hwnd, light);
+            self.sync_titlebar_theme(hwnd, light, custom_caption);
         }
     }
 
-    fn sync_titlebar_theme(&self, hwnd: isize, light: bool) {
+    fn sync_titlebar_theme(&self, hwnd: isize, light: bool, custom_color: Option<(u8, u8, u8)>) {
         let dark_mode: u32 = if light { 0 } else { 1 };
-        let caption_color: u32 = if light { 0x00E6EAE7 } else { 0x00090A09 };
+        let caption_color: u32 = if let Some((r, g, b)) = custom_color {
+            ((b as u32) << 16) | ((g as u32) << 8) | (r as u32)
+        } else if light {
+            0x00E6EAE7
+        } else {
+            0x00090A09
+        };
         unsafe {
             DwmSetWindowAttribute(
                 hwnd,
@@ -932,7 +943,7 @@ impl App {
             Some("Dark") => false,
             _ => native_io::prefers_light_theme(),
         };
-        self.sync_titlebar_theme(hwnd, light);
+        self.sync_titlebar_theme(hwnd, light, None);
 
         let Some(os) = &self.os else {
             self.os_attached = true;
@@ -1142,11 +1153,17 @@ impl App {
     }
 
     fn track_by_id(&self, id: &str) -> Option<Track> {
-        let path = self.id_to_path.get(id)?.clone();
+        let path = self.id_to_path.get(id).cloned().unwrap_or_else(|| id.to_string());
         if let Some(track) = self.track_cache.get(&path) {
             return Some(track.clone());
         }
-        self.store.get_track(&path).ok().flatten()
+        if let Ok(Some(track)) = self.store.get_track(&path) {
+            return Some(track);
+        }
+        if let Some(track) = self.track_cache.get(id) {
+            return Some(track.clone());
+        }
+        self.store.get_track(id).ok().flatten()
     }
 
     fn resolve_track(&mut self, path: &str) -> Option<Track> {
@@ -2205,10 +2222,8 @@ impl App {
         self.id_to_path.clear();
         for t in &tracks {
             self.id_to_path.insert(t.id(), t.path.clone());
+            self.id_to_path.insert(t.path.clone(), t.path.clone());
             self.track_cache.insert(t.path.clone(), t.clone());
-        }
-        for item in &items {
-            self.id_to_path.insert(item.id.to_string(), item.id.to_string());
         }
 
         let state = self.ui.global::<State>();
@@ -2695,11 +2710,22 @@ impl App {
     // ---- Navigation ---------------------------------------------------------
 
     fn set_view(&mut self, view: &str, search: &str, group: &str, playlist_id: &str) {
+        let (resolved_search, resolved_group) = if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
+            if group.is_empty() && !search.is_empty() {
+                ("", search)
+            } else if matches!(group, "album" | "artist" | "genre" | "folder") && !search.is_empty() && search != group {
+                ("", search)
+            } else {
+                (search, group)
+            }
+        } else {
+            (search, group)
+        };
         let state = self.ui.global::<State>();
         let current = NavContext::snapshot(&state);
         if current.view != view
-            || current.search != search
-            || current.group_value != group
+            || current.search != resolved_search
+            || current.group_value != resolved_group
             || current.playlist_id != playlist_id
         {
             self.history.truncate(self.history_pos + 1);
@@ -2712,11 +2738,11 @@ impl App {
         self.tracks_offset = 0;
         self.groups_offset = 0;
         state.set_view(ss(view));
-        state.set_view_search(ss(search));
+        state.set_view_search(ss(resolved_search));
         state.set_view_group_column(ss(if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
             match view { "Album" => "album", "Artist" => "artist", "Genre" => "genre", _ => "folder" }
         } else { "" }));
-        state.set_view_group_value(ss(group));
+        state.set_view_group_value(ss(resolved_group));
         state.set_view_playlist_id(ss(playlist_id));
         let (sort, desc) = if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
             detail_sort_for_column(match view { "Album" => "album", "Artist" => "artist", "Genre" => "genre", _ => "folder" })
@@ -5166,10 +5192,11 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         });
     }
 
+    // Show UI and dismiss splash immediately for instantaneous launch
+    ui.show()?;
+    drop(startup);
+
     // Startup and the 250 ms engine-room clock.
-    if let Some(splash) = &startup {
-        splash.set_status("Opening Music Player…");
-    }
     app.borrow_mut().startup();
     let clock = Timer::default();
     {
@@ -5179,8 +5206,6 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         });
     }
 
-    ui.show()?;
-    drop(startup);
     ui.run()?;
     os_shell::detach();
     app.borrow_mut().save_session();

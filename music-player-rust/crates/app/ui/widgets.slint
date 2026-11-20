@@ -299,6 +299,7 @@ export component TrackRow inherits Rectangle {
     }
 
     HorizontalLayout {
+        alignment: center;
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
@@ -377,7 +378,7 @@ export component TrackRow inherits Rectangle {
         if root.show-album && State.show-list-album : Rectangle {
             width: 25%;
             album-area := TouchArea {
-                clicked => { Actions.set-view("Album", root.track.album, "album", ""); }
+                clicked => { Actions.set-view("Album", "", root.track.album, ""); }
             }
             Text {
                 width: 100%;
@@ -396,6 +397,7 @@ export component TrackRow inherits Rectangle {
             font-size: 11px;
             overflow: elide;
             width: 100px;
+            vertical-alignment: center;
         }
 
         if State.show-list-year && root.show-year : Text {
@@ -403,6 +405,7 @@ export component TrackRow inherits Rectangle {
             color: Palette.text-subtle;
             font-size: 11px;
             width: 70px;
+            vertical-alignment: center;
         }
 
         if root.show-plays : Text {
@@ -410,6 +413,7 @@ export component TrackRow inherits Rectangle {
             color: Palette.text-subtle;
             font-size: 11px;
             width: 60px;
+            vertical-alignment: center;
         }
 
         if State.show-list-duration : Text {
@@ -418,11 +422,12 @@ export component TrackRow inherits Rectangle {
             font-size: 11px;
             width: 64px;
             horizontal-alignment: right;
+            vertical-alignment: center;
         }
 
         Rectangle {
             width: 76px;
-            if area.has-hover : HorizontalLayout {
+            if area.has-hover || root.track.is-favorite : HorizontalLayout {
                     spacing: 2px;
                     alignment: center;
 
@@ -802,6 +807,8 @@ export component GroupGrid inherits Rectangle {
     in property <string> empty-text: "Nothing here yet.";
     in property <[GroupItem]> items: State.groups;
     in property <bool> show-load-more: true;
+    in property <bool> scrollable: true;
+    in property <length> col-width: max(130px, (self.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
 
     VerticalLayout {
         if root.items.length == 0 : Rectangle {
@@ -817,13 +824,14 @@ export component GroupGrid inherits Rectangle {
                 }
             }
         }
-        if root.items.length > 0 : ScrollView {
+        if root.items.length > 0 && root.scrollable : ScrollView {
             vertical-stretch: 1;
             GridLayout {
                 width: 100%;
                 spacing: 14px;
                 for item[index] in root.items : CardTile {
                     item: item;
+                    width: root.col-width;
                     round: root.round || root.kind == "artist" || State.view == "Artists";
                     col: Math.mod(index, State.card-columns);
                     row: index / State.card-columns;
@@ -839,6 +847,29 @@ export component GroupGrid inherits Rectangle {
                             item.name
                         );
                     }
+                }
+            }
+        }
+        if root.items.length > 0 && !root.scrollable : GridLayout {
+            width: 100%;
+            spacing: 14px;
+            for item[index] in root.items : CardTile {
+                item: item;
+                width: root.col-width;
+                round: root.round || root.kind == "artist" || State.view == "Artists";
+                col: Math.mod(index, State.card-columns);
+                row: index / State.card-columns;
+                play => {
+                    Actions.play-group(
+                        root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                        item.name
+                    );
+                }
+                open => {
+                    Actions.open-group(
+                        root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                        item.name
+                    );
                 }
             }
         }

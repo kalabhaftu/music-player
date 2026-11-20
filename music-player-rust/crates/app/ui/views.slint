@@ -150,7 +150,7 @@ component HomeLibraryTile inherits HomeCardTile {
     open => {
         if (root.item.kind == "track") { Actions.play-track(root.item.id); }
         else if (root.item.kind == "playlist") { Actions.set-view("Playlist", "", "", root.item.id); }
-        else { Actions.set-view("Album", root.item.title, "album", ""); }
+        else { Actions.set-view("Album", "", root.item.title, ""); }
     }
     play => {
         if (root.item.kind == "track") { Actions.play-track(root.item.id); }
@@ -544,6 +544,7 @@ component FoldersView inherits Rectangle {
                     spacing: 14px;
                     for item[index] in State.groups : FolderTile {
                         item: item;
+                        width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                         col: Math.mod(index, State.card-columns);
                         row: index / State.card-columns;
                     }
@@ -809,6 +810,7 @@ component PlaylistsList inherits Rectangle {
         spacing: 14px;
         for card[index] in State.search-playlists : PlaylistTile {
             card: card;
+            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
             col: Math.mod(index, State.card-columns);
             row: index / State.card-columns;
         }
@@ -864,6 +866,7 @@ component PlaylistsView inherits Rectangle {
                         spacing: 14px;
                         for card[index] in State.smart-playlists : SmartPlaylistTile {
                             card: card;
+                            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                             col: Math.mod(index, State.card-columns);
                             row: index / State.card-columns;
                         }
@@ -880,6 +883,7 @@ component PlaylistsView inherits Rectangle {
                         spacing: 14px;
                         for card[index] in State.playlists : PlaylistTile {
                             card: card;
+                            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                             col: Math.mod(index, State.card-columns);
                             row: index / State.card-columns;
                         }
@@ -995,7 +999,7 @@ component DetailView inherits Rectangle {
                         width: 150px;
                         item: album;
                         play => { Actions.play-group("album", album.name); }
-                        open => { Actions.set-view("Album", album.name, "album", ""); }
+                        open => { Actions.set-view("Album", "", album.name, ""); }
                     }
                 }
             }
@@ -1245,7 +1249,7 @@ component SearchView inherits Rectangle {
                         see-all => { Actions.search(State.view-search, "album"); }
                     }
                     GroupGrid {
-                        height: 280px;
+                        scrollable: false;
                         kind: "album";
                         items: State.search-albums;
                         show-load-more: false;
@@ -1262,7 +1266,7 @@ component SearchView inherits Rectangle {
                         see-all => { Actions.search(State.view-search, "artist"); }
                     }
                     GroupGrid {
-                        height: 280px;
+                        scrollable: false;
                         round: true;
                         kind: "artist";
                         items: State.search-artists;
