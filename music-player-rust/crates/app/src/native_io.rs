@@ -286,6 +286,7 @@ pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     Some(image)
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub struct ArtworkPalette {
     pub background: (u8, u8, u8),
@@ -296,6 +297,7 @@ pub struct ArtworkPalette {
 
 /// 1:1 port of C# `ArtworkColors.FromRgba`.
 /// Groups cover hues across brightness levels, ignoring transparent pixels and tiny color specks.
+#[allow(dead_code)]
 pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
     let bytes = std::fs::read(path).ok()?;
     let dyn_img = image::load_from_memory(&bytes).ok()?;
