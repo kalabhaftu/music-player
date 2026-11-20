@@ -262,13 +262,13 @@ component TopBar inherits Rectangle {
                 padding-left: 13px;
                 padding-right: 13px;
                 spacing: 9px;
+                alignment: center;
 
                 Image {
                     source: @image-url("../assets/icons/search.svg");
                     width: 16px;
                     height: 16px;
                     colorize: #a0a79f;
-                    vertical-alignment: center;
                 }
 
                 Rectangle {
@@ -355,13 +355,6 @@ component TopBar inherits Rectangle {
         }
 
         IcBtn {
-            icon: @image-url("../assets/icons/refresh.svg");
-            icon-size: 16px;
-            tint: Palette.muted;
-            visible: false;
-            clicked => { Actions.scan-library(); }
-        }
-        IcBtn {
             icon: @image-url("../assets/icons/queue.svg");
             icon-size: 16px;
             tint: State.right-panel-open ? State.accent : Palette.muted;
@@ -439,7 +432,8 @@ component ToolMenuRow inherits Rectangle {
         padding-left: 10px;
         padding-right: 10px;
         spacing: 10px;
-        Image { source: root.icon; width: 17px; height: 17px; colorize: Palette.muted; vertical-alignment: center; }
+        alignment: center;
+        Image { source: root.icon; width: 17px; height: 17px; colorize: Palette.muted; }
         Text {
             text: root.label;
             color: Palette.text-strong;
@@ -844,6 +838,7 @@ component PlayerBar inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
+        alignment: center;
 
         HorizontalLayout {
             horizontal-stretch: 1;
@@ -995,6 +990,14 @@ component PlayerBar inherits Rectangle {
                     maximum: 1.0;
                     value: State.progress;
                     changed(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-relative(delta);
+                            return accept;
+                        }
+                        reject
+                    }
                 }
                 Text {
                     text: State.total-time;
@@ -1018,6 +1021,7 @@ component PlayerBar inherits Rectangle {
                 icon-size: 16px;
                 tint: Palette.icon-muted;
                 active: State.view == "Lyrics";
+                y: (parent.height - self.height) / 2;
                 clicked => { Actions.set-view("Lyrics", "", "", ""); }
             }
             IcBtn {
@@ -1025,6 +1029,7 @@ component PlayerBar inherits Rectangle {
                 icon-size: 16px;
                 tint: Palette.icon-muted;
                 active: State.view == "Queue";
+                y: (parent.height - self.height) / 2;
                 clicked => { Actions.set-view("Queue", "", "", ""); }
             }
             IcBtn {
@@ -1032,25 +1037,38 @@ component PlayerBar inherits Rectangle {
                 icon-size: 16px;
                 tint: Palette.icon-muted;
                 active: State.view == "Audio";
+                y: (parent.height - self.height) / 2;
                 clicked => { Actions.set-view("Audio", "", "", ""); }
             }
             IcBtn {
                 icon: State.immersive-fullscreen ? @image-url("../assets/icons/compress.svg") : @image-url("../assets/icons/expand.svg");
                 icon-size: 16px;
                 tint: Palette.icon-muted;
+                y: (parent.height - self.height) / 2;
                 clicked => { Actions.open-immersive-player(); }
             }
             IcBtn {
                 icon: State.volume == 0 ? @image-url("../assets/icons/mute.svg") : @image-url("../assets/icons/volume.svg");
                 icon-size: 16px;
                 tint: State.volume == 0 ? State.accent : Palette.icon-muted;
+                y: (parent.height - self.height) / 2;
                 clicked => { Actions.set-volume-muted(); }
+                scrolled(event) => {
+                    let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                    if (delta != 0) {
+                        Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                        return accept;
+                    }
+                    reject
+                }
             }
             PlayerSlider {
                 width: 88px;
                 minimum: 0.0;
                 maximum: 100.0;
                 value: State.volume;
+                scroll-step: 4.0;
+                y: (parent.height - self.height) / 2;
                 changed(val) => { Actions.volume-changed(round(val)); }
             }
         }
@@ -2242,6 +2260,14 @@ component ImmersivePlayerOverlay inherits Rectangle {
                     maximum: 1.0;
                     value: State.progress;
                     changed(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-relative(delta);
+                            return accept;
+                        }
+                        reject
+                    }
                 }
                 Text { text: State.total-time; color: #d0d2ce; width: 44px; font-size: 12px; horizontal-alignment: right; vertical-alignment: center; }
             }

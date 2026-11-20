@@ -406,6 +406,7 @@ struct App {
     unmuted_volume: Option<u32>,
     scan_outcome_time: Option<Instant>,
     track_cache: HashMap<String, Track>,
+    startup_scan_deferred: bool,
 }
 
 impl App {
@@ -4213,6 +4214,9 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         ui.global::<Actions>().on_volume_changed(move |value| {
             let mut app = a.borrow_mut();
             app.volume = (value as u32).clamp(0, 100);
+            if app.volume > 0 {
+                app.unmuted_volume = None;
+            }
             let vol = app.volume; let _ = app.engine.set_volume(vol);
             app.pending_volume = Some(app.volume);
             app.last_vol_debounce = Instant::now();

@@ -6,7 +6,7 @@ import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCa
 import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
 import {
     Palette, IcBtn, TextBtn, ActionBtn, CustomToggle, TrackRow, TrackHeader, TrackTable, CardTile, HomeCardTile,
-    GroupGrid, HeroDetail, EmptyState, SectionTitle, Chip,
+    GroupGrid, HeroDetail, EmptyState, SectionTitle, Chip, PlayerSlider,
 } from "widgets.slint";
 
 component HomeSectionHeader inherits Rectangle {
@@ -260,37 +260,37 @@ component HomeView inherits Rectangle {
                 Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
             }
 
-            if State.home-quick-tracks.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
-                HomeQuickGrid { items: State.home-quick-tracks; }
-            }
-            if State.home-quick-tracks.length == 0 && State.home-quick-rows.length > 0 : VerticalLayout {
+            if State.home-quick-rows.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: "Quick access"; view: "Songs"; }
                 for row in State.home-quick-rows : HomeQuickRowView { track-row: row; }
             }
-
-            if State.home-recent-albums.length > 0 : VerticalLayout {
+            if State.home-quick-rows.length == 0 && State.home-quick-tracks.length > 0 : VerticalLayout {
                 spacing: 13px;
-                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
-                HomeCardGrid { items: State.home-recent-albums; }
+                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
+                HomeQuickGrid { items: State.home-quick-tracks; }
             }
-            if State.home-recent-albums.length == 0 && State.home-recent-album-rows.length > 0 : VerticalLayout {
+
+            if State.home-recent-album-rows.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
                 for row in State.home-recent-album-rows : HomeCardRowView { card-row: row; }
             }
-
-            if State.home-library-cards.length > 0 : VerticalLayout {
+            if State.home-recent-album-rows.length == 0 && State.home-recent-albums.length > 0 : VerticalLayout {
                 spacing: 13px;
-                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
-                HomeCardGrid { items: State.home-library-cards; }
+                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
+                HomeCardGrid { items: State.home-recent-albums; }
             }
-            if State.home-library-cards.length == 0 && State.home-library-card-rows.length > 0 : VerticalLayout {
+
+            if State.home-library-card-rows.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
                 for row in State.home-library-card-rows : HomeCardRowView { card-row: row; }
+            }
+            if State.home-library-card-rows.length == 0 && State.home-library-cards.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
+                HomeCardGrid { items: State.home-library-cards; }
             }
         }
     }
@@ -393,7 +393,7 @@ component FolderTile inherits Rectangle {
     animate background { duration: 140ms; }
 
     area := TouchArea {
-        clicked => { Actions.set-view("Folder", item.name, "folder", ""); }
+        clicked => { Actions.set-view("Folder", "", item.name, ""); }
     }
 
     VerticalLayout {
@@ -544,7 +544,6 @@ component FoldersView inherits Rectangle {
                     spacing: 14px;
                     for item[index] in State.groups : FolderTile {
                         item: item;
-                        width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                         col: Math.mod(index, State.card-columns);
                         row: index / State.card-columns;
                     }
@@ -810,7 +809,6 @@ component PlaylistsList inherits Rectangle {
         spacing: 14px;
         for card[index] in State.search-playlists : PlaylistTile {
             card: card;
-            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
             col: Math.mod(index, State.card-columns);
             row: index / State.card-columns;
         }
@@ -866,7 +864,6 @@ component PlaylistsView inherits Rectangle {
                         spacing: 14px;
                         for card[index] in State.smart-playlists : SmartPlaylistTile {
                             card: card;
-                            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                             col: Math.mod(index, State.card-columns);
                             row: index / State.card-columns;
                         }
@@ -883,7 +880,6 @@ component PlaylistsView inherits Rectangle {
                         spacing: 14px;
                         for card[index] in State.playlists : PlaylistTile {
                             card: card;
-                            width: max(130px, (parent.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
                             col: Math.mod(index, State.card-columns);
                             row: index / State.card-columns;
                         }
@@ -1742,12 +1738,13 @@ export component AudioView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     Rectangle { width: 120px; Text { text: "Output level"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; } }
-                    Slider {
+                    PlayerSlider {
                         horizontal-stretch: 1;
-                        minimum: 0;
-                        maximum: 100;
+                        minimum: 0.0;
+                        maximum: 100.0;
                         value: State.volume;
-                        changed value => { Actions.volume-changed(round(self.value)); }
+                        scroll-step: 4.0;
+                        changed(val) => { Actions.volume-changed(round(val)); }
                     }
                     Text { text: "\{State.volume}%"; color: Palette.muted; width: 42px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
                     ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }

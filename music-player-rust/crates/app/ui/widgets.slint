@@ -78,6 +78,7 @@ export component IcBtn inherits Rectangle {
     in property <length> icon-size: 16px;
     in property <bool> active: false;
     callback clicked();
+    callback scrolled(PointerScrollEvent) -> EventResult;
 
     width: 32px;
     height: 32px;
@@ -87,6 +88,7 @@ export component IcBtn inherits Rectangle {
 
     area := TouchArea {
         clicked => { root.clicked(); }
+        scroll-event(event) => { root.scrolled(event) }
     }
 
     Image {
@@ -107,12 +109,30 @@ export component PlayerSlider inherits Rectangle {
     in property <color> fill-color: #e2e6e1;
     in property <color> track-color: #2e332f;
     in property <color> thumb-color: #ffffff;
+    in property <bool> scrollable: true;
+    in property <float> scroll-step: 0.0;
     callback changed(float);
+    callback scrolled(PointerScrollEvent) -> EventResult;
 
     height: 16px;
     min-width: 40px;
 
     area := TouchArea {
+        scroll-event(event) => {
+            if (root.scrolled(event) == accept) {
+                return accept;
+            }
+            if (root.scrollable) {
+                let step = root.scroll-step > 0.0 ? root.scroll-step : max(0.01, (root.maximum - root.minimum) * 0.04);
+                let delta = event.delta-y > 0px ? step : (event.delta-y < 0px ? -step : 0.0);
+                if (delta != 0.0) {
+                    root.value = clamp(root.value + delta, root.minimum, root.maximum);
+                    root.changed(root.value);
+                    return accept;
+                }
+            }
+            reject
+        }
         clicked => {
             root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
             root.changed(root.value);
@@ -299,7 +319,6 @@ export component TrackRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        alignment: center;
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
@@ -808,7 +827,6 @@ export component GroupGrid inherits Rectangle {
     in property <[GroupItem]> items: State.groups;
     in property <bool> show-load-more: true;
     in property <bool> scrollable: true;
-    in property <length> col-width: max(130px, (self.width - (State.card-columns - 1) * 14px) / max(1, State.card-columns));
 
     VerticalLayout {
         if root.items.length == 0 : Rectangle {
@@ -831,7 +849,6 @@ export component GroupGrid inherits Rectangle {
                 spacing: 14px;
                 for item[index] in root.items : CardTile {
                     item: item;
-                    width: root.col-width;
                     round: root.round || root.kind == "artist" || State.view == "Artists";
                     col: Math.mod(index, State.card-columns);
                     row: index / State.card-columns;
@@ -855,7 +872,6 @@ export component GroupGrid inherits Rectangle {
             spacing: 14px;
             for item[index] in root.items : CardTile {
                 item: item;
-                width: root.col-width;
                 round: root.round || root.kind == "artist" || State.view == "Artists";
                 col: Math.mod(index, State.card-columns);
                 row: index / State.card-columns;
