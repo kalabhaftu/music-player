@@ -254,7 +254,7 @@ component TopBar inherits Rectangle {
             max-width: 520px;
             height: 38px;
             border-radius: 19px;
-            background: search-input.has-focus ? Palette.hover : #242724;
+            background: search-input.has-focus ? Palette.hover : Palette.control;
             animate background { duration: 100ms; }
             clip: true;
 
@@ -432,8 +432,14 @@ component ToolMenuRow inherits Rectangle {
         padding-left: 10px;
         padding-right: 10px;
         spacing: 10px;
-        alignment: center;
-        Image { source: root.icon; width: 17px; height: 17px; colorize: Palette.muted; }
+        alignment: start;
+        Image {
+            source: root.icon;
+            width: 17px;
+            height: 17px;
+            colorize: Palette.muted;
+            y: (parent.height - self.height) / 2;
+        }
         Text {
             text: root.label;
             color: Palette.text-strong;
@@ -838,7 +844,6 @@ component PlayerBar inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
-        alignment: center;
 
         HorizontalLayout {
             horizontal-stretch: 1;
@@ -2058,7 +2063,6 @@ component ImmersivePlayerOverlay inherits Rectangle {
         HorizontalLayout {
             height: 48px;
             spacing: 12px;
-            alignment: center;
             Text {
                 text: "NOW PLAYING";
                 color: #ffffffb0;

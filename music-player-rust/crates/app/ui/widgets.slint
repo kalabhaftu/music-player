@@ -300,7 +300,7 @@ export component TrackRow inherits Rectangle {
     callback remove();
 
     height: 58px;
-    background: area.pressed ? Palette.hover : (area.has-hover ? Palette.row-hover : (root.track.is-playing ? Palette.panel-2 : transparent));
+    background: area.pressed ? Palette.hover : ((area.has-hover || actions-hover.has-hover) ? Palette.row-hover : (root.track.is-playing ? Palette.panel-2 : transparent));
     animate background { duration: 120ms; }
 
     Rectangle {
@@ -446,33 +446,35 @@ export component TrackRow inherits Rectangle {
 
         Rectangle {
             width: 76px;
-            if area.has-hover || root.track.is-favorite : HorizontalLayout {
-                    spacing: 2px;
-                    alignment: center;
+            actions-hover := TouchArea { }
+            HorizontalLayout {
+                opacity: (area.has-hover || actions-hover.has-hover || root.track.is-favorite) ? 1.0 : 0.0;
+                spacing: 2px;
+                alignment: center;
 
-                    if State.show-list-favorite : IcBtn {
-                        icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
-                        tint: root.track.is-favorite ? State.accent : Palette.muted-2;
-                        hover-tint: root.track.is-favorite ? State.accent : Palette.text;
-                        icon-size: 14px;
-                        clicked => { root.favorite(); }
-                    }
-                    if root.show-remove : IcBtn {
-                        icon: @image-url("../assets/icons/close.svg");
-                        tint: Palette.muted-2;
-                        hover-tint: #ff5b74;
-                        icon-size: 13px;
-                        clicked => { root.remove(); }
-                    }
-                    IcBtn {
-                        icon: @image-url("../assets/icons/more.svg");
-                        tint: Palette.muted-2;
-                        hover-tint: Palette.text;
-                        icon-size: 14px;
-                        clicked => { root.context(round((root.absolute-position.x + root.width - 10px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
-                    }
+                if State.show-list-favorite : IcBtn {
+                    icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                    tint: root.track.is-favorite ? State.accent : Palette.muted-2;
+                    hover-tint: root.track.is-favorite ? State.accent : Palette.text;
+                    icon-size: 14px;
+                    clicked => { root.favorite(); }
+                }
+                if root.show-remove : IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    tint: Palette.muted-2;
+                    hover-tint: #ff5b74;
+                    icon-size: 13px;
+                    clicked => { root.remove(); }
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/more.svg");
+                    tint: Palette.muted-2;
+                    hover-tint: Palette.text;
+                    icon-size: 14px;
+                    clicked => { root.context(round((root.absolute-position.x + root.width - 24px) / 1px), round((root.absolute-position.y + root.height - 8px) / 1px)); }
                 }
             }
+        }
         }
     }
 
@@ -587,10 +589,10 @@ export component TrackTable inherits Rectangle {
             sort(column) => { root.sort(column); }
         }
 
-        Rectangle {
+        if root.scrollable : Rectangle {
             vertical-stretch: 1;
 
-            if root.scrollable : ListView {
+            ListView {
                 for row[index] in State.tracks : TrackRow {
                     track: row;
                     index: index + 1;
@@ -605,34 +607,33 @@ export component TrackTable inherits Rectangle {
                     remove => { Actions.remove-from-playlist(index); }
                 }
             }
+        }
 
-            if !root.scrollable : VerticalLayout {
-                for row[index] in State.tracks : TrackRow {
-                    track: row;
-                    index: index + 1;
-                    show-added: root.show-added;
-                    show-year: root.show-year;
-                    show-album: root.show-album;
-                    show-plays: root.show-plays;
-                    show-remove: root.show-remove;
-                    play => { Actions.play-track(row.id); }
-                    favorite => { Actions.toggle-favorite(row.id); }
-                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
-                    remove => { Actions.remove-from-playlist(index); }
-                }
+        if !root.scrollable : VerticalLayout {
+            for row[index] in State.tracks : TrackRow {
+                track: row;
+                index: index + 1;
+                show-added: root.show-added;
+                show-year: root.show-year;
+                show-album: root.show-album;
+                show-plays: root.show-plays;
+                show-remove: root.show-remove;
+                play => { Actions.play-track(row.id); }
+                favorite => { Actions.toggle-favorite(row.id); }
+                context(x, y) => { Actions.open-context-menu(row.id, x, y); }
+                remove => { Actions.remove-from-playlist(index); }
             }
+        }
 
-            if State.tracks.length == 0 && !State.page-loading : Rectangle {
-                width: 100%;
-                height: 100%;
-                VerticalLayout {
-                    alignment: center;
-                    Text {
-                        text: root.empty-text;
-                        color: Palette.muted-2;
-                        font-size: 13px;
-                        horizontal-alignment: center;
-                    }
+        if State.tracks.length == 0 && !State.page-loading : Rectangle {
+            height: 120px;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.empty-text;
+                    color: Palette.muted-2;
+                    font-size: 13px;
+                    horizontal-alignment: center;
                 }
             }
         }
@@ -687,8 +688,8 @@ export component CardTile inherits Rectangle {
 
             if root.item.has-cover : Image {
                 source: root.item.cover;
-                width: parent.width;
-                height: parent.height;
+                width: 100%;
+                height: 100%;
                 image-fit: ImageFit.cover;
             }
 
@@ -787,8 +788,8 @@ export component HomeCardTile inherits Rectangle {
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
             if root.item.has-cover : Image {
                 source: root.item.cover;
-                width: parent.width;
-                height: parent.height;
+                width: 100%;
+                height: 100%;
                 image-fit: ImageFit.cover;
             }
             if !root.item.has-cover : Text {
@@ -861,25 +862,35 @@ export component GroupGrid inherits Rectangle {
         }
         if root.items.length > 0 && root.scrollable : ScrollView {
             vertical-stretch: 1;
-            GridLayout {
-                width: 100%;
-                spacing: 14px;
-                for item[index] in root.items : CardTile {
-                    item: item;
-                    round: root.round || root.kind == "artist" || State.view == "Artists";
-                    col: Math.mod(index, State.card-columns);
-                    row: index / State.card-columns;
-                    play => {
-                        Actions.play-group(
-                            root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
-                            item.name
-                        );
+            VerticalLayout {
+                spacing: 16px;
+                GridLayout {
+                    width: 100%;
+                    spacing: 14px;
+                    for item[index] in root.items : CardTile {
+                        item: item;
+                        round: root.round || root.kind == "artist" || State.view == "Artists";
+                        col: Math.mod(index, State.card-columns);
+                        row: index / State.card-columns;
+                        play => {
+                            Actions.play-group(
+                                root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                                item.name
+                            );
+                        }
+                        open => {
+                            Actions.open-group(
+                                root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                                item.name
+                            );
+                        }
                     }
-                    open => {
-                        Actions.open-group(
-                            root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
-                            item.name
-                        );
+                }
+                if root.show-load-more && State.groups-total > root.items.length : Rectangle {
+                    height: 44px;
+                    ActionBtn {
+                        label: "Load more";
+                        clicked => { Actions.load-more-groups(); }
                     }
                 }
             }
@@ -904,13 +915,6 @@ export component GroupGrid inherits Rectangle {
                         item.name
                     );
                 }
-            }
-        }
-        if root.show-load-more && State.groups-total > root.items.length : Rectangle {
-            height: 44px;
-            ActionBtn {
-                label: "Load more";
-                clicked => { Actions.load-more-groups(); }
             }
         }
     }

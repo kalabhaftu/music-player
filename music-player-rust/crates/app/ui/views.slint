@@ -260,34 +260,19 @@ component HomeView inherits Rectangle {
                 Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
             }
 
-            if State.home-quick-rows.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
-                for row in State.home-quick-rows : HomeQuickRowView { track-row: row; }
-            }
-            if State.home-quick-rows.length == 0 && State.home-quick-tracks.length > 0 : VerticalLayout {
+            if State.home-quick-tracks.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: "Quick access"; view: "Songs"; }
                 HomeQuickGrid { items: State.home-quick-tracks; }
             }
 
-            if State.home-recent-album-rows.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
-                for row in State.home-recent-album-rows : HomeCardRowView { card-row: row; }
-            }
-            if State.home-recent-album-rows.length == 0 && State.home-recent-albums.length > 0 : VerticalLayout {
+            if State.home-recent-albums.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
                 HomeCardGrid { items: State.home-recent-albums; }
             }
 
-            if State.home-library-card-rows.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
-                for row in State.home-library-card-rows : HomeCardRowView { card-row: row; }
-            }
-            if State.home-library-card-rows.length == 0 && State.home-library-cards.length > 0 : VerticalLayout {
+            if State.home-library-cards.length > 0 : VerticalLayout {
                 spacing: 13px;
                 HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
                 HomeCardGrid { items: State.home-library-cards; }
@@ -960,68 +945,71 @@ component DetailView inherits Rectangle {
     in property <string> eyebrow: "";
     in property <string> empty-text: "No tracks.";
 
-    VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 24px;
+    ScrollView {
+        vertical-stretch: 1;
 
-        HeroDetail {
-            eyebrow: root.eyebrow;
-            title: State.view-group-value == "" ? State.view-title : State.view-group-value;
-            subtitle: State.hero-subtitle;
-            cover: State.hero-cover;
-            has-cover: State.hero-has-cover;
-            round: State.view-group-column == "artist";
-            play => { Actions.play-group(State.view-group-column, State.view-group-value); }
-            shuffle => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
-        }
+        VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
 
-        if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
-            spacing: 13px;
-            Text {
-                text: "Albums";
-                color: Palette.text;
-                font-size: 19px;
-                font-weight: 750;
-                letter-spacing: -0.65px;
+            HeroDetail {
+                eyebrow: root.eyebrow;
+                title: State.view-group-value == "" ? State.view-title : State.view-group-value;
+                subtitle: State.hero-subtitle;
+                cover: State.hero-cover;
+                has-cover: State.hero-has-cover;
+                round: State.view-group-column == "artist";
+                play => { Actions.play-group(State.view-group-column, State.view-group-value); }
+                shuffle => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
             }
-            Rectangle {
-                height: 190px;
-                width: parent.width;
-                ListView {
-                    for album in State.artist-albums : CardTile {
-                        width: 150px;
-                        item: album;
-                        play => { Actions.play-group("album", album.name); }
-                        open => { Actions.set-view("Album", "", album.name, ""); }
+
+            if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
+                spacing: 13px;
+                Text {
+                    text: "Albums";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 750;
+                    letter-spacing: -0.65px;
+                }
+                Rectangle {
+                    height: 190px;
+                    width: parent.width;
+                    ListView {
+                        for album in State.artist-albums : CardTile {
+                            width: 150px;
+                            item: album;
+                            play => { Actions.play-group("album", album.name); }
+                            open => { Actions.set-view("Album", "", album.name, ""); }
+                        }
                     }
                 }
             }
-        }
 
-        VerticalLayout {
-            spacing: 13px;
-            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 13px;
 
-            Text {
-                text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
-                color: Palette.text;
-                font-size: 19px;
-                font-weight: 750;
-                letter-spacing: -0.65px;
-            }
+                Text {
+                    text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 750;
+                    letter-spacing: -0.65px;
+                }
 
-            TrackTable {
-                vertical-stretch: 1;
-                show-added: true;
-                show-year: false;
-                show-album: true;
-                first-column: "TITLE";
-                first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
-                sort(column) => { Actions.sort-view(column); }
-                empty-text: root.empty-text;
+                TrackTable {
+                    scrollable: false;
+                    show-added: true;
+                    show-year: false;
+                    show-album: true;
+                    first-column: "TITLE";
+                    first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
+                    sort(column) => { Actions.sort-view(column); }
+                    empty-text: root.empty-text;
+                }
             }
         }
     }

@@ -238,6 +238,10 @@ static ARTWORK_CACHE: std::sync::OnceLock<ArtworkCache> = std::sync::OnceLock::n
 /// Safely decodes any image format (JPEG, PNG, JFIF, BMP, WebP) directly from
 /// memory bytes or file paths, caching in memory to avoid UI thread lag.
 pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
+    if !path.is_file() {
+        return None;
+    }
+
     let cache = ARTWORK_CACHE.get_or_init(|| ArtworkCache(std::sync::Mutex::new(HashMap::new())));
     if let Ok(guard) = cache.lock() {
         if let Some(cached) = guard.get(path) {
