@@ -497,9 +497,31 @@ impl App {
     pub(crate) fn publish_folder_roots(&mut self, roots: &[String]) {
         let items: Vec<FolderRootItem> = roots
             .iter()
-            .map(|r| FolderRootItem {
-                path: ss(r),
-                is_available: Path::new(r).exists(),
+            .map(|r| {
+                let trimmed = r.trim_end_matches(['\\', '/']);
+                let name = Path::new(trimmed)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(r);
+                let lower_name = name.to_ascii_lowercase();
+                let lower_path = r.to_ascii_lowercase();
+                let icon = if lower_name.contains("download") || lower_path.contains("download") {
+                    "download"
+                } else if lower_name == "music" || lower_path.contains("music") {
+                    "music"
+                } else if Path::new(trimmed).parent().is_none() || trimmed.ends_with(':') {
+                    "disc"
+                } else {
+                    "folder"
+                };
+                FolderRootItem {
+                    name: ss(name),
+                    path: ss(r),
+                    icon: ss(icon),
+                    track_count: self.store.count_tracks_in_folder(r).unwrap_or(0) as i32,
+                    is_available: Path::new(r).exists(),
+                }
             })
             .collect();
         self.ui
@@ -897,6 +919,16 @@ impl App {
         let playlist_id = state.get_view_playlist_id().to_string();
         let sort_name = state.get_view_sort().to_string();
         let descending = state.get_view_descending();
+        if view == "Search" && search != state.get_search_results_query().to_string() {
+            self.tracks_offset = 0;
+            self.groups_offset = 0;
+            state.set_search_results_query(ss(&search));
+            state.set_search_song_offset(0);
+            state.set_search_album_offset(0);
+            state.set_search_artist_offset(0);
+            state.set_search_playlist_offset(0);
+        }
+        let search_song_offset = state.get_search_song_offset().max(0) as u32;
         drop(state);
 
         let playing = self
@@ -908,7 +940,7 @@ impl App {
             .settings
             .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
         let video_extensions = self.video_extensions();
-        let query = TrackQuery {
+        let mut query = TrackQuery {
             favorites: view == "Favorites",
             most_played: view == "Most Played",
             recently_played: view == "Recently Played",
@@ -937,21 +969,51 @@ impl App {
             } else {
                 None
             },
-            hide_duplicates: hide_dupes && view == "Songs",
+            hide_duplicates: hide_dupes && matches!(view.as_str(), "Songs" | "Search"),
             sort: song_sort(
-                &sort_name,
-                song_sort(&default_sort_for_view(&view).0, TrackSort::Title),
+                if view == "Search" {
+                    "Title"
+                } else {
+                    &sort_name
+                },
+                if view == "Search" {
+                    TrackSort::Title
+                } else {
+                    song_sort(&default_sort_for_view(&view).0, TrackSort::Title)
+                },
             ),
-            descending,
-            offset: 0,
-            page_size: (self.tracks_offset + TRACK_PAGE_SIZE).min(u32::MAX as usize) as u32,
+            descending: view != "Search" && descending,
+            offset: if view == "Search" {
+                search_song_offset
+            } else {
+                0
+            },
+            page_size: if view == "Search" {
+                40
+            } else {
+                (self.tracks_offset + TRACK_PAGE_SIZE).min(u32::MAX as usize) as u32
+            },
             ..TrackQuery::default()
         };
-        let (tracks, total) = self.store.query_track_page(&query).unwrap_or_default();
+        let (mut tracks, total) = self.store.query_track_page(&query).unwrap_or_default();
+        if view == "Search" {
+            let last_offset = if total > 0 {
+                (((total - 1) / 40) * 40) as u32
+            } else {
+                0
+            };
+            if search_song_offset > last_offset {
+                query.offset = last_offset;
+                self.ui
+                    .global::<State>()
+                    .set_search_song_offset(last_offset as i32);
+                tracks = self.store.query_track_page(&query).unwrap_or_default().0;
+            }
+        }
         let items: Vec<TrackItem> = tracks
             .iter()
             .enumerate()
-            .map(|(i, t)| self.track_to_ui(t, (i + 1) as i32, &playing))
+            .map(|(i, t)| self.track_to_ui(t, (i + 1 + query.offset as usize) as i32, &playing))
             .collect();
         self.view_paths = tracks.iter().map(|t| t.path.clone()).collect();
         self.id_to_path.clear();
@@ -964,7 +1026,9 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_tracks(ui_model(items).into());
         state.set_tracks_total(total as i32);
-        state.set_can_load_more(self.tracks_offset + TRACK_PAGE_SIZE < total as usize);
+        state.set_can_load_more(
+            view != "Search" && self.tracks_offset + TRACK_PAGE_SIZE < total as usize,
+        );
         state.set_view_title(ss(&view));
         state.set_view_subtitle(ss(format!(
             "{} {}",
@@ -979,10 +1043,7 @@ impl App {
         if view == "Home" {
             self.publish_home(&playing);
         }
-        if matches!(
-            view.as_str(),
-            "Albums" | "Artists" | "Genres" | "Folders" | "Search"
-        ) {
+        if matches!(view.as_str(), "Albums" | "Artists" | "Genres" | "Folders") {
             self.publish_groups(&view, &search);
         }
         if view == "Playlist" {
@@ -1116,7 +1177,7 @@ impl App {
         } else {
             let (album_groups, _) = self
                 .store
-                .query_group_page("album", None, 0, 5)
+                .query_group_page("album", None, 0, 5, hide_dupes)
                 .unwrap_or_default();
             if !album_groups.is_empty() {
                 library_cards.extend(album_groups.iter().map(|group| self.home_group_card(group)));
@@ -1184,6 +1245,9 @@ impl App {
     }
 
     pub(crate) fn publish_groups(&mut self, view: &str, search: &str) {
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
         let column = match view {
             "Albums" => "album",
             "Artists" => "artist",
@@ -1199,6 +1263,7 @@ impl App {
                 if view == "Search" { Some(search) } else { None },
                 self.groups_offset as u32,
                 60,
+                hide_dupes,
             )
             .unwrap_or_default();
         self.group_total = total;
@@ -1215,41 +1280,92 @@ impl App {
     }
 
     pub(crate) fn publish_search_counts(&mut self, search: &str) {
-        let (album_groups, albums) = if search.trim().is_empty() {
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        let state = self.ui.global::<State>();
+        let mut album_offset = state.get_search_album_offset().max(0) as u32;
+        let mut artist_offset = state.get_search_artist_offset().max(0) as u32;
+        let mut playlist_offset = state.get_search_playlist_offset().max(0) as usize;
+        drop(state);
+        let (mut album_groups, albums) = if search.trim().is_empty() {
             (Vec::new(), 0)
         } else {
             self.store
-                .query_group_page("album", Some(search), 0, 60)
+                .query_group_page("album", Some(search), album_offset, 24, hide_dupes)
                 .unwrap_or_default()
         };
-        let (artist_groups, artists) = if search.trim().is_empty() {
+        let album_last_offset = if albums > 0 {
+            (((albums - 1) / 24) * 24) as u32
+        } else {
+            0
+        };
+        if album_offset > album_last_offset {
+            album_offset = album_last_offset;
+            if !search.trim().is_empty() {
+                if let Ok((groups, _)) =
+                    self.store
+                        .query_group_page("album", Some(search), album_offset, 24, hide_dupes)
+                {
+                    album_groups = groups;
+                }
+            }
+            self.ui
+                .global::<State>()
+                .set_search_album_offset(album_offset as i32);
+        }
+        let (mut artist_groups, artists) = if search.trim().is_empty() {
             (Vec::new(), 0)
         } else {
             self.store
-                .query_group_page("artist", Some(search), 0, 60)
+                .query_group_page("artist", Some(search), artist_offset, 24, hide_dupes)
                 .unwrap_or_default()
         };
+        let artist_last_offset = if artists > 0 {
+            (((artists - 1) / 24) * 24) as u32
+        } else {
+            0
+        };
+        if artist_offset > artist_last_offset {
+            artist_offset = artist_last_offset;
+            if !search.trim().is_empty() {
+                if let Ok((groups, _)) = self.store.query_group_page(
+                    "artist",
+                    Some(search),
+                    artist_offset,
+                    24,
+                    hide_dupes,
+                ) {
+                    artist_groups = groups;
+                }
+            }
+            self.ui
+                .global::<State>()
+                .set_search_artist_offset(artist_offset as i32);
+        }
         let (_, songs) = if search.trim().is_empty() {
             (Vec::new(), 0)
         } else {
             self.store
                 .query_track_page(&TrackQuery {
                     search: Some(search.into()),
+                    hide_duplicates: hide_dupes,
+                    sort: TrackSort::Title,
+                    descending: false,
                     page_size: 1,
                     ..TrackQuery::default()
                 })
                 .unwrap_or_default()
         };
-        let search_playlists: Vec<PlaylistCardItem> = if search.trim().is_empty() {
+        let matching_playlists: Vec<PlaylistCardItem> = if search.trim().is_empty() {
             Vec::new()
         } else {
             self.playlists
                 .iter()
                 .filter(|playlist| {
-                    playlist
-                        .name
-                        .to_lowercase()
-                        .contains(&search.to_lowercase())
+                    search
+                        .split_whitespace()
+                        .all(|term| playlist.name.to_lowercase().contains(&term.to_lowercase()))
                 })
                 .map(|playlist| PlaylistCardItem {
                     id: ss(&playlist.id),
@@ -1262,7 +1378,23 @@ impl App {
                 })
                 .collect()
         };
-        let playlist_count = search_playlists.len();
+        let playlist_count = matching_playlists.len();
+        let playlist_last_offset = if playlist_count > 0 {
+            ((playlist_count - 1) / 20) * 20
+        } else {
+            0
+        };
+        if playlist_offset > playlist_last_offset {
+            playlist_offset = playlist_last_offset;
+            self.ui
+                .global::<State>()
+                .set_search_playlist_offset(playlist_offset as i32);
+        }
+        let search_playlists = matching_playlists
+            .into_iter()
+            .skip(playlist_offset)
+            .take(20)
+            .collect::<Vec<_>>();
         let state = self.ui.global::<State>();
         state.set_search_albums(
             ui_model(album_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into(),
@@ -1324,7 +1456,13 @@ impl App {
             "Genre" => "genre",
             _ => "folder",
         };
-        if let Ok((groups, _)) = self.store.query_group_page(column, Some(value), 0, 10) {
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        if let Ok((groups, _)) = self
+            .store
+            .query_group_page(column, Some(value), 0, 10, hide_dupes)
+        {
             if let Some(g) = groups.iter().find(|g| g.name.eq_ignore_ascii_case(value)) {
                 subtitle = format!(
                     "{} song{}",
@@ -1341,7 +1479,10 @@ impl App {
         }
         let mut albums = Vec::new();
         if column == "artist" {
-            if let Ok((groups, _)) = self.store.query_group_page("album", Some(value), 0, 30) {
+            if let Ok((groups, _)) =
+                self.store
+                    .query_group_page("album", Some(value), 0, 30, hide_dupes)
+            {
                 albums = groups.iter().map(group_to_ui).collect();
             }
         }

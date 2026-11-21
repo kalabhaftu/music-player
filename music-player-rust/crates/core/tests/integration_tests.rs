@@ -81,6 +81,38 @@ fn test_database_crud_and_fts5_search() {
 }
 
 #[test]
+fn grouped_search_uses_all_terms_and_reports_filtered_group_count() {
+    let store = LibraryStore::in_memory().expect("in-memory db failed");
+    let mut goodbye = sample_track(
+        "C:/Music/goodbye.mp3",
+        "Goodbye",
+        "Elton John",
+        "Goodbye Yellow Brick Road",
+    );
+    goodbye.album_artist = "Elton John".to_string();
+    let mut live = sample_track("C:/Music/live.mp3", "Live", "Bryan Adams", "Live");
+    live.album_artist = "Elton John".to_string();
+    let other = sample_track("C:/Music/other.mp3", "Other", "Other", "Yellow Road");
+    store.upsert_track(&goodbye).unwrap();
+    store.upsert_track(&live).unwrap();
+    store.upsert_track(&other).unwrap();
+
+    let (albums, total) = store
+        .query_group_page("album", Some("elton goodbye"), 0, 24, false)
+        .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(albums.len(), 1);
+    assert_eq!(albums[0].name, "Goodbye Yellow Brick Road");
+
+    let (albums, total) = store
+        .query_group_page("album", Some("elton"), 1, 1, true)
+        .unwrap();
+    assert_eq!(total, 2);
+    assert_eq!(albums.len(), 1);
+    assert_eq!(albums[0].name, "Live");
+}
+
+#[test]
 fn test_queue_coordinator_navigation() {
     let mut queue = QueueCoordinator::new();
     let paths = vec![
@@ -1198,7 +1230,8 @@ fn writer_mp3_standard_composites_custom_and_preservation() {
     };
     editor.save(&file, &edit1).unwrap();
 
-    let tags = read_tags(&file);
+    let cache = root.join("cache");
+    let tags = read_tags_in_cache(&file, &cache);
     assert_eq!(tags.title.as_deref(), Some("New Title"));
     assert_eq!(tags.artist.as_deref(), Some("Artist One; Artist Two"));
     assert_eq!(tags.album.as_deref(), Some("New Album"));
@@ -1220,9 +1253,7 @@ fn writer_mp3_standard_composites_custom_and_preservation() {
     assert!(find_bytes(&saved, b"image/png").is_some());
 
     // Artwork round-trips through a cache directory.
-    let cache = root.join("cache");
-    let tags_cached = read_tags_in_cache(&file, &cache);
-    let artwork_path = tags_cached.artwork_path.expect("artwork saved");
+    let artwork_path = tags.artwork_path.expect("artwork saved");
     assert_eq!(std::fs::read(&artwork_path).unwrap(), png_bytes());
 
     // The track composite kept its total ("3/12").

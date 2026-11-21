@@ -9,7 +9,7 @@ component SmartPlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
     vertical-stretch: 0;
-    border-radius: 8px;
+    border-radius: 18px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -30,8 +30,12 @@ component SmartPlaylistTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 6px;
+            border-radius: 12px;
             clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
             background: root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
                 : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
                 : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
@@ -96,7 +100,7 @@ component PlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
     vertical-stretch: 0;
-    border-radius: 8px;
+    border-radius: 18px;
     background: tile-area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -121,8 +125,12 @@ component PlaylistTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 6px;
+            border-radius: 12px;
             clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
             background: root.card.is-smart
                 ? (root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
                     : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
@@ -208,7 +216,7 @@ export component PlaylistsList inherits Rectangle {
     if State.search-playlists.length == 0 : EmptyState { text: "No matching playlists."; }
     if State.search-playlists.length > 0 : GridLayout {
         width: 100%;
-        spacing: 14px;
+        spacing: Palette.card-gap(State.browse-width);
         for card[index] in State.search-playlists : PlaylistTile {
             card: card;
             col: Math.mod(index, State.card-columns);
@@ -263,7 +271,7 @@ export component PlaylistsView inherits Rectangle {
                     SectionTitle { text: "Smart playlists"; }
                     GridLayout {
                         width: 100%;
-                        spacing: 14px;
+                        spacing: Palette.card-gap(State.browse-width);
                         for card[index] in State.smart-playlists : SmartPlaylistTile {
                             card: card;
                             col: Math.mod(index, State.card-columns);
@@ -279,7 +287,7 @@ export component PlaylistsView inherits Rectangle {
                     }
                     if State.playlists.length > 0 : GridLayout {
                         width: 100%;
-                        spacing: 14px;
+                        spacing: Palette.card-gap(State.browse-width);
                         for card[index] in State.playlists : PlaylistTile {
                             card: card;
                             col: Math.mod(index, State.card-columns);

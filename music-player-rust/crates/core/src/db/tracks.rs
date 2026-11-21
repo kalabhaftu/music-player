@@ -254,6 +254,18 @@ pub fn get_library_stats(conn: &Connection) -> Result<LibraryStats> {
     )
 }
 
+/// Counts visible tracks directly inside a library root, matching the root
+/// summary used by the original folder view (child folders are separate rows).
+pub fn count_tracks_in_folder(conn: &Connection, folder: &str) -> Result<i64> {
+    let query = if cfg!(windows) {
+        "SELECT COUNT(*) FROM tracks WHERE unavailable = 0 AND musicplayer_directory(path) = ? COLLATE NOCASE"
+    } else {
+        "SELECT COUNT(*) FROM tracks WHERE unavailable = 0 AND musicplayer_directory(path) = ?"
+    };
+    let folder = folder.trim_end_matches(['/', '\\']);
+    conn.query_row(query, [folder], |row| row.get(0))
+}
+
 pub fn get_album_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
     let mut stmt = conn.prepare(
         r#"
@@ -589,14 +601,21 @@ pub fn query_group_page(
     search: Option<&str>,
     offset: u32,
     page_size: u32,
+    hide_duplicates: bool,
 ) -> Result<(Vec<LibraryGroup>, i64)> {
     let (value_expr, artwork_expr, artist_expr, year_expr, where_name) = match column {
-        "album" => ("t.album", "MAX(t.artwork_path)", "MAX(t.artist)", "MAX(t.year)", "t.album"),
-        "artist" => ("t.artist", "MAX(t.artwork_path)", "NULL", "0", "t.artist"),
-        "genre" => ("t.genre", "MAX(t.artwork_path)", "NULL", "0", "t.genre"),
+        "album" => (
+            "t.album",
+            "MIN(t.artwork_path)",
+            "MIN(t.artist)",
+            "MIN(t.year)",
+            "t.album",
+        ),
+        "artist" => ("t.artist", "MIN(t.artwork_path)", "NULL", "0", "t.artist"),
+        "genre" => ("t.genre", "MIN(t.artwork_path)", "NULL", "0", "t.genre"),
         "folder" => (
             "musicplayer_directory(t.path)",
-            "MAX(t.artwork_path)",
+            "MIN(t.artwork_path)",
             "NULL",
             "0",
             "musicplayer_directory(t.path)",
@@ -604,35 +623,81 @@ pub fn query_group_page(
         _ => return Ok((Vec::new(), 0)),
     };
 
-    let search_clause = match search.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(_) => " WHERE value LIKE ? COLLATE NOCASE",
-        None => "",
+    let search_terms = search
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let mut predicates = vec![
+        "t.unavailable = 0".to_string(),
+        format!("{} != ''", where_name),
+        format!("trim({}) != ''", where_name),
+        format!("lower(trim({})) NOT IN ('undefined', 'null')", where_name),
+    ];
+    let mut search_values = Vec::new();
+    for (index, term) in search_terms.iter().enumerate() {
+        let placeholder = format!("?{}", index + 1);
+        if column == "album" {
+            predicates.push(format!(
+                "({value_expr} LIKE {placeholder} ESCAPE '\\' OR t.artist LIKE {placeholder} ESCAPE '\\' OR t.album_artist LIKE {placeholder} ESCAPE '\\')"
+            ));
+        } else {
+            predicates.push(format!("{value_expr} LIKE {placeholder} ESCAPE '\\'"));
+        }
+        let escaped = term
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        search_values.push(format!("%{escaped}%"));
+    }
+    let where_clause = predicates.join(" AND ");
+    let count_expr = if hide_duplicates {
+        let has_sha256: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('track_fingerprints') WHERE name = 'sha256')",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_sha256 {
+            "COUNT(DISTINCT COALESCE((SELECT 'sha256:' || f.file_size || ':' || f.sha256 FROM track_fingerprints f WHERE f.path = t.path AND f.file_size = t.file_size AND f.modified_utc = t.modified_utc), 'path:' || t.path))"
+        } else {
+            "COUNT(DISTINCT COALESCE((SELECT 'sha256:' || f.file_size || ':' || f.audio_hash FROM track_fingerprints f WHERE f.path = t.path AND f.file_size = t.file_size), 'path:' || t.path))"
+        }
+    } else {
+        "COUNT(*)"
     };
 
     let sql = format!(
         r#"
         WITH groups AS (
-            SELECT {} AS value, COUNT(*) AS cnt, {} AS artwork, {} AS artist, {} AS year
+            SELECT {} AS value, {} AS cnt, {} AS artwork, {} AS artist, {} AS year
             FROM tracks t
-            WHERE t.unavailable = 0 AND t.path != '' AND {} != ''
+            WHERE {}
             GROUP BY value COLLATE NOCASE
         )
-        SELECT value, cnt, artwork, artist, year FROM groups{}
+        SELECT value, cnt, artwork, artist, year FROM groups
         ORDER BY value COLLATE NOCASE ASC
-        LIMIT ? OFFSET ?
+        LIMIT ?{} OFFSET ?{}
         "#,
-        value_expr, artwork_expr, artist_expr, year_expr, where_name, search_clause
+        value_expr,
+        count_expr,
+        artwork_expr,
+        artist_expr,
+        year_expr,
+        where_clause,
+        search_terms.len() + 1,
+        search_terms.len() + 2
     );
 
-    let mut bound: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    if let Some(term) = search.map(str::trim).filter(|s| !s.is_empty()) {
-        bound.push(Box::new(format!("%{}%", term)));
-    }
-    bound.push(Box::new(page_size.max(1) as i64));
-    bound.push(Box::new(offset as i64));
+    let page_limit = page_size.max(1) as i64;
+    let page_offset = offset as i64;
+    let mut page_bound: Vec<&dyn rusqlite::ToSql> = search_values
+        .iter()
+        .map(|value| value as &dyn rusqlite::ToSql)
+        .collect();
+    page_bound.push(&page_limit);
+    page_bound.push(&page_offset);
 
     let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(page_bound))?;
     let mut groups = Vec::new();
     while let Some(row) = rows.next()? {
         groups.push(LibraryGroup {
@@ -645,10 +710,14 @@ pub fn query_group_page(
     }
 
     let count_sql = format!(
-        "SELECT COUNT(*) FROM (SELECT {} AS value FROM tracks t WHERE t.unavailable = 0 AND {} != '' GROUP BY value COLLATE NOCASE)",
-        value_expr, where_name
+        "SELECT COUNT(*) FROM (SELECT {} AS value FROM tracks t WHERE {} GROUP BY value COLLATE NOCASE)",
+        value_expr, where_clause
     );
-    let total: i64 = conn.query_row(&count_sql, [], |r| r.get(0))?;
+    let total: i64 = conn.query_row(
+        &count_sql,
+        rusqlite::params_from_iter(search_values.iter()),
+        |r| r.get(0),
+    )?;
     Ok((groups, total))
 }
 

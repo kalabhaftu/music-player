@@ -8,8 +8,6 @@ import { ScrollView, ListView } from "std-widgets.slint";
 component SearchSectionHeader inherits Rectangle {
     in property <string> title;
     in property <int> count: 0;
-    in property <bool> show-see-all: true;
-    callback see-all();
 
     height: 26px;
     HorizontalLayout {
@@ -36,19 +34,34 @@ component SearchSectionHeader inherits Rectangle {
             }
         }
 
-        if root.show-see-all : Rectangle {
-            width: 56px;
-            height: 26px;
-            Text {
-                text: "See all";
-                color: see-all-area.has-hover ? Palette.text : Palette.muted;
-                font-size: 11px;
-                font-weight: 700;
-                horizontal-alignment: right;
-                vertical-alignment: center;
-                animate color { duration: 100ms; }
-            }
-            see-all-area := TouchArea { clicked => { root.see-all(); } }
+    }
+}
+
+component SearchPagination inherits Rectangle {
+    in property <string> kind;
+    in property <int> total;
+    in property <int> offset;
+    in property <int> page-size;
+
+    height: 58px;
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        ActionBtn {
+            label: "Previous";
+            enabled: root.offset > 0;
+            clicked => { Actions.search-page(root.kind, -1); }
+        }
+        Text {
+            text: "Page \{Math.floor(root.offset * 1.0 / root.page-size) + 1} of \{max(1, Math.ceil(root.total * 1.0 / root.page-size))}";
+            color: Palette.muted;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        ActionBtn {
+            label: "Next";
+            enabled: root.offset + root.page-size < root.total;
+            clicked => { Actions.search-page(root.kind, 1); }
         }
     }
 }
@@ -190,7 +203,7 @@ export component SearchView inherits Rectangle {
             subtitle: "Type in the search field above to find songs, albums, and artists.";
         }
 
-        // All results: sections with section headers and "See all" buttons
+        // All results: section cards and song rows with source-matched pagination
         if State.view-search != "" && State.search-filter == "all" : ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
@@ -202,7 +215,6 @@ export component SearchView inherits Rectangle {
                     SearchSectionHeader {
                         title: "Songs";
                         count: State.search-song-count;
-                        see-all => { Actions.search(State.view-search, "song"); }
                     }
                     TrackTable {
                         scrollable: false;
@@ -210,6 +222,12 @@ export component SearchView inherits Rectangle {
                         first-column: "Title";
                         sort(column) => { Actions.sort-view(column); }
                         empty-text: "No matching songs.";
+                    }
+                    if State.search-song-count > 40 : SearchPagination {
+                        kind: "song";
+                        total: State.search-song-count;
+                        offset: State.search-song-offset;
+                        page-size: 40;
                     }
                 }
 
@@ -219,7 +237,6 @@ export component SearchView inherits Rectangle {
                     SearchSectionHeader {
                         title: "Albums";
                         count: State.search-album-count;
-                        see-all => { Actions.search(State.view-search, "album"); }
                     }
                     GroupGrid {
                         scrollable: false;
@@ -227,6 +244,12 @@ export component SearchView inherits Rectangle {
                         items: State.search-albums;
                         show-load-more: false;
                         empty-text: "No matching albums.";
+                    }
+                    if State.search-album-count > 24 : SearchPagination {
+                        kind: "album";
+                        total: State.search-album-count;
+                        offset: State.search-album-offset;
+                        page-size: 24;
                     }
                 }
 
@@ -236,7 +259,6 @@ export component SearchView inherits Rectangle {
                     SearchSectionHeader {
                         title: "Artists";
                         count: State.search-artist-count;
-                        see-all => { Actions.search(State.view-search, "artist"); }
                     }
                     GroupGrid {
                         scrollable: false;
@@ -246,6 +268,12 @@ export component SearchView inherits Rectangle {
                         show-load-more: false;
                         empty-text: "No matching artists.";
                     }
+                    if State.search-artist-count > 24 : SearchPagination {
+                        kind: "artist";
+                        total: State.search-artist-count;
+                        offset: State.search-artist-offset;
+                        page-size: 24;
+                    }
                 }
 
                 // Playlists grid
@@ -254,9 +282,14 @@ export component SearchView inherits Rectangle {
                     SearchSectionHeader {
                         title: "Playlists";
                         count: State.search-playlist-count;
-                        see-all => { Actions.search(State.view-search, "playlist"); }
                     }
                     PlaylistsList { }
+                    if State.search-playlist-count > 20 : SearchPagination {
+                        kind: "playlist";
+                        total: State.search-playlist-count;
+                        offset: State.search-playlist-offset;
+                        page-size: 20;
+                    }
                 }
 
                 if State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count == 0 : EmptyState {
@@ -267,13 +300,12 @@ export component SearchView inherits Rectangle {
         }
 
         // Filtered views
-        if State.view-search != "" && State.search-filter == "song" : VerticalLayout {
+        if State.view-search != "" && State.search-filter == "song" && State.search-song-count > 0 : VerticalLayout {
             vertical-stretch: 1;
             spacing: 12px;
             SearchSectionHeader {
                 title: "Songs";
                 count: State.search-song-count;
-                show-see-all: false;
             }
             TrackTable {
                 vertical-stretch: 1;
@@ -282,52 +314,86 @@ export component SearchView inherits Rectangle {
                 sort(column) => { Actions.sort-view(column); }
                 empty-text: "No matching songs.";
             }
+            if State.search-song-count > 40 : SearchPagination {
+                kind: "song";
+                total: State.search-song-count;
+                offset: State.search-song-offset;
+                page-size: 40;
+            }
         }
 
-        if State.view-search != "" && State.search-filter == "album" : VerticalLayout {
+        if State.view-search != "" && State.search-filter == "album" && State.search-album-count > 0 : VerticalLayout {
             vertical-stretch: 1;
             spacing: 12px;
             SearchSectionHeader {
                 title: "Albums";
                 count: State.search-album-count;
-                show-see-all: false;
             }
             GroupGrid {
                 vertical-stretch: 1;
                 kind: "album";
                 items: State.search-albums;
+                show-load-more: false;
                 empty-text: "No matching albums.";
+            }
+            if State.search-album-count > 24 : SearchPagination {
+                kind: "album";
+                total: State.search-album-count;
+                offset: State.search-album-offset;
+                page-size: 24;
             }
         }
 
-        if State.view-search != "" && State.search-filter == "artist" : VerticalLayout {
+        if State.view-search != "" && State.search-filter == "artist" && State.search-artist-count > 0 : VerticalLayout {
             vertical-stretch: 1;
             spacing: 12px;
             SearchSectionHeader {
                 title: "Artists";
                 count: State.search-artist-count;
-                show-see-all: false;
             }
             GroupGrid {
                 vertical-stretch: 1;
                 round: true;
                 kind: "artist";
                 items: State.search-artists;
+                show-load-more: false;
                 empty-text: "No matching artists.";
+            }
+            if State.search-artist-count > 24 : SearchPagination {
+                kind: "artist";
+                total: State.search-artist-count;
+                offset: State.search-artist-offset;
+                page-size: 24;
             }
         }
 
-        if State.view-search != "" && State.search-filter == "playlist" : VerticalLayout {
+        if State.view-search != "" && State.search-filter == "playlist" && State.search-playlist-count > 0 : VerticalLayout {
             vertical-stretch: 1;
             spacing: 12px;
             SearchSectionHeader {
                 title: "Playlists";
                 count: State.search-playlist-count;
-                show-see-all: false;
             }
             PlaylistsList {
                 vertical-stretch: 1;
             }
+            if State.search-playlist-count > 20 : SearchPagination {
+                kind: "playlist";
+                total: State.search-playlist-count;
+                offset: State.search-playlist-offset;
+                page-size: 20;
+            }
+        }
+
+        if State.view-search != "" && (
+            (State.search-filter == "song" && State.search-song-count == 0)
+            || (State.search-filter == "album" && State.search-album-count == 0)
+            || (State.search-filter == "artist" && State.search-artist-count == 0)
+            || (State.search-filter == "playlist" && State.search-playlist-count == 0)
+        ) : EmptyState {
+            vertical-stretch: 1;
+            text: "No results for “\{State.view-search}”";
+            subtitle: "Try another song, artist, album, or playlist name.";
         }
     }
 }

@@ -64,7 +64,7 @@ export component TopBar inherits Rectangle {
                     source: @image-url("../../assets/icons/search.svg");
                     width: 16px;
                     height: 16px;
-                    colorize: #a0a79f;
+                    colorize: Palette.muted;
                 }
 
                 Rectangle {
@@ -79,7 +79,7 @@ export component TopBar inherits Rectangle {
                         width: 100%;
                         height: parent.height;
                         text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
-                        color: #717970;
+                        color: Palette.muted-2;
                         font-size: 13px;
                         vertical-alignment: center;
                         overflow: elide;
@@ -91,7 +91,7 @@ export component TopBar inherits Rectangle {
                         width: 100%;
                         height: parent.height;
                         text <=> State.view-search;
-                        color: #f7f8f6;
+                        color: Palette.text;
                         font-size: 13px;
                         single-line: true;
                         vertical-alignment: center;
@@ -101,16 +101,11 @@ export component TopBar inherits Rectangle {
                 }
 
                 if State.view-search == "" : Rectangle {
-                    width: 38px;
+                    width: 31px;
                     height: 18px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 4px;
-                    background: #ffffff0a;
-                    border-width: 1px;
-                    border-color: #ffffff14;
                     Text {
                         text: "Ctrl K";
-                        color: #717970;
+                        color: Palette.muted-2;
                         font-size: 9px;
                         vertical-alignment: center;
                         horizontal-alignment: center;
@@ -131,7 +126,7 @@ export component TopBar inherits Rectangle {
         // Spacer to push right actions to the edge
         Rectangle { horizontal-stretch: 1; }
 
-        if State.scan-active : HorizontalLayout {
+        if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
             Rectangle {
                 width: 32px;
                 height: 32px;

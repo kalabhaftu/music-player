@@ -1,6 +1,10 @@
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static ARTWORK_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub fn artwork_cache_dir() -> PathBuf {
     let base = directories::BaseDirs::new()
@@ -26,26 +30,53 @@ pub fn save_artwork_to_cache(data: &[u8]) -> std::io::Result<PathBuf> {
 
 pub fn save_artwork_to_cache_in(dir: &std::path::Path, data: &[u8]) -> std::io::Result<PathBuf> {
     let hash = hash_artwork(data);
-    let ext = if data.starts_with(b"\x89PNG") { "png" } else { "jpg" };
+    let ext = if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "png"
+    } else if data.starts_with(b"\xff\xd8\xff") {
+        "jpg"
+    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else {
+        "img"
+    };
     let filename = format!("{}.{}", hash, ext);
     let target = dir.join(filename);
 
-    if !target.exists() {
-        fs::write(&target, data)?;
+    if target.exists() {
+        return Ok(target);
     }
 
-    Ok(target)
+    let sequence = ARTWORK_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let temporary = dir.join(format!(".{}.{}.{}.tmp", hash, std::process::id(), sequence));
+    let write_result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(data)?;
+        fs::rename(&temporary, &target)
+    })();
+
+    match write_result {
+        Ok(()) => Ok(target),
+        Err(_error) if target.exists() => {
+            let _ = fs::remove_file(&temporary);
+            Ok(target)
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            Err(error)
+        }
+    }
 }
 
 pub fn resolve_cached_artwork(hash: &str) -> Option<PathBuf> {
     let dir = artwork_cache_dir();
-    let jpg = dir.join(format!("{}.jpg", hash));
-    if jpg.exists() {
-        return Some(jpg);
-    }
-    let png = dir.join(format!("{}.png", hash));
-    if png.exists() {
-        return Some(png);
+    for extension in ["jpg", "jpeg", "png", "webp", "img"] {
+        let path = dir.join(format!("{}.{}", hash, extension));
+        if path.exists() {
+            return Some(path);
+        }
     }
     None
 }

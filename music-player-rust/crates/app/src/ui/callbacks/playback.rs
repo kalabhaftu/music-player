@@ -345,6 +345,15 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     }
 
     // Queue.
+    ui.global::<Actions>().on_queue_drag_data(|index| {
+        slint::DataTransfer::from(crate::ui::mapper::ss(index.to_string()))
+    });
+    ui.global::<Actions>().on_queue_drag_index(|data| {
+        data.plain_text()
+            .ok()
+            .and_then(|value| value.to_string().parse::<i32>().ok())
+            .unwrap_or(-1)
+    });
     {
         let a = app.clone();
         ui.global::<Actions>().on_queue_move(move |index, target| {

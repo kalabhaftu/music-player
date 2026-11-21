@@ -137,7 +137,7 @@ export component HomeCardGrid inherits Rectangle {
 
     GridLayout {
         width: 100%;
-        spacing: 14px;
+        spacing: Palette.card-gap(State.browse-width);
         for item[index] in root.items : HomeLibraryTile {
             item: item;
             col: Math.mod(index, State.card-columns);

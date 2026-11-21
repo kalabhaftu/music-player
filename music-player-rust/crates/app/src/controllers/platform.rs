@@ -90,17 +90,16 @@ impl App {
             return;
         };
         self.artwork_repair_rx = None;
-        if repaired == 0 {
-            return;
+        if repaired > 0 {
+            LocalAppLog::shared().info(
+                "artwork-cache",
+                &format!(
+                    "Re-extracted artwork for {} track{}",
+                    repaired,
+                    if repaired == 1 { "" } else { "s" }
+                ),
+            );
         }
-        LocalAppLog::shared().info(
-            "artwork-cache",
-            &format!(
-                "Re-extracted artwork for {} track{}",
-                repaired,
-                if repaired == 1 { "" } else { "s" }
-            ),
-        );
         if let Some(current) = self.current.clone() {
             if let Ok(Some(track)) = self.store.get_track(&current.path) {
                 if track.artwork_path != current.artwork_path {

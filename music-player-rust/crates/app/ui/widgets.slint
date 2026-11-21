@@ -69,6 +69,10 @@ export global Palette {
         if (index == 9) { return #1b393b; }
         return #403623;
     }
+
+    public pure function card-gap(browse-width: int) -> length {
+        return clamp(browse-width * 0.05px, 10px, 20px);
+    }
 }
 
 export component IcBtn inherits Rectangle {
@@ -671,7 +675,7 @@ export component CardTile inherits Rectangle {
     callback open();
 
     vertical-stretch: 0;
-    border-radius: 8px;
+    border-radius: 18px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -692,8 +696,12 @@ export component CardTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: root.round ? self.width / 2 : 6px;
+            border-radius: root.round ? self.width / 2 : 12px;
             clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
 
             if root.item.has-cover : Image {
@@ -773,7 +781,7 @@ export component HomeCardTile inherits Rectangle {
     callback play();
 
     vertical-stretch: 0;
-    border-radius: 8px;
+    border-radius: 18px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
     area := TouchArea {
@@ -793,8 +801,12 @@ export component HomeCardTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 6px;
+            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 12px;
             clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
             if root.item.has-cover : Image {
                 source: root.item.cover;
@@ -876,7 +888,7 @@ export component GroupGrid inherits Rectangle {
                 spacing: 16px;
                 GridLayout {
                     width: 100%;
-                    spacing: 14px;
+                    spacing: Palette.card-gap(State.browse-width);
                     for item[index] in root.items : CardTile {
                         item: item;
                         round: root.round || root.kind == "artist" || State.view == "Artists";
@@ -907,7 +919,7 @@ export component GroupGrid inherits Rectangle {
         }
         if root.items.length > 0 && !root.scrollable : GridLayout {
             width: 100%;
-            spacing: 14px;
+            spacing: Palette.card-gap(State.browse-width);
             for item[index] in root.items : CardTile {
                 item: item;
                 round: root.round || root.kind == "artist" || State.view == "Artists";
@@ -1078,8 +1090,9 @@ export component SectionTitle inherits Rectangle {
     Text {
         text: root.text;
         color: Palette.text-strong;
-        font-size: 15px;
+        font-size: 19px;
         font-weight: 750;
+        letter-spacing: -0.65px;
         vertical-alignment: center;
     }
 }

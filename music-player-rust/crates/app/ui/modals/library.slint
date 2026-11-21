@@ -14,38 +14,36 @@ export component FoldersModal inherits Rectangle {
                 spacing: 8px;
                 for rootEntry in State.folder-roots : Rectangle {
                     height: 52px;
-                    border-radius: 6px;
-                    background: Palette.panel-2;
+                    background: transparent;
                     HorizontalLayout {
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        spacing: 10px;
-                        Image {
-                            source: @image-url("../../assets/icons/folder.svg");
-                            width: 16px;
-                            height: 16px;
-                            colorize: State.accent;
-                            vertical-alignment: center;
-                        }
+                        padding-left: 0px;
+                        padding-right: 0px;
+                        spacing: 18px;
                         VerticalLayout {
                             alignment: center;
-                            spacing: 2px;
+                            spacing: 3px;
                             horizontal-stretch: 1;
+                            min-width: 0px;
                             Text {
-                                text: rootEntry.path;
+                                text: rootEntry.is-available
+                                    ? "\{rootEntry.name} · Available"
+                                    : "\{rootEntry.name} · Unavailable";
                                 color: Palette.text-strong;
-                                font-size: 11px;
+                                font-size: 10px;
+                                font-weight: 700;
                                 overflow: elide;
                             }
                             Text {
-                                text: rootEntry.is-available ? "Available" : "Unavailable — reconnect this drive.";
-                                color: rootEntry.is-available ? Palette.muted-2 : #ffb04a;
+                                text: rootEntry.is-available
+                                    ? "\{rootEntry.path} · \{rootEntry.track-count} tracks"
+                                    : "\{rootEntry.path} · \{rootEntry.track-count} tracks · Reconnect this drive, then rescan the library.";
+                                color: rootEntry.is-available ? Palette.muted : #ffb04a;
                                 font-size: 9px;
+                                overflow: elide;
                             }
                         }
                         TextBtn {
                             label: "Remove";
-                            danger: true;
                             height: 28px;
                             clicked => { Actions.confirm-remove-root(rootEntry.path); }
                         }

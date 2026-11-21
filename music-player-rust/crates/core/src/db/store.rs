@@ -97,6 +97,11 @@ impl LibraryStore {
         tracks::get_library_stats(&conn)
     }
 
+    pub fn count_tracks_in_folder(&self, folder: &str) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        tracks::count_tracks_in_folder(&conn, folder)
+    }
+
     pub fn get_album_groups(&self) -> Result<Vec<LibraryGroup>> {
         let conn = self.conn.lock().unwrap();
         tracks::get_album_groups(&conn)
@@ -210,9 +215,10 @@ impl LibraryStore {
         search: Option<&str>,
         offset: u32,
         page_size: u32,
+        hide_duplicates: bool,
     ) -> Result<(Vec<LibraryGroup>, i64)> {
         let conn = self.conn.lock().unwrap();
-        tracks::query_group_page(&conn, column, search, offset, page_size)
+        tracks::query_group_page(&conn, column, search, offset, page_size, hide_duplicates)
     }
 
     // --- Session & Queue ---

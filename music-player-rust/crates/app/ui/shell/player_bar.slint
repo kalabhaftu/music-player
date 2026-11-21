@@ -15,15 +15,15 @@ export component PlayerBar inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 15px;
-        padding-right: 15px;
+        padding-left: 14px;
+        padding-right: 14px;
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
 
         VerticalLayout {
             horizontal-stretch: 1;
-            min-width: 200px;
+            min-width: 0px;
             alignment: center;
 
             HorizontalLayout {
@@ -33,8 +33,12 @@ export component PlayerBar inherits Rectangle {
                 Rectangle {
                     width: 56px;
                     height: 56px;
-                    border-radius: 6px;
+                    border-radius: 12px;
                     clip: true;
+                    drop-shadow-offset-x: 0px;
+                    drop-shadow-offset-y: 9px;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000052;
                     background: State.has-track && State.current-has-cover
                         ? Palette.panel-2
                         : (!State.has-track || State.current-id == ""
@@ -77,6 +81,8 @@ export component PlayerBar inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     IcBtn {
+                        width: 30px;
+                        height: 30px;
                         icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
                         icon-size: 16px;
                         tint: State.current-favorite ? State.accent : Palette.icon-muted;
@@ -87,16 +93,18 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
-            horizontal-stretch: 1.35;
-            min-width: 340px;
+            horizontal-stretch: 1.25;
+            min-width: 260px;
             alignment: center;
             spacing: 7px;
 
             HorizontalLayout {
                 alignment: center;
-                spacing: 11px;
+                spacing: 8px;
 
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/shuffle.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -104,6 +112,8 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.toggle-shuffle(); }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/skip-back.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -128,6 +138,8 @@ export component PlayerBar inherits Rectangle {
                     }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/skip-forward.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -238,8 +250,7 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
-            horizontal-stretch: 1;
-            min-width: 220px;
+            min-width: 0px;
             alignment: center;
 
             HorizontalLayout {
@@ -247,6 +258,8 @@ export component PlayerBar inherits Rectangle {
                 alignment: end;
 
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/lyrics.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -254,6 +267,8 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Lyrics", "", "", ""); }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/queue.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -261,6 +276,8 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: @image-url("../../assets/icons/equalizer.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -268,12 +285,16 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Audio", "", "", ""); }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
                     clicked => { Actions.open-immersive-player(); }
                 }
                 IcBtn {
+                    width: 30px;
+                    height: 30px;
                     icon: State.volume == 0 ? @image-url("../../assets/icons/mute.svg") : @image-url("../../assets/icons/volume.svg");
                     icon-size: 16px;
                     tint: State.volume == 0 ? State.accent : Palette.icon-muted;
@@ -296,6 +317,14 @@ export component PlayerBar inherits Rectangle {
                         value: State.volume;
                         scroll-step: 4.0;
                         changed(val) => { Actions.volume-changed(round(val)); }
+                        scrolled(event) => {
+                            let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                            if (delta != 0) {
+                                Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                return accept;
+                            }
+                            reject
+                        }
                     }
                 }
             }

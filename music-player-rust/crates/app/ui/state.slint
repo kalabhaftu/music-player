@@ -107,6 +107,9 @@ export global State {
     in property <[QueueItem]> panel-queue-items;
     in property <int> queue-count: 0;
     in property <int> queue-current-index: -1;
+    in-out property <int> queue-drag-index: -1;
+    in-out property <int> queue-drop-index: -1;
+    in-out property <bool> queue-drop-after: false;
     in property <bool> right-panel-open: true;
     in property <string> right-panel-tab: "queue";
     in property <string> info-album: "";
@@ -145,6 +148,11 @@ export global State {
 
     // ---- Search ----
     in property <[string]> recent-searches;
+    in-out property <string> search-results-query: "";
+    in-out property <int> search-song-offset: 0;
+    in-out property <int> search-album-offset: 0;
+    in-out property <int> search-artist-offset: 0;
+    in-out property <int> search-playlist-offset: 0;
     in property <int> search-song-count: 0;
     in property <int> search-album-count: 0;
     in property <int> search-artist-count: 0;
@@ -242,9 +250,13 @@ export global State {
     out property <int> content-width: State.window-width
         - (State.navigation-collapsed ? 0 : State.navigation-width)
         - (State.right-panel-open ? State.right-panel-width : 0);
-    out property <int> card-columns: State.content-width < 500 ? 2
-        : (State.content-width < 720 ? 3
-        : (State.content-width < 920 ? 4 : 5));
+    out property <int> card-columns: State.window-width <= 540 ? 2
+        : (State.window-width <= 1180 ? 4
+        : max(1, Math.floor((max(0, State.content-width - 48) + clamp(State.browse-width * 0.05, 10, 20))
+            / (130 + clamp(State.browse-width * 0.05, 10, 20)))));
+    out property <int> folder-columns: State.window-width <= 700 ? 1
+        : (State.window-width <= 900 ? 2
+        : max(1, Math.floor((max(0, State.content-width - (State.window-width <= 1180 ? 42 : 48)) + 12) / 322)));
     in property <[DetailRowItem]> about-rows;
 
     // ---- Context menu ----
@@ -299,6 +311,7 @@ export global Actions {
     callback go-forward();
     callback begin-search();
     callback search(string, string); // query, filter
+    callback search-page(string, int); // result kind, page delta
     callback save-recent-search(string);
     callback clear-recent-searches();
     callback remove-recent-search(string);
@@ -332,6 +345,8 @@ export global Actions {
 
     // ---- Queue ----
     callback queue-move(int, int);
+    pure callback queue-drag-data(int) -> data-transfer;
+    pure callback queue-drag-index(data-transfer) -> int;
     callback queue-remove(int);
     callback load-more-queue();
     callback clear-queue();

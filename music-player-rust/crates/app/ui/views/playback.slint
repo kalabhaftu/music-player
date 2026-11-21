@@ -9,14 +9,15 @@ component QueueRow inherits Rectangle {
     in property <int> index: 0;
 
     callback play();
-    callback move-up();
-    callback move-down();
+    callback move-to(int, int);
     callback remove();
 
     height: 52px;
     border-radius: 6px;
     background: row-area.has-hover ? Palette.panel-2 : (root.item.is-current ? Palette.border-soft : transparent);
     animate background { duration: 100ms; }
+    opacity: State.queue-drag-index == root.item.queue-index ? 0.42 : 1;
+    animate opacity { duration: 100ms; }
 
     row-area := TouchArea {
         clicked => { root.play(); }
@@ -83,22 +84,38 @@ component QueueRow inherits Rectangle {
         }
 
         VerticalLayout {
-            width: 76px;
+            width: 120px;
             alignment: center;
             HorizontalLayout {
                 alignment: center;
                 spacing: 0px;
                 if !root.item.is-current : IcBtn {
-                    icon: @image-url("../../assets/icons/chevron-left.svg");
+                    icon: @image-url("../../assets/icons/play.svg");
                     icon-size: 12px;
                     tint: Palette.muted-2;
-                    clicked => { root.move-up(); }
+                    clicked => { root.play(); }
                 }
-                if !root.item.is-current : IcBtn {
-                    icon: @image-url("../../assets/icons/chevron-right.svg");
-                    icon-size: 12px;
-                    tint: Palette.muted-2;
-                    clicked => { root.move-down(); }
+                if !root.item.is-current : Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    drag-handle := DragArea {
+                        width: parent.width;
+                        height: parent.height;
+                        data: Actions.queue-drag-data(root.item.queue-index);
+                        allow-move: true;
+                        Text {
+                            text: "⠿";
+                            color: Palette.muted-2;
+                            font-size: 17px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        drag-finished(action) => {
+                            State.queue-drag-index = -1;
+                            State.queue-drop-index = -1;
+                            State.queue-drop-after = false;
+                        }
+                    }
                 }
                 if !root.item.is-current : IcBtn {
                     icon: @image-url("../../assets/icons/close.svg");
@@ -109,6 +126,47 @@ component QueueRow inherits Rectangle {
                 }
             }
         }
+    }
+
+    drop-area := DropArea {
+        width: parent.width;
+        height: parent.height;
+        can-drop(event) => {
+            let from-index = Actions.queue-drag-index(event.data);
+            let first-upcoming = State.queue-current-index < 0 ? 0 : State.queue-current-index + 1;
+            let last-visible = State.queue-items[State.queue-items.length - 1].queue-index;
+            let target-index = root.item.queue-index;
+            let after = event.position.y >= root.height / 2;
+            let target-is-current-before = target-index == State.queue-current-index && !after;
+            let valid = from-index >= first-upcoming && from-index <= last-visible
+                && (target-index >= first-upcoming || (target-index == State.queue-current-index && after))
+                && target-index <= last-visible && !target-is-current-before;
+
+            State.queue-drag-index = valid ? from-index : -1;
+            State.queue-drop-index = valid ? target-index : -1;
+            State.queue-drop-after = valid && after;
+            valid ? DragAction.move : DragAction.none
+        }
+        dropped(event) => {
+            let from-index = Actions.queue-drag-index(event.data);
+            let after = event.position.y >= root.height / 2;
+            let boundary = root.item.queue-index + (after ? 1 : 0);
+            let to-index = boundary - (from-index < boundary ? 1 : 0);
+            if (from-index >= 0 && to-index != from-index) {
+                root.move-to(from-index, to-index);
+            }
+            State.queue-drag-index = -1;
+            State.queue-drop-index = -1;
+            State.queue-drop-after = false;
+            return event.proposed-action;
+        }
+    }
+
+    if drop-area.has-drag && State.queue-drop-index == root.item.queue-index : Rectangle {
+        y: State.queue-drop-after ? parent.height - 2px : 0px;
+        width: parent.width;
+        height: 2px;
+        background: State.accent;
     }
 }
 
@@ -149,8 +207,7 @@ export component QueueView inherits Rectangle {
                 item: row;
                 index: index;
                 play => { Actions.play-queue-entry(row.queue-index); }
-                move-up => { Actions.queue-move(row.queue-index, row.queue-index - 1); }
-                move-down => { Actions.queue-move(row.queue-index, row.queue-index + 1); }
+                move-to(from, to) => { Actions.queue-move(from, to); }
                 remove => { Actions.queue-remove(row.queue-index); }
             }
         }

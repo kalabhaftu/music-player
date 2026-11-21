@@ -47,6 +47,50 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     }
     {
         let a = app.clone();
+        ui.global::<Actions>()
+            .on_search_page(move |kind, direction| {
+                let mut app = a.borrow_mut();
+                let state = app.ui.global::<State>();
+                let (offset, total, page_size) = match kind.as_str() {
+                    "song" => (
+                        state.get_search_song_offset(),
+                        state.get_search_song_count(),
+                        40,
+                    ),
+                    "album" => (
+                        state.get_search_album_offset(),
+                        state.get_search_album_count(),
+                        24,
+                    ),
+                    "artist" => (
+                        state.get_search_artist_offset(),
+                        state.get_search_artist_count(),
+                        24,
+                    ),
+                    "playlist" => (
+                        state.get_search_playlist_offset(),
+                        state.get_search_playlist_count(),
+                        20,
+                    ),
+                    _ => return,
+                };
+                let pages = (total.max(0) + page_size - 1) / page_size;
+                let current_page = offset.max(0) / page_size;
+                let next_page = (current_page + direction).clamp(0, pages.saturating_sub(1));
+                let next_offset = next_page * page_size;
+                match kind.as_str() {
+                    "song" => state.set_search_song_offset(next_offset),
+                    "album" => state.set_search_album_offset(next_offset),
+                    "artist" => state.set_search_artist_offset(next_offset),
+                    "playlist" => state.set_search_playlist_offset(next_offset),
+                    _ => {}
+                }
+                drop(state);
+                app.refresh_view();
+            });
+    }
+    {
+        let a = app.clone();
         ui.global::<Actions>().on_search_input(move |query| {
             let mut app = a.borrow_mut();
             app.ui.global::<State>().set_view_search(ss(&query));

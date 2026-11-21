@@ -97,7 +97,7 @@ component FolderTile inherits Rectangle {
     in property <GroupItem> item;
 
     vertical-stretch: 0;
-    border-radius: 8px;
+    border-radius: 18px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -113,8 +113,12 @@ component FolderTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 6px;
+            border-radius: 12px;
             clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
             background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
 
             Image {
@@ -250,7 +254,7 @@ export component FoldersView inherits Rectangle {
                 vertical-stretch: 1;
                 GridLayout {
                     width: 100%;
-                    spacing: 14px;
+                    spacing: Palette.card-gap(State.browse-width);
                     for item[index] in State.groups : FolderTile {
                         item: item;
                         col: Math.mod(index, State.card-columns);
@@ -263,46 +267,82 @@ export component FoldersView inherits Rectangle {
                 clicked => { Actions.load-more-groups(); }
             }
 
-            SectionTitle { text: "Library roots"; }
+            HorizontalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Library roots"; horizontal-stretch: 1; }
+                Rectangle {
+                    width: 48px;
+                    height: 26px;
+                    Text {
+                        text: "Manage";
+                        color: manage-area.has-hover ? Palette.text : Palette.muted;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                    manage-area := TouchArea { clicked => { Actions.open-modal("folders"); } }
+                }
+            }
             if State.folder-roots.length == 0 : EmptyState { text: "No music folders added yet."; }
-            for rootEntry in State.folder-roots : Rectangle {
-                height: 64px;
-                border-radius: 8px;
-                background: Palette.raised;
-                HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 14px;
-                    spacing: 12px;
-                    Rectangle {
-                        width: 36px;
-                        height: 36px;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: Palette.border;
-                        background: Palette.hover;
-                        Image {
-                            source: @image-url("../../assets/icons/folder.svg");
-                            width: 18px;
-                            height: 18px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            colorize: State.accent;
+            if State.folder-roots.length > 0 : GridLayout {
+                width: 100%;
+                spacing: 12px;
+                for rootEntry[index] in State.folder-roots : Rectangle {
+                    width: 100%;
+                    height: rootEntry.is-available ? 64px : 80px;
+                    col: Math.mod(index, State.folder-columns);
+                    row: index / State.folder-columns;
+                    border-radius: 8px;
+                    background: Palette.raised;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        spacing: 12px;
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            background: Palette.hover;
+                            Image {
+                                source: rootEntry.icon == "download" ? @image-url("../../assets/icons/download.svg")
+                                    : rootEntry.icon == "music" ? @image-url("../../assets/icons/music.svg")
+                                    : rootEntry.icon == "disc" ? @image-url("../../assets/icons/disc.svg")
+                                    : @image-url("../../assets/icons/folder.svg");
+                                width: 18px;
+                                height: 18px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                colorize: State.accent;
+                            }
                         }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 3px;
-                        horizontal-stretch: 1;
-                        Text { text: rootEntry.path; color: Palette.text-strong; font-size: 12px; font-weight: 650; overflow: elide; }
-                        Text {
-                            text: rootEntry.is-available ? "\{rootEntry.path} · Available" : "Reconnect this drive, then rescan the library.";
-                            color: rootEntry.is-available ? Palette.muted : #ff5b74;
-                            font-size: 10px;
-                            overflow: elide;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            Text { text: rootEntry.name; color: Palette.text-strong; font-size: 12px; font-weight: 650; overflow: elide; }
+                            Text {
+                                text: rootEntry.is-available
+                                    ? "\{rootEntry.path} · \{rootEntry.track-count} tracks · Available"
+                                    : "\{rootEntry.path} · \{rootEntry.track-count} tracks · Unavailable";
+                                color: rootEntry.is-available ? Palette.muted : #ff5b74;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                            if !rootEntry.is-available : Text {
+                                text: "Reconnect this drive, then rescan the library.";
+                                color: #ff5b74;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
                         }
+                        ActionBtn { label: "Remove"; clicked => { Actions.remove-root(rootEntry.path); } }
                     }
-                    ActionBtn { label: "Rescan"; clicked => { Actions.rescan-root(rootEntry.path); } }
-                    ActionBtn { label: "Remove"; danger: true; clicked => { Actions.remove-root(rootEntry.path); } }
                 }
             }
         }
