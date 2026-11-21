@@ -51,24 +51,39 @@ pub fn resolve_cached_artwork(hash: &str) -> Option<PathBuf> {
 }
 
 /// Windows path keys are case-insensitive (the C# prune query uses
-/// `COLLATE NOCASE`); normalizing both sides prevents a case-only mismatch
+/// `COLLATE NOCASE`); normalizing slashes and casing prevents mismatches
 /// from deleting artwork that is still referenced.
 fn path_key(path: &str) -> String {
+    let s = path.replace('/', "\\");
     if cfg!(windows) {
-        path.to_lowercase()
+        s.to_lowercase()
     } else {
-        path.to_string()
+        s
     }
 }
 
 /// Deletes artwork cache files that no track references any more
 /// (mirrors `LibraryStore.PruneUnreferencedArtwork`).
 pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db::LibraryStore) -> usize {
-    let referenced: std::collections::HashSet<String> = store
-        .artwork_refs()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|path| path_key(&path))
+    let refs = store.artwork_refs().unwrap_or_default();
+    let referenced: std::collections::HashSet<String> = refs
+        .iter()
+        .map(|path| path_key(path))
+        .collect();
+    let referenced_names: std::collections::HashSet<String> = refs
+        .iter()
+        .filter_map(|path| {
+            std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| {
+                    if cfg!(windows) {
+                        n.to_lowercase()
+                    } else {
+                        n.to_string()
+                    }
+                })
+        })
         .collect();
     let mut removed = 0;
     if let Ok(entries) = fs::read_dir(cache_dir) {
@@ -81,7 +96,15 @@ pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db
                 continue;
             }
             let full = path.to_string_lossy().into_owned();
-            if !referenced.contains(&path_key(&full)) && fs::remove_file(&path).is_ok() {
+            let name_key = if cfg!(windows) {
+                name.to_lowercase()
+            } else {
+                name.to_string()
+            };
+            if !referenced.contains(&path_key(&full))
+                && !referenced_names.contains(&name_key)
+                && fs::remove_file(&path).is_ok()
+            {
                 removed += 1;
             }
         }

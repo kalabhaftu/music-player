@@ -131,7 +131,7 @@ export component TopBar inherits Rectangle {
         // Spacer to push right actions to the edge
         Rectangle { horizontal-stretch: 1; }
 
-        if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
+        if State.scan-active : HorizontalLayout {
             Rectangle {
                 width: 32px;
                 height: 32px;

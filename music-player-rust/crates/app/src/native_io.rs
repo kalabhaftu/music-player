@@ -290,89 +290,24 @@ pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     Some(image)
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug)]
-pub struct ArtworkPalette {
-    pub background: (u8, u8, u8),
-    pub sidebar: (u8, u8, u8),
-    pub main: (u8, u8, u8),
-    pub accent: (u8, u8, u8),
+pub use music_player_core::ArtworkPalette;
+
+/// Extracts an artwork color palette for the given image path using the core palette extractor.
+pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
+    if path.is_file() {
+        Some(music_player_core::extract_palette(path))
+    } else {
+        None
+    }
 }
 
-/// 1:1 port of C# `ArtworkColors.FromRgba`.
-/// Groups cover hues across brightness levels, ignoring transparent pixels and tiny color specks.
-#[allow(dead_code)]
-pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
-    let bytes = std::fs::read(path).ok()?;
-    let dyn_img = image::load_from_memory(&bytes).ok()?;
-    let small = dyn_img.resize_exact(32, 32, image::imageops::FilterType::Triangle).to_rgba8();
-    let pixels = small.as_raw();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let mut bins = [(0.0f64, 0.0f64, 0.0f64, 0.0f64); 19];
-    let mut visible = 0.0f64;
-    for chunk in pixels.chunks_exact(4) {
-        let alpha = chunk[3] as f64 / 255.0;
-        if alpha < 0.1 { continue; }
-        let r = chunk[0] as f64 / 255.0;
-        let g = chunk[1] as f64 / 255.0;
-        let b = chunk[2] as f64 / 255.0;
-        let max = r.max(g).max(b);
-        let min = r.min(g).min(b);
-        let chroma = max - min;
-        let saturation = if max == 0.0 { 0.0 } else { chroma / max };
-        let hue = if chroma == 0.0 {
-            0.0
-        } else if max == r {
-            ((g - b) / chroma + 6.0) % 6.0
-        } else if max == g {
-            (b - r) / chroma + 2.0
-        } else {
-            (r - g) / chroma + 4.0
-        };
-        let bin_index = if saturation >= 0.18 && max >= 0.08 {
-            ((hue * 3.0).floor() as usize) % 18
-        } else {
-            18
-        };
-        bins[bin_index].0 += alpha;
-        bins[bin_index].1 += chunk[0] as f64 * alpha;
-        bins[bin_index].2 += chunk[1] as f64 * alpha;
-        bins[bin_index].3 += chunk[2] as f64 * alpha;
-        visible += alpha;
+    #[test]
+    fn test_extract_artwork_palette_nonexistent() {
+        assert!(extract_artwork_palette(Path::new("nonexistent_test_art.jpg")).is_none());
     }
-    let mut selected = 18;
-    for i in 0..18 {
-        if bins[i].0 >= visible * 0.05 && (selected == 18 || bins[i].0 > bins[selected].0) {
-            selected = i;
-        }
-    }
-    let chosen = bins[selected];
-    let clamp_byte = |v: f64| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
-    let mut seed = if chosen.0 > 0.0 {
-        (clamp_byte(chosen.1 / chosen.0), clamp_byte(chosen.2 / chosen.0), clamp_byte(chosen.3 / chosen.0))
-    } else {
-        (128, 128, 128)
-    };
-    if selected == 18 {
-        let gray = clamp_byte(0.2126 * seed.0 as f64 + 0.7152 * seed.1 as f64 + 0.0722 * seed.2 as f64);
-        seed = (gray, gray, gray);
-    }
-    let maximum = 1.0f64.max((seed.0 as f64).max(seed.1 as f64).max(seed.2 as f64));
-    let tone = |shade: f64| -> (u8, u8, u8) {
-        (
-            clamp_byte(10.0 + seed.0 as f64 / maximum * shade),
-            clamp_byte(10.0 + seed.1 as f64 / maximum * shade),
-            clamp_byte(10.0 + seed.2 as f64 / maximum * shade),
-        )
-    };
-    let background = tone(38.0);
-    let sidebar = tone(34.0);
-    let main = tone(42.0);
-    Some(ArtworkPalette {
-        background,
-        sidebar,
-        main,
-        accent: seed,
-    })
 }
 

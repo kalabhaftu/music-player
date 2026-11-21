@@ -25,8 +25,7 @@ impl App {
             self.current
                 .as_ref()
                 .and_then(|track| track.artwork_path.as_deref())
-                .filter(|path| Path::new(path).is_file())
-                .map(|path| music_player_core::extract_palette(Path::new(path)))
+                .and_then(|path| crate::native_io::extract_artwork_palette(Path::new(path)))
         } else {
             None
         };

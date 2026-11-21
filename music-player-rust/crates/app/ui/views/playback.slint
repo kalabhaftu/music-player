@@ -140,7 +140,6 @@ export component QueueView inherits Rectangle {
             }
             if State.queue-count > 0 : ActionBtn {
                 label: "Clear upcoming";
-                danger: true;
                 clicked => { Actions.clear-queue(); }
             }
         }
