@@ -1,0 +1,45 @@
+import { Palette } from "../widgets.slint";
+import { LineEdit } from "std-widgets.slint";
+
+export component ModalField inherits Rectangle {
+    in property <string> label;
+    in property <string> text;
+    in property <length> field-width: 0px;
+    callback changed(string);
+    height: 52px;
+    width: root.field-width;
+
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: Palette.muted-2;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        LineEdit {
+            height: 30px;
+            text: root.text;
+            edited(value) => { root.changed(value); }
+        }
+    }
+}
+
+export component ModalFooter inherits Rectangle {
+    in property <string> note: "";
+    height: 52px;
+
+    // The note fills the row; action buttons are added by the using modal.
+    Text {
+        text: root.note;
+        color: Palette.muted-2;
+        font-size: 9px;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+        x: 18px;
+        width: parent.width - 36px;
+        y: 0px;
+        height: parent.height;
+    }
+}

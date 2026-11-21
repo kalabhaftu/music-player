@@ -1,0 +1,65 @@
+import { State, Actions } from "../state.slint";
+import { Palette, TextBtn } from "../widgets.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+export component AddToPlaylistModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                for name in State.playlist-names : TouchArea {
+                    height: 34px;
+                    clicked => { Actions.add-track-to-playlist(State.add-to-playlist-id, name); }
+                    Text {
+                        text: name;
+                        color: Palette.text-strong;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "New playlist…";
+                clicked => { Actions.open-modal("new-playlist"); }
+            }
+        }
+    }
+}
+
+export component NameModal inherits Rectangle {
+    in property <string> placeholder: "";
+    in property <string> action: "OK";
+    callback submit(string);
+
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        LineEdit {
+            height: 34px;
+            placeholder-text: root.placeholder;
+            text <=> State.modal-text;
+            accepted(text) => { root.submit(text); }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: root.action;
+                primary: true;
+                clicked => { root.submit(State.modal-text); }
+            }
+        }
+    }
+}

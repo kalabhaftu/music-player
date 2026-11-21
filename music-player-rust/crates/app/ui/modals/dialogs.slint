@@ -1,0 +1,153 @@
+import { State, Actions } from "../state.slint";
+import { Palette, TextBtn, Chip } from "../widgets.slint";
+import { ComboBox, CheckBox } from "std-widgets.slint";
+
+export component ConfirmModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: State.confirm-message;
+            color: Palette.text-strong;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        if State.confirm-has-choices : ComboBox {
+            width: 100%;
+            model: State.confirm-choices;
+            current-value: State.confirm-choice;
+            selected(value) => { State.confirm-choice = value; }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "Confirm";
+                danger: State.confirm-danger;
+                clicked => { Actions.confirm-action(); }
+            }
+        }
+    }
+}
+
+export component RatingModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Chip {
+                label: "Unrated";
+                active: State.rate-value == 0;
+                clicked => { Actions.rate-track(0); }
+            }
+            Chip {
+                label: "1 ★";
+                active: State.rate-value >= 1;
+                clicked => { Actions.rate-track(1); }
+            }
+            Chip {
+                label: "2 ★";
+                active: State.rate-value >= 2;
+                clicked => { Actions.rate-track(2); }
+            }
+            Chip {
+                label: "3 ★";
+                active: State.rate-value >= 3;
+                clicked => { Actions.rate-track(3); }
+            }
+            Chip {
+                label: "4 ★";
+                active: State.rate-value >= 4;
+                clicked => { Actions.rate-track(4); }
+            }
+            Chip {
+                label: "5 ★";
+                active: State.rate-value >= 5;
+                clicked => { Actions.rate-track(5); }
+            }
+        }
+    }
+}
+
+export component ResetModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        CheckBox {
+            text: "Reset view and appearance settings";
+            checked <=> State.reset-appearance;
+        }
+        CheckBox {
+            text: "Reset panels and navigation settings";
+            checked <=> State.reset-playback;
+        }
+        CheckBox {
+            text: "Reset library display settings";
+            checked <=> State.reset-library;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Reset";
+                danger: true;
+                clicked => {
+                    Actions.reset-settings(
+                        (State.reset-appearance ? "appearance," : "")
+                        + (State.reset-playback ? "layout," : "")
+                        + (State.reset-library ? "libraryDisplay" : "")
+                    );
+                }
+            }
+        }
+    }
+}
+
+export component UpdateModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: "Music Player \{State.update-tag} is available";
+            color: Palette.text;
+            font-size: 14px;
+            font-weight: 750;
+        }
+        Text {
+            text: "You can view the release notes on GitHub. The download always opens in your browser.";
+            color: Palette.muted;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            TextBtn {
+                label: "Later";
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "View release";
+                primary: true;
+                clicked => { Actions.open-release(); }
+            }
+        }
+    }
+}

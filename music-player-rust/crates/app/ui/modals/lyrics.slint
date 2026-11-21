@@ -1,0 +1,159 @@
+import { State, Actions } from "../state.slint";
+import { Palette, TextBtn } from "../widgets.slint";
+import { Switch, TextEdit, ScrollView } from "std-widgets.slint";
+import { ModalField } from "common.slint";
+
+export component FindLyricsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ModalField { label: "Title"; text: State.find-lyrics-title; changed(v) => { State.find-lyrics-title = v; } }
+        ModalField { label: "Artist"; text: State.find-lyrics-artist; changed(v) => { State.find-lyrics-artist = v; } }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Search";
+                primary: true;
+                clicked => { Actions.find-lyrics(); }
+            }
+            if State.lyrics-searching : Text {
+                text: "Searching LRCLIB…";
+                color: Palette.muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        if State.lyrics-search-status != "" : Text {
+            text: State.lyrics-search-status;
+            color: State.lyrics-searching ? Palette.muted : #ffb04a;
+            font-size: 11px;
+            overflow: elide;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                for result in State.lyrics-results : Rectangle {
+                    height: 54px;
+                    border-radius: 6px;
+                    background: result-area.has-hover ? Palette.panel-2 : transparent;
+                    result-area := TouchArea {
+                        clicked => { Actions.use-lyric-result(result.timed ? result.synced-id : result.plain-id, result.timed); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: result.title;
+                                color: Palette.text-strong;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: result.artist;
+                                color: Palette.muted;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                        }
+                        Rectangle {
+                            width: 70px;
+                            height: 22px;
+                            border-radius: 11px;
+                            background: result.timed ? Palette.border : Palette.border-soft;
+                            Text {
+                                text: result.badge;
+                                color: result.timed ? State.accent : Palette.muted;
+                                font-size: 9px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component EditLyricsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        Text {
+            text: State.edit-lyrics-source-label;
+            color: Palette.muted-2;
+            font-size: 10px;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Stamp position";
+                clicked => { Actions.stamp-lyric-position(); }
+            }
+            ModalField {
+                label: "Offset (ms)";
+                text: State.edit-lyrics-offset;
+                changed(v) => { State.edit-lyrics-offset = v; }
+                field-width: 120px;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Switch {
+                    checked: State.edit-lyrics-sidecar;
+                    toggled => { State.edit-lyrics-sidecar = self.checked; }
+                }
+                Text {
+                    text: "Sidecar file";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 240px;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Palette.border;
+            background: Palette.panel-2;
+            TextEdit {
+                width: parent.width;
+                height: parent.height;
+                text <=> State.edit-lyrics-text;
+                font-size: 12px;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            TextBtn {
+                label: "Remove";
+                danger: true;
+                clicked => { Actions.remove-lyrics(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            TextBtn {
+                label: "Save";
+                primary: true;
+                clicked => { Actions.save-lyrics-modal(); }
+            }
+        }
+    }
+}

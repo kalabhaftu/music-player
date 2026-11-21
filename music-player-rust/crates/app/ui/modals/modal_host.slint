@@ -1,0 +1,76 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn } from "../widgets.slint";
+import { TagsModal, DetailsModal } from "tags.slint";
+import { FindLyricsModal, EditLyricsModal } from "lyrics.slint";
+import { FoldersModal, ExclusionsModal, LocationsModal } from "library.slint";
+import { AddToPlaylistModal, NameModal } from "playlists.slint";
+import { ConfirmModal, RatingModal, ResetModal, UpdateModal } from "dialogs.slint";
+
+export component ModalHost inherits Rectangle {
+    background: #00000094;
+
+    // Body per modal kind, sized by the header.
+    in property <length> modal-width: 460px;
+    in property <length> modal-height: 420px;
+
+    TouchArea {
+        clicked => { Actions.close-modal(); }
+    }
+
+    Rectangle {
+        width: root.modal-width;
+        height: root.modal-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 13px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        clip: true;
+
+        VerticalLayout {
+            // Header
+            HorizontalLayout {
+                height: 48px;
+                padding-left: 18px;
+                padding-right: 12px;
+                Text {
+                    text: State.modal-title;
+                    color: Palette.text;
+                    font-size: 14px;
+                    font-weight: 750;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 13px;
+                    tint: Palette.muted-2;
+                    clicked => { Actions.close-modal(); }
+                }
+            }
+            Rectangle { height: 1px; background: Palette.border; }
+
+            // Body
+            Rectangle {
+                vertical-stretch: 1;
+                if State.modal == "tags" : TagsModal { }
+                if State.modal == "details" : DetailsModal { }
+                if State.modal == "find-lyrics" : FindLyricsModal { }
+                if State.modal == "edit-lyrics" : EditLyricsModal { }
+                if State.modal == "folders" : FoldersModal { }
+                if State.modal == "exclusions" : ExclusionsModal { }
+                if State.modal == "add-to-playlist" : AddToPlaylistModal { }
+                if State.modal == "new-playlist" : NameModal { placeholder: "Playlist name"; action: "Create"; submit(text) => { Actions.create-playlist(text); } }
+                if State.modal == "rename-playlist" : NameModal { placeholder: "New name"; action: "Rename"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
+                if State.modal == "save-preset" : NameModal { placeholder: "Preset name"; action: "Save"; submit(text) => { Actions.save-eq-preset(text); } }
+                if State.modal == "confirm" : ConfirmModal { }
+                if State.modal == "rating" : RatingModal { }
+                if State.modal == "duplicate-locations" : LocationsModal { }
+                if State.modal == "reset" : ResetModal { }
+                if State.modal == "update" : UpdateModal { }
+            }
+        }
+    }
+}

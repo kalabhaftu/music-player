@@ -1,0 +1,205 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, TextBtn, SectionTitle } from "../widgets.slint";
+import { LineEdit, ComboBox, Switch, ScrollView } from "std-widgets.slint";
+
+export component FoldersModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                for rootEntry in State.folder-roots : Rectangle {
+                    height: 52px;
+                    border-radius: 6px;
+                    background: Palette.panel-2;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        Image {
+                            source: @image-url("../../assets/icons/folder.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: State.accent;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: rootEntry.path;
+                                color: Palette.text-strong;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: rootEntry.is-available ? "Available" : "Unavailable — reconnect this drive.";
+                                color: rootEntry.is-available ? Palette.muted-2 : #ffb04a;
+                                font-size: 9px;
+                            }
+                        }
+                        TextBtn {
+                            label: "Remove";
+                            danger: true;
+                            height: 28px;
+                            clicked => { Actions.confirm-remove-root(rootEntry.path); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Add folder…";
+                clicked => { Actions.pick-library-root(); }
+            }
+            TextBtn {
+                label: "Rescan library";
+                primary: true;
+                clicked => { Actions.scan-library(); }
+            }
+        }
+    }
+}
+
+export component ExclusionsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 12px;
+
+        Text {
+            text: "Audio files are indexed for playback. Video files are opened in their own window when supported.";
+            color: Palette.muted;
+            font-size: 10px;
+            wrap: word-wrap;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 4px;
+                for ext in State.exclusion-extensions : Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: ext.extension;
+                            color: Palette.text-strong;
+                            font-size: 11px;
+                            width: 70px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: ext.enabled ? "· included in scans" : "· excluded from scans";
+                            color: ext.enabled ? State.accent : Palette.muted-2;
+                            font-size: 10px;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+                        Switch {
+                            checked: ext.enabled;
+                            toggled => { Actions.set-extension-enabled(ext.extension, self.checked); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            LineEdit {
+                width: 130px;
+                height: 30px;
+                placeholder-text: ".mkv";
+                text <=> State.exclusion-new-extension;
+            }
+            ComboBox {
+                width: 110px;
+                model: ["Audio", "Video"];
+                current-value: State.exclusion-new-kind;
+                selected(value) => { State.exclusion-new-kind = value; }
+            }
+            TextBtn {
+                label: "Add and enable";
+                clicked => { Actions.add-extension(); }
+            }
+        }
+
+        SectionTitle { text: "Ignored folders"; }
+        ScrollView {
+            height: 110px;
+            VerticalLayout {
+                spacing: 6px;
+                for dir in State.ignored-directories : HorizontalLayout {
+                    spacing: 10px;
+                    height: 28px;
+                    Text {
+                        text: dir;
+                        color: Palette.muted;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/close.svg");
+                        icon-size: 11px;
+                        width: 24px;
+                        height: 24px;
+                        tint: Palette.muted-2;
+                        hover-tint: #ff5b74;
+                        clicked => { Actions.remove-ignored-directory(dir); }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            TextBtn {
+                label: "Add ignored folder…";
+                clicked => { Actions.pick-ignored-directory(); }
+            }
+        }
+    }
+}
+
+export component LocationsModal inherits Rectangle {
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 10px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                for location in State.duplicate-locations : HorizontalLayout {
+                    spacing: 10px;
+                    height: 32px;
+                    Text {
+                        text: location;
+                        color: Palette.text-subtle;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    TextBtn {
+                        label: "Show in folder";
+                        height: 26px;
+                        clicked => { Actions.open-file-location-at(location); }
+                    }
+                }
+            }
+        }
+    }
+}
