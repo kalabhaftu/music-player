@@ -95,13 +95,14 @@ impl NavContext {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) enum ConfirmAction {
     RemoveRoot(String),
     DeletePlaylist(String),
     RestoreBackup(String),
+    #[allow(dead_code)] // Preserved for C# confirmation modal parity; current UI triggers action directly
     ClearQueue,
     RemoveLyrics,
+    #[allow(dead_code)] // Preserved for C# confirmation modal parity; current UI triggers action directly
     Reset(String),
 }
 

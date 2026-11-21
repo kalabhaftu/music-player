@@ -230,7 +230,6 @@ pub fn is_release_page(value: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[allow(dead_code)]
 pub fn is_repository_info_page(value: &str) -> bool {
     let Some((_, path)) = split_https_url(value) else {
         return false;
