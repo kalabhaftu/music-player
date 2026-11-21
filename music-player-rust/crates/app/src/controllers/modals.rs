@@ -111,7 +111,7 @@ impl App {
             ("Edit tags", false, false, true),
             ("Restore previous tags", false, false, true),
             ("Track details", false, false, true),
-            ("Show file in Explorer", false, false, true),
+            ("Show in File Explorer", false, false, true),
         ];
 
         let items: Vec<ContextMenuItem> = menu_defs

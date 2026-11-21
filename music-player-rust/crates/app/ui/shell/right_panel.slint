@@ -1,7 +1,7 @@
 import { State, Actions } from "../state.slint";
 import { QueueItem } from "../models.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Palette, IcBtn, TextBtn } from "../widgets.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn } from "../widgets.slint";
 
 // ---- Right panel bits -----------------------------------------------------------
 component InfoRow inherits Rectangle {
@@ -352,6 +352,31 @@ export component RightPanel inherits Rectangle {
                     InfoRow { label: "Status"; value: State.info-status; }
                     InfoRow { label: "Audio quality"; value: State.info-quality; }
                     InfoRow { label: "Location"; value: State.info-location; }
+                    VerticalLayout {
+                        padding-top: 14px;
+                        spacing: 8px;
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            if State.info-album != "" : ActionBtn {
+                                label: "Go to album";
+                                clicked => { Actions.set-view("Album", "", State.info-album, ""); }
+                            }
+                            if State.info-album == "" && State.info-location != "" : ActionBtn {
+                                label: "Go to folder";
+                                clicked => { Actions.set-view("Folder", "", State.info-location, ""); }
+                            }
+                            ActionBtn {
+                                label: "Track details";
+                                clicked => { Actions.open-details(State.current-id); }
+                            }
+                        }
+                        ActionBtn {
+                            label: "Show in File Explorer";
+                            clicked => { Actions.open-file-location(State.current-id); }
+                        }
+                    }
                 }
             }
         }
