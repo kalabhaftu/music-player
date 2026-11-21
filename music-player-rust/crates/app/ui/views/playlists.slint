@@ -38,10 +38,10 @@ component SmartPlaylistTile inherits Rectangle {
                 : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%);
 
             Image {
-                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/spark.svg")
+                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/trending.svg")
                     : root.card.id == "With Lyrics" ? @image-url("../../assets/icons/lyrics.svg")
-                    : root.card.id == "Videos" ? @image-url("../../assets/icons/disc.svg")
-                    : @image-url("../../assets/icons/refresh.svg");
+                    : root.card.id == "Videos" ? @image-url("../../assets/icons/film.svg")
+                    : @image-url("../../assets/icons/clock.svg");
                 width: 36px;
                 height: 36px;
                 x: (parent.width - self.width) / 2;
@@ -140,10 +140,10 @@ component PlaylistTile inherits Rectangle {
                 horizontal-alignment: center;
             }
             if root.card.is-smart : Image {
-                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/spark.svg")
+                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/trending.svg")
                     : root.card.id == "With Lyrics" ? @image-url("../../assets/icons/lyrics.svg")
-                    : root.card.id == "Videos" ? @image-url("../../assets/icons/disc.svg")
-                    : @image-url("../../assets/icons/refresh.svg");
+                    : root.card.id == "Videos" ? @image-url("../../assets/icons/film.svg")
+                    : @image-url("../../assets/icons/clock.svg");
                 width: 36px;
                 height: 36px;
                 x: (parent.width - self.width) / 2;
