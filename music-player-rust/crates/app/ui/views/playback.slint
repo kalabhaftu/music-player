@@ -1,0 +1,512 @@
+import { State, Actions } from "../state.slint";
+import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState } from "../widgets.slint";
+import { ScrollView, ListView, Slider, ComboBox } from "std-widgets.slint";
+
+// ---- Queue ------------------------------------------------------------------
+component QueueRow inherits Rectangle {
+    in property <QueueItem> item;
+    in property <int> index: 0;
+
+    callback play();
+    callback move-up();
+    callback move-down();
+    callback remove();
+
+    height: 52px;
+    border-radius: 6px;
+    background: row-area.has-hover ? Palette.panel-2 : (root.item.is-current ? Palette.border-soft : transparent);
+    animate background { duration: 100ms; }
+
+    row-area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.open-context-menu(root.item.id, round((root.absolute-position.x + row-area.mouse-x) / 1px), round((root.absolute-position.y + row-area.mouse-y) / 1px));
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 4px;
+            clip: true;
+            background: root.item.badge-bg;
+            y: (parent.height - self.height) / 2;
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: Palette.text;
+                font-size: 12px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
+                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : Palette.text-strong);
+                font-size: 11px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.artist;
+                color: Palette.muted;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: root.item.duration;
+            color: Palette.muted;
+            font-size: 10px;
+            width: 48px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            width: 76px;
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 0px;
+                if !root.item.is-current : IcBtn {
+                    icon: @image-url("../../assets/icons/chevron-left.svg");
+                    icon-size: 12px;
+                    tint: Palette.muted-2;
+                    clicked => { root.move-up(); }
+                }
+                if !root.item.is-current : IcBtn {
+                    icon: @image-url("../../assets/icons/chevron-right.svg");
+                    icon-size: 12px;
+                    tint: Palette.muted-2;
+                    clicked => { root.move-down(); }
+                }
+                if !root.item.is-current : IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 12px;
+                    tint: Palette.muted-2;
+                    hover-tint: #ff5b74;
+                    clicked => { root.remove(); }
+                }
+            }
+        }
+    }
+}
+
+export component QueueView inherits Rectangle {
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: "Playback queue";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "\{State.queue-count} upcoming tracks";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
+            }
+            if State.queue-count > 0 : ActionBtn {
+                label: "Clear upcoming";
+                danger: true;
+                clicked => { Actions.clear-queue(); }
+            }
+        }
+
+        if State.queue-items.length > 0 : ListView {
+            for row[index] in State.queue-items : QueueRow {
+                item: row;
+                index: index;
+                play => { Actions.play-queue-entry(row.queue-index); }
+                move-up => { Actions.queue-move(row.queue-index, row.queue-index - 1); }
+                move-down => { Actions.queue-move(row.queue-index, row.queue-index + 1); }
+                remove => { Actions.queue-remove(row.queue-index); }
+            }
+        }
+        if State.queue-items.length == 0 : EmptyState {
+            vertical-stretch: 1;
+            text: "Queue is empty. Songs you add will appear here.";
+        }
+        if State.queue-more-count > 0 : ActionBtn {
+            label: "Load more queued tracks (\{State.queue-more-count} remaining)";
+            clicked => { Actions.load-more-queue(); }
+        }
+    }
+}
+
+
+// ---- Now Playing --------------------------------------------------------------
+export component NowPlayingView inherits Rectangle {
+    if State.has-track : HorizontalLayout {
+        padding: 28px;
+        spacing: 28px;
+
+        VerticalLayout {
+            width: State.window-width <= 700 ? 110px : 190px;
+            alignment: start;
+            spacing: 16px;
+
+            Rectangle {
+                height: self.width;
+                border-radius: 8px;
+                clip: true;
+                background: Palette.panel-2;
+                if State.current-has-cover : Image {
+                    source: State.current-cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+                if !State.current-has-cover : Text {
+                    text: State.current-initials;
+                    color: Palette.text;
+                    font-size: 34px;
+                    font-weight: 900;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 14px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: "Now Playing";
+                color: State.accent;
+                font-size: 10px;
+                font-weight: 700;
+            }
+            Text {
+                text: State.current-title;
+                color: Palette.text;
+                font-size: 30px;
+                font-weight: 800;
+                overflow: elide;
+            }
+            Text {
+                text: State.current-artist;
+                color: Palette.muted;
+                font-size: 14px;
+                overflow: elide;
+            }
+            Text {
+                text: State.current-album;
+                color: Palette.muted-2;
+                font-size: 12px;
+                overflow: elide;
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                IcBtn {
+                    icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                    tint: State.current-favorite ? State.accent : Palette.muted;
+                    clicked => { Actions.toggle-favorite(State.current-id); }
+                }
+                ActionBtn {
+                    label: "Track details";
+                    clicked => { Actions.open-details(State.current-id); }
+                }
+                ActionBtn {
+                    label: "Show in folder";
+                    clicked => { Actions.open-file-location(State.current-id); }
+                }
+                ActionBtn {
+                    label: "Lyrics";
+                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                }
+            }
+        }
+    }
+    if !State.has-track : EmptyState {
+        text: "Nothing is playing.";
+    }
+}
+
+// ---- Lyrics ------------------------------------------------------------------
+export component LyricsView inherits Rectangle {
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 12px;
+
+        if State.has-track : HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: "Lyrics";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded tags" : "LRCLIB")) : "");
+                    color: Palette.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+            }
+            ActionBtn {
+                label: "Find lyrics…";
+                clicked => { Actions.open-find-lyrics(State.current-id); }
+            }
+            ActionBtn {
+                label: "Edit lyrics…";
+                clicked => { Actions.open-edit-lyrics(); }
+            }
+        }
+
+        if !State.has-track : EmptyState {
+            text: "Choose a song to view lyrics.";
+        }
+
+        if State.has-track && State.has-lyrics : Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+            Flickable {
+                content-y: min(0px, - State.lyrics-active-line * 64px + parent.height * 0.42);
+                animate content-y { duration: 250ms; easing: ease-out; }
+
+                VerticalLayout {
+                    for line[index] in State.lyrics-lines : TouchArea {
+                        height: 64px;
+                        clicked => {
+                            if (State.lyrics-timed && State.seek-from-lyrics) {
+                                Actions.seek-to-lyric(index);
+                            }
+                        }
+                        Text {
+                            text: line.text;
+                            color: line.is-active ? Palette.text : (line.is-past || line.is-upcoming ? Palette.muted : Palette.muted-2);
+                            font-size: line.is-active ? 23px : 20px;
+                            font-weight: 650;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                            x: max(12px, (parent.width - min(parent.width - 24px, 720px)) / 2);
+                            width: min(parent.width - 24px, 720px);
+                            wrap: word-wrap;
+                            animate color { duration: 200ms; }
+                        }
+                    }
+                }
+            }
+            if State.lyrics-scroll-paused : Rectangle {
+                x: parent.width - 62px;
+                y: parent.height - 62px;
+                width: 38px;
+                height: 38px;
+                border-radius: 19px;
+                border-width: 1px;
+                border-color: State.accent.with-alpha(0.5);
+                background: Palette.raised;
+                Image {
+                    source: @image-url("../../assets/icons/sync.svg");
+                    width: 18px;
+                    height: 18px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: State.accent;
+                }
+                TouchArea { clicked => { Actions.lyrics-scroll-changed(false); } }
+            }
+        }
+        if State.has-track && !State.has-lyrics : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 12px;
+            Text { text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics found"; color: Palette.text; font-size: 15px; font-weight: 750; horizontal-alignment: center; }
+            Text { text: State.lyrics-searching ? "Searching LRCLIB for a match to this track." : "Lyrics saved in the audio file or beside it load automatically. You can also search online."; color: Palette.muted; font-size: 11px; horizontal-alignment: center; wrap: word-wrap; }
+        }
+    }
+}
+
+// ---- Audio (equalizer) --------------------------------------------------------
+export component AudioView inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 20px;
+
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Volume"; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Rectangle { width: 120px; Text { text: "Output level"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; } }
+                    PlayerSlider {
+                        horizontal-stretch: 1;
+                        minimum: 0.0;
+                        maximum: 100.0;
+                        value: State.volume;
+                        scroll-step: 4.0;
+                        changed(val) => { Actions.volume-changed(round(val)); }
+                    }
+                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 42px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
+                    ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                }
+                Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Audio output"; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    if State.output-devices.length > 0 : ComboBox {
+                        horizontal-stretch: 1;
+                        model: State.output-devices;
+                        current-value: State.output-device;
+                        selected(value) => { Actions.set-output-device(value); }
+                    }
+                    if State.output-devices.length == 0 : Text {
+                        text: "No audio output devices are available. Connect a device and refresh.";
+                        color: Palette.muted;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+                    ActionBtn {
+                        label: "Refresh";
+                        clicked => { Actions.refresh-audio-devices(); }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Playback transition"; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    ComboBox {
+                        width: 180px;
+                        model: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                        current-value: State.crossfade-label;
+                        selected(value) => { Actions.set-crossfade-label(value); }
+                    }
+                    Text { text: "Blend into the next track."; color: Palette.muted; font-size: 10px; vertical-alignment: center; }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 12px;
+                SectionTitle { text: "10-band equalizer"; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    ComboBox {
+                        width: 220px;
+                        model: State.eq-presets;
+                        current-value: State.eq-preset;
+                        selected(value) => { Actions.set-eq-preset(value); }
+                    }
+                    ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
+                    ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Off"); } }
+                }
+
+                Rectangle {
+                    border-radius: 12px;
+                    background: Palette.raised;
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 8px;
+                        alignment: start;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Preamp"; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
+                            Rectangle {
+                                width: 44px;
+                                height: 220px;
+                                Slider {
+                                    y: 10px;
+                                    height: parent.height - 20px;
+                                    width: parent.width;
+                                    orientation: Orientation.vertical;
+                                    minimum: -12.0;
+                                    maximum: 12.0;
+                                    value: State.eq-preamp;
+                                    changed value => { Actions.set-eq-preamp(self.value); }
+                                }
+                                Text { text: "\{round(State.eq-preamp)}dB"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            for band[index] in State.eq-bands : VerticalLayout {
+                                spacing: 4px;
+                                Text { text: band.label; color: Palette.muted; font-size: 9px; horizontal-alignment: center; }
+                                Rectangle {
+                                    width: 36px;
+                                    height: 220px;
+                                    Slider {
+                                        y: 10px;
+                                        height: parent.height - 20px;
+                                        width: parent.width;
+                                        orientation: Orientation.vertical;
+                                        minimum: -12.0;
+                                        maximum: 12.0;
+                                        value: band.value;
+                                        changed value => { Actions.set-eq-band(index, self.value); }
+                                    }
+                                    Text { text: "\{round(band.value)}"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

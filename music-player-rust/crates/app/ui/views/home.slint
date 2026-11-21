@@ -1,0 +1,218 @@
+import { State, Actions } from "../state.slint";
+import { TrackItem, HomeCardItem } from "../models.slint";
+import { Palette, IcBtn, ActionBtn, HomeCardTile } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component HomeSectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> view;
+    in property <string> action-label: "See all";
+    height: 26px;
+    HorizontalLayout {
+        Text {
+            text: root.title;
+            color: Palette.text-strong;
+            font-size: 19px;
+            font-weight: 750;
+            letter-spacing: -0.65px;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 56px;
+            height: 26px;
+            Text {
+                text: root.action-label;
+                color: see-all-area.has-hover ? Palette.text : Palette.muted;
+                font-size: 11px;
+                font-weight: 700;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                animate color { duration: 100ms; }
+            }
+            see-all-area := TouchArea { clicked => { Actions.set-view(root.view, "", "", ""); } }
+        }
+    }
+}
+
+export component HomeQuickTrackTile inherits Rectangle {
+    in property <TrackItem> item;
+    callback play();
+
+    height: 58px;
+    border-radius: 6px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 120ms; }
+    area := TouchArea { clicked => { root.play(); } }
+
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 48px;
+            height: 48px;
+            border-radius: 5px;
+            clip: true;
+            background: root.item.badge-bg;
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: #ffffffd0;
+                font-size: 13px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                min-width: 0px;
+                text: root.item.title;
+                color: Palette.text-strong;
+                font-size: 12px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            if root.item.artist != "" : Text {
+                min-width: 0px;
+                text: root.item.artist;
+                color: Palette.muted;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        IcBtn {
+            icon: @image-url("../../assets/icons/play.svg");
+            icon-size: 16px;
+            tint: Palette.icon-muted;
+            width: 30px;
+            height: 30px;
+            clicked => { root.play(); }
+        }
+    }
+}
+
+export component HomeQuickGrid inherits Rectangle {
+    in property <[TrackItem]> items;
+
+    GridLayout {
+        width: 100%;
+        spacing: 10px;
+        for item[index] in root.items : HomeQuickTrackTile {
+            item: item;
+            col: Math.mod(index, 2);
+            row: index / 2;
+            play => { Actions.play-track(item.id); }
+        }
+    }
+}
+
+export component HomeLibraryTile inherits HomeCardTile {
+    open => {
+        if (root.item.kind == "track") { Actions.play-track(root.item.id); }
+        else if (root.item.kind == "playlist") { Actions.set-view("Playlist", "", "", root.item.id); }
+        else { Actions.set-view("Album", "", root.item.title, ""); }
+    }
+    play => {
+        if (root.item.kind == "track") { Actions.play-track(root.item.id); }
+        else if (root.item.kind == "playlist") { Actions.play-playlist(root.item.id); }
+        else { Actions.play-group("album", root.item.title); }
+    }
+}
+
+export component HomeCardGrid inherits Rectangle {
+    in property <[HomeCardItem]> items;
+
+    GridLayout {
+        width: 100%;
+        spacing: 14px;
+        for item[index] in root.items : HomeLibraryTile {
+            item: item;
+            col: Math.mod(index, State.card-columns);
+            row: index / State.card-columns;
+        }
+    }
+}
+
+export component HomeEmptyState inherits Rectangle {
+    VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        Text {
+            text: State.has-roots ? (State.scan-active ? "Scanning your music folders" : "No indexed tracks yet") : "No music folders added";
+            color: Palette.text;
+            font-size: 16px;
+            font-weight: 750;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: State.has-roots
+                ? (State.scan-active ? "Tracks will appear here as the scan indexes your files." : "Scan your selected folders to add tracks to the library.")
+                : "Add a folder to scan your local collection.";
+            color: Palette.muted;
+            font-size: 11px;
+            horizontal-alignment: center;
+        }
+        if !State.scan-active : HorizontalLayout {
+            alignment: center;
+            ActionBtn {
+                label: State.has-roots ? "Scan folders" : "Add music folder";
+                primary: true;
+                clicked => {
+                    if (State.has-roots) { Actions.scan-library(); }
+                    else { Actions.open-modal("folders"); }
+                }
+            }
+        }
+    }
+}
+
+export component HomeView inherits Rectangle {
+    if State.library-empty : HomeEmptyState {
+    }
+    if !State.library-empty : ScrollView {
+        VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
+
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: State.home-greeting; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
+            }
+
+            if State.home-quick-tracks.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
+                HomeQuickGrid { items: State.home-quick-tracks; }
+            }
+
+            if State.home-recent-albums.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
+                HomeCardGrid { items: State.home-recent-albums; }
+            }
+
+            if State.home-library-cards.length > 0 : VerticalLayout {
+                spacing: 13px;
+                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
+                HomeCardGrid { items: State.home-library-cards; }
+            }
+        }
+    }
+}

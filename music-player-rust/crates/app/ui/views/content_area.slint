@@ -1,0 +1,72 @@
+import { State } from "../state.slint";
+import { HomeView } from "home.slint";
+import { SearchView } from "search.slint";
+import { SongsView, GridView, ArtistsView, FoldersView, DetailView } from "library.slint";
+import { PlaylistsView, PlaylistView } from "playlists.slint";
+import { QueueView, NowPlayingView, LyricsView, AudioView } from "playback.slint";
+import { SettingsView } from "settings.slint";
+import { DuplicatesView } from "duplicates.slint";
+
+// ---- Root content router -----------------------------------------------------
+export component ContentArea inherits Rectangle {
+    background: transparent;
+
+    if State.view == "Home" : HomeView { width: 100%; height: 100%; }
+    if State.view == "Search" : SearchView { width: 100%; height: 100%; }
+    if State.view == "Songs" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Favorites" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Most Played" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Recently Played" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Recently Added" : SongsView { width: 100%; height: 100%; }
+    if State.view == "With Lyrics" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Videos" : SongsView { width: 100%; height: 100%; }
+    if State.view == "Albums" : GridView {
+        width: 100%;
+        height: 100%;
+        title: "Albums";
+        empty-text: "No albums indexed yet.";
+    }
+    if State.view == "Artists" : ArtistsView {
+        width: 100%;
+        height: 100%;
+    }
+    if State.view == "Genres" : GridView {
+        width: 100%;
+        height: 100%;
+        title: "Genres";
+        empty-text: "No genres indexed yet.";
+    }
+    if State.view == "Folders" : FoldersView { width: 100%; height: 100%; }
+    if State.view == "Playlists" : PlaylistsView { width: 100%; height: 100%; }
+    if State.view == "Playlist" : PlaylistView { width: 100%; height: 100%; }
+    if State.view == "Album" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "ALBUM";
+        empty-text: "No tracks in this album.";
+    }
+    if State.view == "Artist" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "ARTIST";
+        empty-text: "No tracks by this artist.";
+    }
+    if State.view == "Genre" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "GENRE";
+        empty-text: "No tracks in this genre.";
+    }
+    if State.view == "Folder" : DetailView {
+        width: 100%;
+        height: 100%;
+        eyebrow: "FOLDER";
+        empty-text: "No tracks in this folder.";
+    }
+    if State.view == "Queue" : QueueView { width: 100%; height: 100%; }
+    if State.view == "Now Playing" : NowPlayingView { width: 100%; height: 100%; }
+    if State.view == "Lyrics" : LyricsView { width: 100%; height: 100%; }
+    if State.view == "Audio" : AudioView { width: 100%; height: 100%; }
+    if State.view == "Settings" : SettingsView { width: 100%; height: 100%; }
+    if State.view == "Duplicates" : DuplicatesView { width: 100%; height: 100%; }
+}

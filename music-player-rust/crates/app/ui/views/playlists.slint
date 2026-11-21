@@ -1,0 +1,359 @@
+import { State, Actions } from "../state.slint";
+import { PlaylistCardItem, PlaylistRowItem } from "../models.slint";
+import { Palette, ActionBtn, EmptyState, TrackTable, HeroDetail, SectionTitle } from "../widgets.slint";
+import { ScrollView, ListView } from "std-widgets.slint";
+
+// ---- Playlists ---------------------------------------------------------------
+
+component SmartPlaylistTile inherits Rectangle {
+    in property <PlaylistCardItem> card;
+
+    vertical-stretch: 0;
+    border-radius: 8px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+
+    area := TouchArea {
+        clicked => { Actions.set-view(root.card.id, "", "", ""); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.play-view(root.card.id);
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        smart-cover := Rectangle {
+            width: 100%;
+            height: self.width;
+            vertical-stretch: 0;
+            border-radius: 6px;
+            clip: true;
+            background: root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
+                : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
+                : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
+                : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%);
+
+            Image {
+                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/spark.svg")
+                    : root.card.id == "With Lyrics" ? @image-url("../../assets/icons/lyrics.svg")
+                    : root.card.id == "Videos" ? @image-url("../../assets/icons/disc.svg")
+                    : @image-url("../../assets/icons/refresh.svg");
+                width: 36px;
+                height: 36px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: #ffffff;
+            }
+
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+
+                Image {
+                    source: @image-url("../../assets/icons/play.svg");
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+
+                TouchArea { clicked => { Actions.play-view(root.card.id); } }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+            min-width: 0px;
+            Text {
+                text: root.card.name;
+                color: Palette.text-strong;
+                font-size: 13px;
+                font-weight: 750;
+                overflow: elide;
+            }
+            if root.card.description != "" : Text {
+                text: root.card.description;
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component PlaylistTile inherits Rectangle {
+    in property <PlaylistCardItem> card;
+
+    vertical-stretch: 0;
+    border-radius: 8px;
+    background: tile-area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+
+    tile-area := TouchArea {
+        clicked => {
+            if (root.card.is-smart) { Actions.set-view(root.card.id, "", "", ""); }
+            else { Actions.set-view("Playlist", "", "", root.card.id); }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                if (root.card.is-smart) { Actions.play-view(root.card.id); }
+                else { Actions.play-playlist(root.card.id); }
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        tile := Rectangle {
+            width: 100%;
+            height: self.width;
+            vertical-stretch: 0;
+            border-radius: 6px;
+            clip: true;
+            background: root.card.is-smart
+                ? (root.card.id == "Most Played" ? @linear-gradient(135deg, #ff5e36 0%, #f32759 60%, #890b50 100%)
+                    : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
+                    : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
+                    : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%))
+                : @linear-gradient(150deg, Palette.ga(root.card.gradient) 0%, Palette.gb(root.card.gradient) 100%);
+
+            if !root.card.is-smart : Text {
+                text: root.card.initials;
+                color: #ffffffd0;
+                font-size: 20px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            if root.card.is-smart : Image {
+                source: root.card.id == "Most Played" ? @image-url("../../assets/icons/spark.svg")
+                    : root.card.id == "With Lyrics" ? @image-url("../../assets/icons/lyrics.svg")
+                    : root.card.id == "Videos" ? @image-url("../../assets/icons/disc.svg")
+                    : @image-url("../../assets/icons/refresh.svg");
+                width: 36px;
+                height: 36px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: #ffffff;
+            }
+
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                background: State.accent;
+                opacity: tile-area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+
+                Image {
+                    source: @image-url("../../assets/icons/play.svg");
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+
+                TouchArea {
+                    clicked => {
+                        if (root.card.is-smart) { Actions.play-view(root.card.id); }
+                        else { Actions.play-playlist(root.card.id); }
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+            min-width: 0px;
+            Text {
+                text: root.card.name;
+                color: Palette.text-strong;
+                font-size: 13px;
+                font-weight: 750;
+                overflow: elide;
+            }
+            Text {
+                text: "\{root.card.track-count} songs";
+                color: Palette.muted;
+                font-size: 11px;
+            }
+            if root.card.is-smart : Text {
+                text: root.card.description;
+                color: Palette.muted-2;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+export component PlaylistsList inherits Rectangle {
+    if State.search-playlists.length == 0 : EmptyState { text: "No matching playlists."; }
+    if State.search-playlists.length > 0 : GridLayout {
+        width: 100%;
+        spacing: 14px;
+        for card[index] in State.search-playlists : PlaylistTile {
+            card: card;
+            col: Math.mod(index, State.card-columns);
+            row: index / State.card-columns;
+        }
+    }
+}
+
+export component PlaylistsView inherits Rectangle {
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 16px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                Text {
+                    text: "Playlists";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "Your playlists are stored on this PC.";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Import M3U / M3U8";
+                clicked => { Actions.import-m3u(); }
+            }
+            ActionBtn {
+                label: "＋ New playlist";
+                primary: true;
+                clicked => { Actions.open-modal("new-playlist"); }
+            }
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 24px;
+                if State.smart-playlists.length > 0 : VerticalLayout {
+                    spacing: 13px;
+                    SectionTitle { text: "Smart playlists"; }
+                    GridLayout {
+                        width: 100%;
+                        spacing: 14px;
+                        for card[index] in State.smart-playlists : SmartPlaylistTile {
+                            card: card;
+                            col: Math.mod(index, State.card-columns);
+                            row: index / State.card-columns;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 13px;
+                    SectionTitle { text: "Your playlists"; }
+                    if State.playlists.length == 0 : EmptyState {
+                        text: "No playlists yet. Create one from any track's menu.";
+                    }
+                    if State.playlists.length > 0 : GridLayout {
+                        width: 100%;
+                        spacing: 14px;
+                        for card[index] in State.playlists : PlaylistTile {
+                            card: card;
+                            col: Math.mod(index, State.card-columns);
+                            row: index / State.card-columns;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ---- Playlist detail ---------------------------------------------------------
+export component PlaylistView inherits Rectangle {
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: State.playlist-name;
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 800;
+                    letter-spacing: -0.65px;
+                    overflow: elide;
+                }
+                if State.playlist-empty-message != "" : Text {
+                    text: State.playlist-empty-message;
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
+            }
+            ActionBtn {
+                label: "Play";
+                primary: true;
+                clicked => { Actions.play-playlist(State.view-playlist-id); }
+            }
+            ActionBtn {
+                label: "Shuffle";
+                clicked => { Actions.play-playlist-shuffle(State.view-playlist-id); }
+            }
+            ActionBtn {
+                label: "Rename…";
+                clicked => { Actions.open-modal("rename-playlist"); }
+            }
+            ActionBtn {
+                label: "Export";
+                clicked => { Actions.export-m3u(State.view-playlist-id); }
+            }
+            ActionBtn {
+                label: "Delete";
+                danger: true;
+                clicked => { Actions.open-modal("delete-playlist"); }
+            }
+        }
+
+        TrackTable {
+            vertical-stretch: 1;
+            show-added: false;
+            show-year: false;
+            first-column: "TITLE";
+            show-remove: true;
+            sort(column) => { Actions.sort-view(column); }
+            empty-text: "This playlist is empty…";
+        }
+    }
+}
+
