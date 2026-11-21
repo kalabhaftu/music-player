@@ -1,0 +1,69 @@
+import { State, Actions } from "../state.slint";
+import { ListView } from "std-widgets.slint";
+import { Palette } from "../widgets.slint";
+
+component ContextMenuItemRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    in property <bool> separator: false;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 5px;
+    background: area.has-hover && !root.separator ? #202420 : transparent;
+
+    area := TouchArea {
+        enabled: !root.separator && root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    if root.separator : Rectangle {
+        height: 1px;
+        y: 16px;
+        background: Palette.border;
+    }
+    if !root.separator : Text {
+        text: root.label;
+        color: root.danger ? #ff5b74 : (root.enabled ? Palette.text-strong : Palette.disabled);
+        font-size: 11px;
+        x: 12px;
+        width: parent.width - 24px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// ---- Context menu ----------------------------------------------------------------
+export component ContextMenuOverlay inherits Rectangle {
+    background: #00000000;
+
+    // Dismiss on outside click; Escape closes first.
+    TouchArea {
+        clicked => { Actions.close-context-menu(); }
+    }
+
+    Rectangle {
+        x: min(max(8px, State.context-x), parent.width - 240px);
+        y: min(max(8px, State.context-y), parent.height - self.height - 8px);
+        width: 220px;
+        height: State.context-items.length * 34px + 14px;
+        border-radius: 7px;
+        background: #181b19;
+        border-width: 1px;
+        border-color: Palette.border;
+        clip: true;
+
+        ListView {
+            y: 7px;
+            height: parent.height - 14px;
+            for item[index] in State.context-items : ContextMenuItemRow {
+                label: item.label;
+                enabled: item.enabled;
+                danger: item.danger;
+                separator: item.separator;
+                clicked => { Actions.context-action(index); }
+            }
+        }
+    }
+}

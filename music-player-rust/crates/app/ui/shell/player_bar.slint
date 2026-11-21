@@ -1,0 +1,257 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, PlayerSlider } from "../widgets.slint";
+
+// ---- Player bar ----------------------------------------------------------------
+export component PlayerBar inherits Rectangle {
+    height: 88px;
+    background: Palette.surface;
+
+    // 1px top border matching original CSS
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 15px;
+        padding-right: 15px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 16px;
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            min-width: 200px;
+            spacing: 11px;
+            alignment: start;
+
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 6px;
+                clip: true;
+                background: State.has-track && State.current-has-cover
+                    ? Palette.panel-2
+                    : (!State.has-track || State.current-id == ""
+                        ? @linear-gradient(150deg, #172019 0%, #243328 58%, #364a3b 100%)
+                        : State.current-badge-bg);
+                if State.has-track && State.current-has-cover : Image {
+                    source: State.current-cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+                if !State.has-track || !State.current-has-cover : Text {
+                    text: !State.has-track || State.current-initials == "" ? "MP" : State.current-initials;
+                    color: #ffffffcc;
+                    font-size: 20px;
+                    font-weight: 900;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                Text {
+                    text: State.current-title == "" ? "Nothing playing" : State.current-title;
+                    color: State.current-title == "" ? Palette.muted-2 : Palette.text;
+                    font-size: 12px;
+                    font-weight: 650;
+                    overflow: elide;
+                }
+                Text {
+                    text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? State.current-artist : "\{State.current-artist} • \{State.current-album}");
+                    color: Palette.muted;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+            }
+            IcBtn {
+                icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                icon-size: 16px;
+                tint: State.current-favorite ? State.accent : Palette.icon-muted;
+                y: (parent.height - self.height) / 2;
+                clicked => { if (State.current-id != "") { Actions.toggle-favorite(State.current-id); } }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1.35;
+            min-width: 340px;
+            alignment: center;
+            spacing: 7px;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 11px;
+
+                IcBtn {
+                    icon: @image-url("../../assets/icons/shuffle.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    active: State.shuffle;
+                    clicked => { Actions.toggle-shuffle(); }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/skip-back.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    clicked => { Actions.previous(); }
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: #f4f6f3;
+                    animate background { duration: 100ms; }
+                    TouchArea {
+                        clicked => { Actions.toggle-play(); }
+                    }
+                    Image {
+                        source: State.is-playing ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                        width: 17px;
+                        height: 17px;
+                        x: (parent.width - self.width) / 2 + (State.is-playing ? 0px : 1px);
+                        y: (parent.height - self.height) / 2;
+                        colorize: #0a0b0a;
+                    }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/skip-forward.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    clicked => { Actions.next(); }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/repeat.svg");
+                    icon-size: 16px;
+                    tint: State.repeat-mode == "Off" ? Palette.icon-muted : State.accent;
+                    clicked => { Actions.cycle-repeat(); }
+                }
+                Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    visible: State.window-width > 1100;
+                    border-radius: 15px;
+                    background: ab-area.has-hover ? Palette.overlay : transparent;
+                    Text {
+                        text: "A–B";
+                        color: State.repeat-a != "" || State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                        font-size: 10px;
+                        font-weight: 650;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    ab-area := TouchArea { clicked => { Actions.toggle-ab(); } }
+                }
+            }
+
+            HorizontalLayout {
+                horizontal-stretch: 1;
+                max-width: 520px;
+                spacing: 8px;
+
+                Text {
+                    text: State.current-time;
+                    color: #747b74;
+                    font-size: 9px;
+                    width: 32px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+                PlayerSlider {
+                    horizontal-stretch: 1;
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    value: State.progress;
+                    changed(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-relative(delta);
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+                Text {
+                    text: State.total-time;
+                    color: #747b74;
+                    font-size: 9px;
+                    width: 32px;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            min-width: 220px;
+            spacing: 7px;
+            alignment: end;
+
+            IcBtn {
+                icon: @image-url("../../assets/icons/lyrics.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                active: State.view == "Lyrics";
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.set-view("Lyrics", "", "", ""); }
+            }
+            IcBtn {
+                icon: @image-url("../../assets/icons/queue.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                active: State.view == "Queue";
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.set-view("Queue", "", "", ""); }
+            }
+            IcBtn {
+                icon: @image-url("../../assets/icons/equalizer.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                active: State.view == "Audio";
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.set-view("Audio", "", "", ""); }
+            }
+            IcBtn {
+                icon: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.open-immersive-player(); }
+            }
+            IcBtn {
+                icon: State.volume == 0 ? @image-url("../../assets/icons/mute.svg") : @image-url("../../assets/icons/volume.svg");
+                icon-size: 16px;
+                tint: State.volume == 0 ? State.accent : Palette.icon-muted;
+                y: (parent.height - self.height) / 2;
+                clicked => { Actions.set-volume-muted(); }
+                scrolled(event) => {
+                    let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                    if (delta != 0) {
+                        Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                        return accept;
+                    }
+                    reject
+                }
+            }
+            PlayerSlider {
+                width: 88px;
+                minimum: 0.0;
+                maximum: 100.0;
+                value: State.volume;
+                scroll-step: 4.0;
+                y: (parent.height - self.height) / 2;
+                changed(val) => { Actions.volume-changed(round(val)); }
+            }
+        }
+    }
+}

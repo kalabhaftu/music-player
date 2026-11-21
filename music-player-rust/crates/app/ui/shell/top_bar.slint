@@ -1,0 +1,267 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, TextBtn } from "../widgets.slint";
+
+// ---- Top bar -----------------------------------------------------------------
+export component TopBar inherits Rectangle {
+    out property <bool> search-has-focus: search-input.has-focus;
+    public function focus-search() {
+        search-input.focus();
+    }
+
+    height: 56px;
+    background: Palette.surface;
+
+    // 1px bottom border matching original CSS
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 9px;
+
+        IcBtn {
+            icon: @image-url("../../assets/icons/panel-left.svg");
+            icon-size: 16px;
+            tint: Palette.muted;
+            clicked => { Actions.toggle-sidebar(); }
+        }
+        IcBtn {
+            icon: @image-url("../../assets/icons/chevron-left.svg");
+            icon-size: 16px;
+            tint: State.can-go-back ? Palette.muted : Palette.disabled;
+            clicked => { if (State.can-go-back) { Actions.go-back(); } }
+        }
+        IcBtn {
+            icon: @image-url("../../assets/icons/chevron-right.svg");
+            icon-size: 16px;
+            tint: State.can-go-forward ? Palette.muted : Palette.disabled;
+            clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
+        }
+
+        // Pill Search Box
+        Rectangle {
+            horizontal-stretch: 10;
+            min-width: 0px;
+            max-width: 520px;
+            height: 38px;
+            border-radius: 19px;
+            background: search-input.has-focus ? Palette.hover : Palette.control;
+            animate background { duration: 100ms; }
+            clip: true;
+
+            HorizontalLayout {
+                padding-left: 13px;
+                padding-right: 13px;
+                spacing: 9px;
+                alignment: center;
+
+                Image {
+                    source: @image-url("../../assets/icons/search.svg");
+                    width: 16px;
+                    height: 16px;
+                    colorize: #a0a79f;
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    height: 38px;
+                    clip: true;
+
+                    if State.view-search == "" : Text {
+                        x: 0px;
+                        y: 0px;
+                        width: 100%;
+                        height: parent.height;
+                        text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
+                        color: #717970;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    search-input := TextInput {
+                        x: 0px;
+                        y: 0px;
+                        width: 100%;
+                        height: parent.height;
+                        text <=> State.view-search;
+                        color: #f7f8f6;
+                        font-size: 13px;
+                        single-line: true;
+                        vertical-alignment: center;
+                        edited => { Actions.search-input(self.text); }
+                        accepted => { if (State.view != "Settings") { Actions.save-recent-search(self.text); } }
+                    }
+                }
+
+                if State.view-search == "" : Rectangle {
+                    width: 38px;
+                    height: 18px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: #ffffff0a;
+                    border-width: 1px;
+                    border-color: #ffffff14;
+                    Text {
+                        text: "Ctrl K";
+                        color: #717970;
+                        font-size: 9px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                if State.view-search != "" : IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 12px;
+                    tint: Palette.muted-2;
+                    width: 22px;
+                    height: 22px;
+                    clicked => { Actions.search-input(""); }
+                }
+            }
+        }
+
+        // Spacer to push right actions to the edge
+        Rectangle { horizontal-stretch: 1; }
+
+        if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: scan-area.has-hover ? Palette.overlay : transparent;
+                border-width: 2px;
+                border-color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
+                Text {
+                    text: State.scan-paused ? "Ⅱ" : (State.scan-cancelling ? "×" : "•");
+                    color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
+                    font-size: State.scan-paused ? 10px : 16px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                scan-area := TouchArea { clicked => { Actions.toggle-scan-details(); } }
+            }
+        }
+
+        IcBtn {
+            icon: @image-url("../../assets/icons/queue.svg");
+            icon-size: 16px;
+            tint: State.right-panel-open ? State.accent : Palette.muted;
+            clicked => { Actions.toggle-right-panel(); }
+        }
+        IcBtn {
+            icon: @image-url("../../assets/icons/more.svg");
+            icon-size: 16px;
+            tint: State.tools-menu-open ? Palette.text : Palette.muted;
+            clicked => { Actions.toggle-tools-menu(); }
+        }
+    }
+
+    if State.scan-details-open : Rectangle {
+        x: parent.width - 320px;
+        y: 64px;
+        width: 300px;
+        height: 128px;
+        border-radius: 8px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 7px;
+            Text {
+                text: State.scan-cancelling ? "Cancelling scan"
+                    : State.scan-paused ? "Library scan paused"
+                    : State.scan-outcome != "" ? "Library scan complete"
+                    : "Scanning library";
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            Text {
+                text: State.scan-outcome != "" ? State.scan-outcome
+                    : (State.scan-scanned > 0 ? "\{State.scan-scanned} files scanned" + (State.scan-path != "" ? " · \{State.scan-path}" : "")
+                    : (State.scan-path != "" ? State.scan-path : "Scanning library files…"));
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if State.scan-active : TextBtn {
+                    label: State.scan-paused ? "Resume" : "Pause";
+                    clicked => { Actions.pause-scan(); }
+                }
+                if State.scan-active : TextBtn {
+                    label: "Cancel";
+                    danger: true;
+                    clicked => { Actions.cancel-scan(); State.scan-details-open = false; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 12px;
+                    clicked => { State.scan-details-open = false; }
+                }
+            }
+        }
+    }
+}
+
+component ToolMenuRow inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <string> view;
+    callback clicked();
+    height: 38px;
+    border-radius: 5px;
+    background: area.has-hover ? Palette.hover : transparent;
+    area := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        alignment: start;
+        Image {
+            source: root.icon;
+            width: 17px;
+            height: 17px;
+            colorize: Palette.muted;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.label;
+            color: Palette.text-strong;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ToolsMenuOverlay inherits Rectangle {
+    background: #00000000;
+    TouchArea { clicked => { State.tools-menu-open = false; } }
+    Rectangle {
+        x: parent.width - 204px;
+        y: 64px;
+        width: 190px;
+        height: 86px;
+        border-radius: 8px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        VerticalLayout {
+            padding: 5px;
+            spacing: 2px;
+            ToolMenuRow { label: "Settings"; icon: @image-url("../../assets/icons/settings.svg"); clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
+            ToolMenuRow { label: "Scan library"; icon: @image-url("../../assets/icons/refresh.svg"); clicked => { Actions.scan-library(); State.tools-menu-open = false; } }
+        }
+    }
+}

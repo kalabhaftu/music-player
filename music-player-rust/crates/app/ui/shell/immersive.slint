@@ -1,0 +1,321 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, TextBtn, PlayerSlider } from "../widgets.slint";
+
+export component ImmersivePlayerOverlay inherits Rectangle {
+    background: #10110f;
+    clip: true;
+
+    if State.current-has-cover : Image {
+        source: State.current-cover;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * 1.15;
+        height: parent.height * 1.15;
+        image-fit: ImageFit.cover;
+        opacity: 0.22;
+    }
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(180deg, #10110f40 0%, #10110fe0 100%);
+    }
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: State.accent.with-alpha(0.04);
+    }
+
+    VerticalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        padding-top: 14px;
+        padding-bottom: 22px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            height: 48px;
+            spacing: 12px;
+            Text {
+                text: "NOW PLAYING";
+                color: #ffffffb0;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 1.5px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: fs-ta.has-hover ? #ffffff2a : #00000052;
+                animate background { duration: 150ms; }
+                fs-ta := TouchArea { clicked => { Actions.toggle-immersive-fullscreen(); } }
+                Image {
+                    source: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
+                    width: 16px;
+                    height: 16px;
+                    colorize: #ffffff;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+            Rectangle {
+                width: 86px;
+                height: 36px;
+                border-radius: 18px;
+                background: close-ta.has-hover ? #ffffff2a : #00000052;
+                animate background { duration: 150ms; }
+                close-ta := TouchArea { clicked => { Actions.close-immersive-player(); } }
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 14px;
+                    spacing: 8px;
+                    alignment: center;
+                    Image {
+                        source: @image-url("../../assets/icons/close.svg");
+                        width: 14px;
+                        height: 14px;
+                        colorize: #ffffff;
+                    }
+                    Text {
+                        text: "Close";
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: State.immersive-lyrics-open ? 44px : 0px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 16px;
+                horizontal-stretch: State.immersive-lyrics-open ? 0.85 : 1;
+
+                Rectangle {
+                    width: max(320px, min(State.window-width * 1px * (State.immersive-lyrics-open ? 0.30 : 0.40), State.immersive-lyrics-open ? 380px : 480px));
+                    height: self.width;
+                    border-radius: 16px;
+                    clip: true;
+                    background: State.current-badge-bg;
+                    border-width: 1px;
+                    border-color: #ffffff1c;
+                    if State.current-has-cover : Image {
+                        source: State.current-cover;
+                        width: parent.width;
+                        height: parent.height;
+                        image-fit: ImageFit.cover;
+                    }
+                    if !State.current-has-cover : Text {
+                        text: State.current-initials;
+                        color: #ffffffcc;
+                        font-size: 64px;
+                        font-weight: 900;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    width: max(320px, min(State.window-width * 1px * (State.immersive-lyrics-open ? 0.30 : 0.40), State.immersive-lyrics-open ? 380px : 480px));
+                    spacing: 12px;
+                    alignment: center;
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text {
+                            text: State.has-track ? State.current-title : "Nothing playing";
+                            color: #ffffff;
+                            font-size: 26px;
+                            font-weight: 800;
+                            letter-spacing: -0.5px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: State.has-track ? State.current-artist : "Choose a song from your library";
+                            color: #ffffffb3;
+                            font-size: 14px;
+                            overflow: elide;
+                        }
+                    }
+
+                    if State.has-track : IcBtn {
+                        icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                        tint: State.current-favorite ? State.accent : #ffffffb3;
+                        icon-size: 20px;
+                        width: 40px;
+                        height: 40px;
+                        clicked => { Actions.toggle-favorite(State.current-id); }
+                    }
+                }
+            }
+
+            if State.immersive-lyrics-open : VerticalLayout {
+                horizontal-stretch: 1;
+                height: 100%;
+                spacing: 8px;
+                HorizontalLayout {
+                    height: 38px;
+                    alignment: center;
+                    Text {
+                        text: State.lyrics-source == "sidecar" ? "Lyrics · Sidecar" : (State.lyrics-source == "embedded" ? "Lyrics · Embedded" : "Lyrics");
+                        color: #ffffff;
+                        font-size: 13px;
+                        font-weight: 750;
+                        letter-spacing: 0.1px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    if State.lyrics-scroll-paused : TextBtn {
+                        label: "Resume";
+                        clicked => { Actions.lyrics-scroll-changed(false); }
+                    }
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/close.svg");
+                        icon-size: 14px;
+                        width: 32px;
+                        height: 32px;
+                        tint: #d0d2ce;
+                        clicked => { Actions.toggle-immersive-lyrics(); }
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    clip: true;
+                    Flickable {
+                        content-y: min(0px, - State.lyrics-active-line * 44px + parent.height * 0.38);
+                        animate content-y { duration: 250ms; easing: ease-out; }
+                        VerticalLayout {
+                            for line[index] in State.lyrics-lines : TouchArea {
+                                height: 44px;
+                                clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
+                                Text {
+                                    text: line.text;
+                                    color: line.is-active ? #ffffff : (line.is-past ? #a4a8a18c : #e3e4df8c);
+                                    font-size: line.is-active ? 24px : 18px;
+                                    font-weight: line.is-active ? 800 : 550;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            if State.lyrics-lines.length == 0 : Text {
+                                text: "No lyrics loaded. Use the Lyrics view to search or edit this track.";
+                                color: #d0d2ce;
+                                font-size: 13px;
+                                wrap: word-wrap;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 10px;
+            alignment: center;
+
+            HorizontalLayout {
+                width: min(parent.width, 920px);
+                spacing: 12px;
+                Text { text: State.current-time; color: #d0d2ce; width: 44px; font-size: 12px; vertical-alignment: center; }
+                PlayerSlider {
+                    horizontal-stretch: 1;
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    value: State.progress;
+                    changed(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-relative(delta);
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+                Text { text: State.total-time; color: #d0d2ce; width: 44px; font-size: 12px; horizontal-alignment: right; vertical-alignment: center; }
+            }
+
+            HorizontalLayout {
+                height: 70px;
+                spacing: 36px;
+                alignment: center;
+                IcBtn {
+                    icon: @image-url("../../assets/icons/skip-back.svg");
+                    icon-size: 24px;
+                    width: 48px;
+                    height: 48px;
+                    tint: #f3f4f0;
+                    clicked => { Actions.previous(); }
+                }
+                Rectangle {
+                    width: 70px;
+                    height: 70px;
+                    border-radius: 35px;
+                    background: play-ta.has-hover ? #f0f0f0 : #ffffff;
+                    animate background { duration: 120ms; }
+                    Image {
+                        source: State.is-playing ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                        width: 28px;
+                        height: 28px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        colorize: #161714;
+                    }
+                    play-ta := TouchArea { clicked => { Actions.toggle-play(); } }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/skip-forward.svg");
+                    icon-size: 24px;
+                    width: 48px;
+                    height: 48px;
+                    tint: #f3f4f0;
+                    clicked => { Actions.next(); }
+                }
+            }
+
+            HorizontalLayout {
+                height: 44px;
+                spacing: 30px;
+                alignment: center;
+                IcBtn {
+                    icon: @image-url("../../assets/icons/equalizer.svg");
+                    icon-size: 20px;
+                    width: 44px;
+                    height: 44px;
+                    tint: #d0d2ce;
+                    clicked => { Actions.toggle-immersive("Audio"); }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/lyrics.svg");
+                    icon-size: 20px;
+                    width: 44px;
+                    height: 44px;
+                    active: State.immersive-lyrics-open;
+                    tint: State.immersive-lyrics-open ? #ffffff : #d0d2ce;
+                    clicked => { Actions.toggle-immersive-lyrics(); }
+                }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/queue.svg");
+                    icon-size: 20px;
+                    width: 44px;
+                    height: 44px;
+                    tint: #d0d2ce;
+                    clicked => { Actions.toggle-immersive("Queue"); }
+                }
+            }
+        }
+    }
+}
