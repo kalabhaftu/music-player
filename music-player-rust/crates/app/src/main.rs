@@ -403,6 +403,7 @@ struct App {
     audio_devices: Vec<os_shell::AudioOutputDevice>,
     search_debounce: Option<(Instant, String)>,
     update_rx: Option<Receiver<UpdateOutcome>>,
+    artwork_repair_rx: Option<Receiver<usize>>,
     unmuted_volume: Option<u32>,
     scan_outcome_time: Option<Instant>,
     track_cache: HashMap<String, Track>,
@@ -488,6 +489,7 @@ impl App {
             audio_devices: Vec::new(),
             search_debounce: None,
             update_rx: None,
+            artwork_repair_rx: None,
             unmuted_volume: None,
             scan_outcome_time: None,
             track_cache: HashMap::new(),
@@ -503,11 +505,98 @@ impl App {
         self.refresh_playlists();
         self.load_roots();
         self.restore_session();
+        self.clear_stale_artwork();
+        self.restore_view_context();
         self.refresh_view();
         self.publish_playback();
         self.publish_queue(true);
         self.publish_scan();
         self.publish_about();
+    }
+
+    /// Drops artwork references whose cache file disappeared, then re-extracts
+    /// embedded artwork on a worker thread. Without this, every startup render
+    /// logs an image-load failure for each stale reference.
+    fn clear_stale_artwork(&mut self) {
+        let refs = match self.store.artwork_refs() {
+            Ok(refs) => refs,
+            Err(_) => return,
+        };
+        let missing: Vec<String> = refs
+            .into_iter()
+            .filter(|path| !Path::new(path).is_file())
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        let affected = self.store.tracks_with_artwork_refs(&missing).unwrap_or_default();
+        match self.store.clear_missing_artwork_refs(&missing) {
+            Ok(cleared) => LocalAppLog::shared().info(
+                "artwork-cache",
+                &format!(
+                    "Cleared {} missing artwork reference{} across {} track{}",
+                    cleared,
+                    if cleared == 1 { "" } else { "s" },
+                    affected.len(),
+                    if affected.len() == 1 { "" } else { "s" }
+                ),
+            ),
+            Err(error) => {
+                LocalAppLog::shared().warning(
+                    "artwork-cache",
+                    &format!("Could not clear missing artwork references: {error}"),
+                );
+                return;
+            }
+        }
+        if affected.is_empty() {
+            return;
+        }
+
+        let store = self.store.clone();
+        let cache = artwork_cache_dir();
+        let (tx, rx) = mpsc::channel();
+        self.artwork_repair_rx = Some(rx);
+        std::thread::spawn(move || {
+            let mut repaired = 0usize;
+            for path in affected {
+                if !Path::new(&path).is_file() {
+                    continue;
+                }
+                let tags = music_player_core::metadata::read_tags_in_cache(Path::new(&path), &cache);
+                if let Some(artwork) = tags.artwork_path {
+                    if store.set_track_artwork(&path, Some(&artwork)).is_ok() {
+                        repaired += 1;
+                    }
+                }
+            }
+            let _ = tx.send(repaired);
+        });
+    }
+
+    fn poll_artwork_repair(&mut self) {
+        let Some(rx) = &self.artwork_repair_rx else {
+            return;
+        };
+        let Ok(repaired) = rx.try_recv() else {
+            return;
+        };
+        self.artwork_repair_rx = None;
+        if repaired == 0 {
+            return;
+        }
+        LocalAppLog::shared().info(
+            "artwork-cache",
+            &format!("Re-extracted artwork for {} track{}", repaired, if repaired == 1 { "" } else { "s" }),
+        );
+        if let Some(current) = self.current.clone() {
+            if let Ok(Some(track)) = self.store.get_track(&current.path) {
+                if track.artwork_path != current.artwork_path {
+                    self.update_current_track(&track);
+                }
+            }
+        }
+        self.refresh_view();
     }
 
     fn publish_appearance(&self) {
@@ -923,6 +1012,7 @@ impl App {
         self.poll_scan();
         self.poll_lyrics_search();
         self.poll_update_check();
+        self.poll_artwork_repair();
         self.poll_os_commands();
         if self.startup_scan_deferred {
             self.startup_scan_deferred = false;
@@ -1115,42 +1205,12 @@ impl App {
     }
 
     fn smart_autoplay(&self, track: &Track, limit: usize) -> Vec<String> {
-        let in_queue: HashSet<String> = self
-            .coordinator
-            .queue()
-            .entries()
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect();
-        let mut candidates: Vec<Track> = Vec::new();
-        for (genre_mode, value) in [(true, &track.genre), (false, &track.artist)] {
-            if value.trim().is_empty() {
-                continue;
-            }
-            let query = TrackQuery {
-                group_column: if genre_mode { Some("genre".into()) } else { Some("artist".into()) },
-                group_value: Some(value.clone()),
-                sort: TrackSort::PlayCount,
-                descending: true,
-                page_size: 64,
-                ..TrackQuery::default()
-            };
-            if let Ok((tracks, _)) = self.store.query_track_page(&query) {
-                for t in tracks {
-                    if t.path != track.path && !in_queue.contains(&t.path.to_lowercase()) {
-                        candidates.push(t);
-                    }
-                }
-            }
-            if candidates.len() >= limit {
-                break;
-            }
-        }
-        candidates
-            .into_iter()
-            .take(limit)
-            .map(|t| t.path)
-            .collect()
+        // 1:1 with TryAutoplaySimilar: the queue's current entries are the
+        // exclusion list, and the store applies the original weighted SQL.
+        let exclude = self.coordinator.queue().entries().to_vec();
+        self.store
+            .smart_autoplay_tracks(&track.path, &track.genre, &track.artist, &exclude, limit)
+            .unwrap_or_default()
     }
 
     // ---- Playback command surface (port of PlaybackService orchestration) --
@@ -2717,6 +2777,121 @@ impl App {
 
     // ---- Navigation ---------------------------------------------------------
 
+    /// Restores the JSON `last-view-context` payload written by navigation
+    /// (1:1 with `LibraryQueryService.RestoreContext`).
+    fn restore_view_context(&mut self) {
+        use music_player_core::settings::keys::LAST_VIEW_CONTEXT;
+
+        const VIEWS: &[&str] = &[
+            "Home", "Search", "Songs", "Albums", "Artists", "Genres", "Folders", "Favorites",
+            "Most Played", "Recently Played", "Recently Added", "Playlists", "Playlist", "Album",
+            "Artist", "Genre", "Folder", "With Lyrics", "Videos", "Queue", "Audio", "Settings",
+            "Duplicates", "Lyrics", "Now Playing",
+        ];
+
+        let Some(serialized) = self.settings.raw(LAST_VIEW_CONTEXT) else {
+            return;
+        };
+        if serialized.trim().is_empty() || serialized.len() > 8192 {
+            return;
+        }
+        let Ok(payload) = serde_json::from_str::<serde_json::Value>(&serialized) else {
+            LocalAppLog::shared().warning(
+                "navigation",
+                "The saved player view could not be restored; opening Home instead.",
+            );
+            return;
+        };
+        let Some(object) = payload.as_object() else {
+            return;
+        };
+        let text = |key: &str| {
+            object
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        };
+        let mut view = text("view");
+        if view.is_empty() {
+            return;
+        }
+        if !VIEWS.contains(&view.as_str()) {
+            LocalAppLog::shared().warning(
+                "navigation",
+                "The saved player view is unknown; opening Home instead.",
+            );
+            view = "Home".into();
+        }
+        let mut search = text("search");
+        let group_value = text("groupValue");
+        let mut playlist_id = text("playlistId");
+
+        if view == "Playlist"
+            && (playlist_id.trim().is_empty()
+                || !self.playlists.iter().any(|playlist| playlist.id == playlist_id))
+        {
+            view = "Playlists".into();
+            playlist_id.clear();
+        }
+        if view == "Videos" && self.video_extensions().is_empty() {
+            view = "Playlists".into();
+        }
+        if view != "Search" {
+            search.clear();
+        }
+
+        let group_column = match view.as_str() {
+            "Album" => "album",
+            "Artist" => "artist",
+            "Genre" => "genre",
+            "Folder" => "folder",
+            _ => "",
+        };
+        let state = self.ui.global::<State>();
+        state.set_view(ss(&view));
+        state.set_view_search(ss(&search));
+        state.set_view_group_column(ss(group_column));
+        state.set_view_group_value(ss(if group_column.is_empty() { "" } else { &group_value }));
+        state.set_view_playlist_id(ss(&playlist_id));
+        let (sort, descending) = if group_column.is_empty() {
+            default_sort_for_view(&view)
+        } else {
+            detail_sort_for_column(group_column)
+        };
+        state.set_view_sort(ss(sort));
+        state.set_view_descending(descending);
+        drop(state);
+
+        if view != text("view") {
+            self.persist_view_context();
+        }
+    }
+
+    /// Persists the full navigation context as JSON, matching the C# payload.
+    fn persist_view_context(&self) {
+        use music_player_core::settings::keys::LAST_VIEW_CONTEXT;
+
+        let state = self.ui.global::<State>();
+        let context = NavContext::snapshot(&state);
+        drop(state);
+        let nullable = |value: &str| {
+            if value.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(value.to_string())
+            }
+        };
+        let payload = json!({
+            "view": context.view,
+            "search": context.search,
+            "groupColumn": nullable(&context.group_column),
+            "groupValue": nullable(&context.group_value),
+            "playlistId": nullable(&context.playlist_id),
+        });
+        self.settings.set_raw(LAST_VIEW_CONTEXT, &payload.to_string());
+    }
+
     fn set_view(&mut self, view: &str, search: &str, group: &str, playlist_id: &str) {
         let (resolved_search, resolved_group) = if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
             if group.is_empty() && !search.is_empty() {
@@ -2761,7 +2936,7 @@ impl App {
         state.set_view_descending(desc);
         state.set_can_go_back(self.history_pos > 0);
         state.set_can_go_forward(false);
-        self.settings.set_raw(music_player_core::settings::keys::LAST_VIEW_CONTEXT, view);
+        self.persist_view_context();
         self.refresh_view();
         if view == "Queue" {
             self.publish_queue(true);
@@ -2780,6 +2955,7 @@ impl App {
             state.set_can_go_back(self.history_pos > 0);
             state.set_can_go_forward(true);
         }
+        self.persist_view_context();
         self.tracks_offset = 0;
         self.refresh_view();
         if self.ui.global::<State>().get_view() == "Queue" { self.publish_queue(true); }
@@ -2797,6 +2973,7 @@ impl App {
             state.set_can_go_back(true);
             state.set_can_go_forward(self.history_pos + 1 < self.history.len());
         }
+        self.persist_view_context();
         self.tracks_offset = 0;
         self.refresh_view();
         if self.ui.global::<State>().get_view() == "Queue" { self.publish_queue(true); }

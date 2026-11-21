@@ -50,12 +50,26 @@ pub fn resolve_cached_artwork(hash: &str) -> Option<PathBuf> {
     None
 }
 
+/// Windows path keys are case-insensitive (the C# prune query uses
+/// `COLLATE NOCASE`); normalizing both sides prevents a case-only mismatch
+/// from deleting artwork that is still referenced.
+fn path_key(path: &str) -> String {
+    if cfg!(windows) {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
 /// Deletes artwork cache files that no track references any more
 /// (mirrors `LibraryStore.PruneUnreferencedArtwork`).
 pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db::LibraryStore) -> usize {
-    let referenced: std::collections::HashSet<String> =
-        store.artwork_refs().unwrap_or_default().into_iter().collect();
-    let refs: std::collections::HashSet<&str> = referenced.iter().map(|p| p.as_str()).collect();
+    let referenced: std::collections::HashSet<String> = store
+        .artwork_refs()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| path_key(&path))
+        .collect();
     let mut removed = 0;
     if let Ok(entries) = fs::read_dir(cache_dir) {
         for entry in entries.flatten() {
@@ -67,10 +81,8 @@ pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db
                 continue;
             }
             let full = path.to_string_lossy().into_owned();
-            if !refs.contains(full.as_str()) {
-                if fs::remove_file(&path).is_ok() {
-                    removed += 1;
-                }
+            if !referenced.contains(&path_key(&full)) && fs::remove_file(&path).is_ok() {
+                removed += 1;
             }
         }
     }

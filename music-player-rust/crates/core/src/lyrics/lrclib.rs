@@ -3,6 +3,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct LyricsSearchResult {
     pub id: u64,
     #[serde(default)]
@@ -124,43 +125,69 @@ impl LrclibSearchClient {
     }
 
     /// Performs the search and parses results using native JSON deserialization.
+    /// Mirrors `LrclibSearchClient.SearchAsync`: a 100 second overall deadline,
+    /// 1.3 second request spacing, one transient retry, and a 15 second
+    /// cooldown after a real HTTP 429.
     pub fn search(&mut self, title: &str, artist: &str) -> Result<Vec<LyricsSearchResult>, String> {
-        let now = Instant::now();
-        if let Err(delay) = self.can_request(now) {
-            std::thread::sleep(delay);
-        }
-        self.record_request(Instant::now());
+        const RATE_LIMITED: &str = "LRCLIB is limiting requests. Please try again shortly.";
 
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(100);
         let url = self.build_search_url(title, artist);
+        let mut attempt = 0usize;
 
-        // Fetch using Windows PowerShell Invoke-RestMethod for zero external C-dependencies
-        let output = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                &format!(
-                    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (Invoke-WebRequest -Uri '{}' -UseBasicParsing -TimeoutSec 15).Content",
-                    url.replace('\'', "''")
-                ),
-            ])
-            .output()
-            .map_err(|e| format!("Failed to execute search: {}", e))?;
-
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            if err.contains("429") {
-                self.set_backoff(Instant::now(), Duration::from_secs(15));
-                return Err("LRCLIB rate limit reached (HTTP 429). Please retry shortly.".into());
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err("The lyrics search timed out.".to_string());
             }
-            return Err(format!("Network error: {}", err));
+            if let Some(backoff) = self.backoff_until {
+                if now < backoff {
+                    return Err(RATE_LIMITED.to_string());
+                }
+            }
+            if let Err(delay) = self.can_request(now) {
+                if now + delay >= deadline {
+                    return Err("The lyrics search timed out.".to_string());
+                }
+                std::thread::sleep(delay);
+            }
+            self.record_request(Instant::now());
+
+            let response = match crate::lyrics::http::get(
+                &url,
+                "MusicPlayer/0.1.0",
+                Duration::from_secs(15),
+            ) {
+                Ok(response) => response,
+                Err(error) => {
+                    if attempt == 0 {
+                        attempt += 1;
+                        std::thread::sleep(Duration::from_secs(1));
+                        continue;
+                    }
+                    return Err(format!("Network error: {error}"));
+                }
+            };
+
+            match response.status {
+                200 => {
+                    return serde_json::from_slice::<Vec<LyricsSearchResult>>(&response.body)
+                        .map_err(|error| format!("LRCLIB returned invalid lyrics data: {error}"));
+                }
+                429 => {
+                    self.set_backoff(Instant::now(), Duration::from_secs(15));
+                    return Err(RATE_LIMITED.to_string());
+                }
+                408 | 500 | 502 | 503 | 504 if attempt == 0 => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+                status => {
+                    return Err(format!("LRCLIB returned HTTP {status}."));
+                }
+            }
         }
-
-        let json_text = String::from_utf8_lossy(&output.stdout);
-        let results: Vec<LyricsSearchResult> = serde_json::from_str(&json_text)
-            .unwrap_or_default();
-
-        Ok(results)
     }
 }
 

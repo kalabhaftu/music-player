@@ -1,3 +1,4 @@
+mod http;
 pub mod lrclib;
 pub mod parser;
 pub mod sidecar;

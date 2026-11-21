@@ -1,6 +1,7 @@
 use crate::models::{LibraryGroup, LibraryStats, Track, TrackSort};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result, Row};
+use std::path::Path;
 use super::search;
 
 pub fn row_to_track(row: &Row) -> Result<Track> {
@@ -651,6 +652,97 @@ pub fn query_group_page(
     Ok((groups, total))
 }
 
+/// Case-insensitive path key used for the autoplay exclusion set (matches
+/// the OrdinalIgnoreCase HashSet in `GetSmartAutoplayTracks`).
+fn path_key(path: &str) -> String {
+    if cfg!(windows) {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
+/// Smart autoplay recommendation query (1:1 port of
+/// `LibraryStore.GetSmartAutoplayTracks`): weighted genre/artist/favorite/
+/// play-count scoring plus random jitter, bounded to 150 rows, then filtered
+/// for queue exclusions and on-disk availability. Falls back to 50 random
+/// visible rows when nothing survives.
+pub fn smart_autoplay_tracks(
+    conn: &Connection,
+    current_path: &str,
+    genre: &str,
+    artist: &str,
+    exclude_paths: &[String],
+    limit: usize,
+) -> Result<Vec<String>> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut excludes = std::collections::HashSet::new();
+    if !current_path.trim().is_empty() {
+        excludes.insert(path_key(current_path));
+    }
+    for path in exclude_paths {
+        if !path.trim().is_empty() {
+            excludes.insert(path_key(path));
+        }
+    }
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT path
+        FROM tracks
+        WHERE duration_ms >= 15000
+        ORDER BY (
+            (CASE WHEN ?1 != '' AND genre = ?1 COLLATE NOCASE THEN 4.5 ELSE 0.0 END) +
+            (CASE WHEN ?2 != '' AND artist = ?2 COLLATE NOCASE THEN 3.0 ELSE 0.0 END) +
+            (CASE WHEN favorite = 1 THEN 2.0 ELSE 0.0 END) +
+            MIN(play_count * 0.4, 3.0) +
+            (abs(random()) % 300) / 100.0
+        ) DESC
+        LIMIT 150
+        "#,
+    )?;
+    let mut rows = stmt.query(params![genre, artist])?;
+    let mut result: Vec<String> = Vec::with_capacity(limit);
+    while let Some(row) = rows.next()? {
+        let path: String = row.get(0)?;
+        if excludes.contains(&path_key(&path)) {
+            continue;
+        }
+        if !Path::new(&path).exists() {
+            continue;
+        }
+        result.push(path);
+        if result.len() >= limit {
+            break;
+        }
+    }
+
+    if result.is_empty() {
+        let mut fallback = conn.prepare(
+            "SELECT path FROM tracks WHERE unavailable = 0 AND path != '' ORDER BY random() LIMIT 50",
+        )?;
+        let mut rows = fallback.query([])?;
+        while let Some(row) = rows.next()? {
+            let path: String = row.get(0)?;
+            if path.eq_ignore_ascii_case(current_path) {
+                continue;
+            }
+            if !Path::new(&path).exists() {
+                continue;
+            }
+            result.push(path);
+            if result.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 /// Availability helpers ------------------------------------------------------
 
 pub fn set_track_unavailable(conn: &Connection, path: &str, unavailable: bool) -> Result<()> {
@@ -747,4 +839,36 @@ pub fn clear_missing_artwork_refs(conn: &Connection, missing: &[String]) -> Resu
         )?;
     }
     Ok(count)
+}
+
+/// Indexed track paths that currently point at one of the supplied artwork
+/// cache files. Used to re-extract embedded artwork after stale references
+/// have been cleared.
+pub fn tracks_with_artwork_refs(conn: &Connection, refs: &[String]) -> Result<Vec<String>> {
+    if refs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat("?")
+        .take(refs.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT path FROM tracks WHERE artwork_path IN ({}) ORDER BY path COLLATE NOCASE, path",
+        placeholders
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(refs.iter()))?;
+    let mut paths = Vec::new();
+    while let Some(row) = rows.next()? {
+        paths.push(row.get(0)?);
+    }
+    Ok(paths)
+}
+
+/// Updates only the cached artwork reference for one track.
+pub fn set_track_artwork(conn: &Connection, path: &str, artwork: Option<&str>) -> Result<usize> {
+    conn.execute(
+        "UPDATE tracks SET artwork_path = ?1 WHERE path = ?2",
+        rusqlite::params![artwork, path],
+    )
 }

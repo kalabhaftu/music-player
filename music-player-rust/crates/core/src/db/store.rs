@@ -330,6 +330,29 @@ impl LibraryStore {
         tracks::clear_missing_artwork_refs(&conn, missing)
     }
 
+    pub fn tracks_with_artwork_refs(&self, refs: &[String]) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::tracks_with_artwork_refs(&conn, refs)
+    }
+
+    pub fn set_track_artwork(&self, path: &str, artwork: Option<&str>) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        tracks::set_track_artwork(&conn, path, artwork)
+    }
+
+    /// Weighted recommendation query for autoplay (GetSmartAutoplayTracks).
+    pub fn smart_autoplay_tracks(
+        &self,
+        current_path: &str,
+        genre: &str,
+        artist: &str,
+        exclude_paths: &[String],
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::smart_autoplay_tracks(&conn, current_path, genre, artist, exclude_paths, limit)
+    }
+
     pub fn checkpoint_wal(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("PRAGMA wal_checkpoint(PASSIVE)", [])?;
