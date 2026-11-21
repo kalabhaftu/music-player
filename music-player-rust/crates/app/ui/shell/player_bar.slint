@@ -128,25 +128,66 @@ export component PlayerBar inherits Rectangle {
                     tint: Palette.icon-muted;
                     clicked => { Actions.next(); }
                 }
-                IcBtn {
-                    icon: @image-url("../../assets/icons/repeat.svg");
-                    icon-size: 16px;
-                    tint: State.repeat-mode == "Off" ? Palette.icon-muted : State.accent;
-                    clicked => { Actions.cycle-repeat(); }
-                }
                 Rectangle {
                     width: 30px;
                     height: 30px;
+                    IcBtn {
+                        width: 100%;
+                        height: 100%;
+                        icon: @image-url("../../assets/icons/repeat.svg");
+                        icon-size: 16px;
+                        tint: State.repeat-mode == "Off" ? Palette.icon-muted : State.accent;
+                        clicked => { Actions.cycle-repeat(); }
+                    }
+                    if State.repeat-mode == "Track" || State.repeat-mode == "One" : Rectangle {
+                        x: parent.width - self.width - 1px;
+                        y: parent.height - self.height - 1px;
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 6px;
+                        background: State.accent;
+                        border-width: 1px;
+                        border-color: Palette.surface;
+                        Text {
+                            text: "1";
+                            color: State.accent-ink;
+                            font-size: 8px;
+                            font-weight: 900;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 44px;
+                    height: 28px;
                     visible: State.window-width > 1100;
-                    border-radius: 15px;
+                    border-radius: 6px;
                     background: ab-area.has-hover ? Palette.overlay : transparent;
-                    Text {
-                        text: "A–B";
-                        color: State.repeat-a != "" || State.repeat-b != "" ? State.accent : Palette.icon-muted;
-                        font-size: 10px;
-                        font-weight: 650;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 0px;
+                        Text {
+                            text: "A";
+                            color: State.repeat-a != "" ? State.accent : Palette.icon-muted;
+                            font-size: 11px;
+                            font-weight: State.repeat-a != "" ? 800 : 700;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "–";
+                            color: State.repeat-a != "" && State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                            font-size: 11px;
+                            font-weight: State.repeat-a != "" && State.repeat-b != "" ? 800 : 700;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "B";
+                            color: State.repeat-a != "" && State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                            font-size: 11px;
+                            font-weight: State.repeat-a != "" && State.repeat-b != "" ? 800 : 700;
+                            vertical-alignment: center;
+                        }
                     }
                     ab-area := TouchArea { clicked => { Actions.toggle-ab(); } }
                 }
