@@ -491,6 +491,8 @@ impl App {
             json!(value == "true")
         } else if let Ok(n) = value.parse::<i64>() {
             json!(n)
+        } else if let Ok(f) = value.parse::<f64>() {
+            json!(f.round() as i64)
         } else {
             json!(value)
         };
@@ -518,11 +520,19 @@ impl App {
     /// Port of `MainWindow.WindowsShell.CheckForUpdatesAsync(force: false)`.
     /// The GitHub request runs on a worker thread and is applied by `tick`.
     pub(crate) fn check_updates_if_enabled(&mut self) {
+        self.check_updates(false);
+    }
+
+    pub(crate) fn check_updates_manual(&mut self) {
+        self.check_updates(true);
+    }
+
+    pub(crate) fn check_updates(&mut self, force: bool) {
         use music_player_core::settings::keys as k;
-        if !self.settings.bool_or(k::CHECK_UPDATES, true) {
+        if !force && !self.settings.bool_or(k::CHECK_UPDATES, true) {
             return;
         }
-        if self.update_rx.is_some() || !self.update_check_due() {
+        if self.update_rx.is_some() || (!force && !self.update_check_due()) {
             return;
         }
         let Some(version) = updates::ReleaseVersion::parse(updates::current_version()) else {
@@ -537,7 +547,7 @@ impl App {
         };
         let same_channel = self.settings.raw(k::UPDATE_RELEASE_CHANNEL).as_deref() == Some(channel);
         // Only reuse the cache when it belongs to this release channel.
-        let cached = if same_channel {
+        let cached = if same_channel && !force {
             updates::read_cached_release(
                 self.settings.raw(k::UPDATE_RELEASE_TAG).as_deref(),
                 self.settings.raw(k::UPDATE_RELEASE_URL).as_deref(),
@@ -545,7 +555,7 @@ impl App {
         } else {
             None
         };
-        let etag = if same_channel {
+        let etag = if same_channel && !force {
             self.settings.raw(k::UPDATE_ETAG)
         } else {
             None
@@ -553,6 +563,7 @@ impl App {
         let cached_for_request = cached.clone();
         let (sender, receiver) = mpsc::channel();
         self.update_rx = Some(receiver);
+        self.ui.global::<State>().set_update_checking(true);
         std::thread::spawn(move || {
             let result = updates::get_latest(
                 version.is_prerelease(),
@@ -589,8 +600,12 @@ impl App {
                 self.update_rx = Some(receiver);
                 return;
             }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.ui.global::<State>().set_update_checking(false);
+                return;
+            }
         };
+        self.ui.global::<State>().set_update_checking(false);
         use music_player_core::settings::keys as k;
         match outcome.result {
             Ok(check) => {

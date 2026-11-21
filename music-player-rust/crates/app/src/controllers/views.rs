@@ -636,7 +636,7 @@ impl App {
         state.set_show_list_duration(s.bool_or(k::SHOW_DURATION, true));
         state.set_show_list_favorite(s.bool_or(k::SHOW_FAVORITE, true));
         state.set_check_updates(s.bool_or(k::CHECK_UPDATES, true));
-        state.set_minimize_to_tray(s.bool_or(k::MINIMIZE_TO_TRAY, false));
+        state.set_minimize_to_tray(s.bool_or(k::MINIMIZE_TO_TRAY, true));
         state.set_navigation_width(s.int_or(k::NAVIGATION_WIDTH, 232) as i32);
         state.set_navigation_collapsed(s.bool_or(k::SIDEBAR_COLLAPSED, false));
         state.set_browse_width(s.int_or(k::BROWSE_WIDTH, 280) as i32);

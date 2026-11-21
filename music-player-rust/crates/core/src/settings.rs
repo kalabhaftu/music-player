@@ -248,8 +248,13 @@ impl PlayerSettings {
                 key
             }
             "accentColor" | "selectionColor" => {
-                let v = value.as_str().unwrap_or("");
-                if !is_hex_color(v) {
+                let raw = value.as_str().unwrap_or("").trim();
+                let normalized = if raw.len() == 6 && raw.chars().all(|c| c.is_ascii_hexdigit()) {
+                    format!("#{raw}")
+                } else {
+                    raw.to_string()
+                };
+                if !is_hex_color(&normalized) {
                     return Err(format!("The setting '{}' is invalid.", name));
                 }
                 let key = if name == "accentColor" {
@@ -257,7 +262,7 @@ impl PlayerSettings {
                 } else {
                     keys::SELECTION_COLOR
                 };
-                self.set_raw(key, v);
+                self.set_raw(key, &normalized);
                 key
             }
             "selectionColorMode" => {
@@ -269,7 +274,12 @@ impl PlayerSettings {
                 keys::SELECTION_COLOR_MODE
             }
             "windowTransparency" => {
-                let n = value.as_i64().unwrap_or(0).clamp(0, 60);
+                let n = value
+                    .as_i64()
+                    .or_else(|| value.as_f64().map(|f| f.round() as i64))
+                    .or_else(|| value.as_str().and_then(|s| s.parse::<f64>().ok().map(|f| f.round() as i64)))
+                    .unwrap_or(0)
+                    .clamp(0, 60);
                 self.set_raw(keys::WINDOW_TRANSPARENCY, &n.to_string());
                 keys::WINDOW_TRANSPARENCY
             }
@@ -282,12 +292,22 @@ impl PlayerSettings {
                 keys::MOTION_STYLE
             }
             "navigationWidth" => {
-                let n = value.as_i64().unwrap_or(232).clamp(180, 360);
+                let n = value
+                    .as_i64()
+                    .or_else(|| value.as_f64().map(|f| f.round() as i64))
+                    .or_else(|| value.as_str().and_then(|s| s.parse::<f64>().ok().map(|f| f.round() as i64)))
+                    .unwrap_or(232)
+                    .clamp(180, 360);
                 self.set_raw(keys::NAVIGATION_WIDTH, &n.to_string());
                 keys::NAVIGATION_WIDTH
             }
             "browseWidth" => {
-                let n = value.as_i64().unwrap_or(280).clamp(180, 480);
+                let n = value
+                    .as_i64()
+                    .or_else(|| value.as_f64().map(|f| f.round() as i64))
+                    .or_else(|| value.as_str().and_then(|s| s.parse::<f64>().ok().map(|f| f.round() as i64)))
+                    .unwrap_or(280)
+                    .clamp(180, 480);
                 self.set_raw(keys::BROWSE_WIDTH, &n.to_string());
                 keys::BROWSE_WIDTH
             }
@@ -515,11 +535,15 @@ impl PlayerSettings {
 }
 
 fn is_hex_color(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    if bytes.len() != 7 || bytes[0] != b'#' {
-        return false;
+    let s = value.trim();
+    let bytes = s.as_bytes();
+    if bytes.len() == 7 && bytes[0] == b'#' {
+        return bytes[1..].iter().all(|b| b.is_ascii_hexdigit());
     }
-    bytes[1..].iter().all(|b| b.is_ascii_hexdigit())
+    if bytes.len() == 6 {
+        return bytes.iter().all(|b| b.is_ascii_hexdigit());
+    }
+    false
 }
 
 fn read_string_array(value: &Value) -> Vec<String> {
@@ -530,5 +554,45 @@ fn read_string_array(value: &Value) -> Vec<String> {
             .collect(),
         Value::String(text) => serde_json::from_str::<Vec<String>>(text).unwrap_or_default(),
         _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_is_hex_color_validation() {
+        assert!(is_hex_color("#b7ff2d"));
+        assert!(is_hex_color("#59D7FF"));
+        assert!(is_hex_color("59d7ff"));
+        assert!(!is_hex_color("#xyz123"));
+        assert!(!is_hex_color(""));
+        assert!(!is_hex_color("#12345"));
+        assert!(!is_hex_color("#1234567"));
+    }
+
+    #[test]
+    fn test_update_web_setting_numeric_and_hex() {
+        let store = crate::LibraryStore::in_memory().unwrap();
+        let settings = PlayerSettings::new(store);
+
+        // Numeric values as floats, ints, and string floats
+        assert!(settings.update_web_setting("navigationWidth", &json!(250)).is_ok());
+        assert_eq!(settings.int_or(keys::NAVIGATION_WIDTH, 0), 250);
+
+        assert!(settings.update_web_setting("navigationWidth", &json!(280.0)).is_ok());
+        assert_eq!(settings.int_or(keys::NAVIGATION_WIDTH, 0), 280);
+
+        assert!(settings.update_web_setting("browseWidth", &json!("320.0")).is_ok());
+        assert_eq!(settings.int_or(keys::BROWSE_WIDTH, 0), 320);
+
+        assert!(settings.update_web_setting("windowTransparency", &json!(35)).is_ok());
+        assert_eq!(settings.int_or(keys::WINDOW_TRANSPARENCY, 0), 35);
+
+        // Accent color normalization
+        assert!(settings.update_web_setting("accentColor", &json!("59d7ff")).is_ok());
+        assert_eq!(settings.raw(keys::ACCENT_COLOR).as_deref(), Some("#59d7ff"));
     }
 }

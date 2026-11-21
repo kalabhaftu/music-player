@@ -182,6 +182,7 @@ export component TextBtn inherits Rectangle {
     in property <string> label;
     in property <bool> danger: false;
     in property <bool> primary: false;
+    in property <bool> enabled: true;
     callback clicked();
 
     min-width: 34px;
@@ -189,16 +190,18 @@ export component TextBtn inherits Rectangle {
     border-radius: 6px;
     border-width: root.primary || root.danger ? 1px : 0px;
     border-color: root.danger ? #ff5b7455 : State.accent;
-    background: area.pressed ? Palette.border-soft : (root.primary ? State.accent : (area.has-hover ? Palette.overlay : Palette.panel-2));
+    background: !root.enabled ? Palette.panel-2 : (area.pressed ? Palette.border-soft : (root.primary ? State.accent : (area.has-hover ? Palette.overlay : Palette.panel-2)));
+    opacity: root.enabled ? 1.0 : 0.35;
     animate background { duration: 100ms; }
 
     area := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 
     Text {
         text: root.label;
-        color: root.primary ? Palette.accent-ink : (root.danger ? #ff5b74 : (area.has-hover ? Palette.text : Palette.text-subtle));
+        color: !root.enabled ? Palette.muted : (root.primary ? Palette.accent-ink : (root.danger ? #ff5b74 : (area.has-hover ? Palette.text : Palette.text-subtle)));
         font-size: 12px;
         font-weight: 700;
         vertical-alignment: center;
@@ -210,16 +213,23 @@ export component ActionBtn inherits Rectangle {
     in property <string> label;
     in property <bool> primary: false;
     in property <bool> danger: false;
+    in property <bool> enabled: true;
     callback clicked();
 
     height: 34px;
     border-radius: 999px;
-    background: root.primary
-        ? (area.has-hover ? #ffffff : #f4f6f3)
-        : (root.danger ? (area.has-hover ? #ff5b7444 : #ff5b7422) : (area.has-hover ? #303430 : #242724));
+    background: !root.enabled
+        ? #1c1e1c
+        : (root.primary
+            ? (area.has-hover ? #ffffff : #f4f6f3)
+            : (root.danger ? (area.has-hover ? #ff5b7444 : #ff5b7422) : (area.has-hover ? #303430 : #242724)));
+    opacity: root.enabled ? 1.0 : 0.38;
     animate background { duration: 100ms; }
 
-    area := TouchArea { clicked => { root.clicked(); } }
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
 
     HorizontalLayout {
         padding-left: 14px;
@@ -227,7 +237,7 @@ export component ActionBtn inherits Rectangle {
         alignment: center;
         Text {
             text: root.label;
-            color: root.primary ? #0a0b0a : (root.danger ? #ff5b74 : #ffffff);
+            color: !root.enabled ? Palette.muted : (root.primary ? #0a0b0a : (root.danger ? #ff5b74 : #ffffff));
             font-size: 11px;
             font-weight: 700;
             vertical-alignment: center;

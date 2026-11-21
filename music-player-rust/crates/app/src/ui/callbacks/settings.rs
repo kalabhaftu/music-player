@@ -46,11 +46,18 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             .on_open_default_apps(move || open_url("ms-settings:defaultapps"));
     }
     {
+        let a = app.clone();
+        ui.global::<Actions>()
+            .on_check_updates(move || a.borrow_mut().check_updates_manual());
+    }
+    {
         ui.global::<Actions>().on_open_url(move |url| {
             let allowed = [
                 "https://github.com/kalabhaftu/music-player",
+                "https://github.com/kalabhaftu/music-player/releases",
                 "https://github.com/kalabhaftu/music-player/blob/main/LICENSE",
                 "https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md",
+                "https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt",
             ];
             if allowed.contains(&url.as_str()) {
                 open_url(&url);

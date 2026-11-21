@@ -235,7 +235,7 @@ export global State {
     in-out property <bool> show-list-duration: true;
     in-out property <bool> show-list-favorite: true;
     in-out property <bool> check-updates: true;
-    in-out property <bool> minimize-to-tray: false;
+    in-out property <bool> minimize-to-tray: true;
     in-out property <int> navigation-width: 232;
     in-out property <int> browse-width: 280;
     in-out property <int> right-panel-width: 294;
@@ -277,6 +277,7 @@ export global State {
     in property <int> rate-value: 0;
     in property <string> duplicate-locations-text: "";
     in property <string> update-tag: "";
+    in property <bool> update-checking: false;
 
     // ---- Toast ----
     in property <string> notice-message: "";
@@ -396,6 +397,7 @@ export global Actions {
     callback export-logs();
     callback open-default-apps();
     callback open-url(string);
+    callback check-updates();
     callback reset-settings(string); // groups csv
     callback open-settings();
 
