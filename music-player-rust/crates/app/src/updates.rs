@@ -87,7 +87,12 @@ impl ReleaseVersion {
         if parts.next().is_some() || major < 0 || minor < 0 || patch < 0 {
             return None;
         }
-        Some(Self { major, minor, patch, preview })
+        Some(Self {
+            major,
+            minor,
+            patch,
+            preview,
+        })
     }
 
     fn cmp_preview(self, other: Self) -> std::cmp::Ordering {
@@ -127,31 +132,6 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
         .position(|window| window.eq_ignore_ascii_case(target))
 }
 
-/// Port of `ApplicationVersion.Compare`.
-#[allow(dead_code)]
-pub fn compare(current: &str, latest: Option<&str>) -> UpdateComparison {
-    let Some(installed) = ReleaseVersion::parse(current) else {
-        return UpdateComparison::UnknownVersion;
-    };
-    let Some(available) = latest.and_then(ReleaseVersion::parse) else {
-        return UpdateComparison::NoEligibleRelease;
-    };
-    if available > installed {
-        UpdateComparison::NewerRelease
-    } else {
-        UpdateComparison::CurrentRelease
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UpdateComparison {
-    NewerRelease,
-    CurrentRelease,
-    NoEligibleRelease,
-    UnknownVersion,
-}
-
 // ---------------------------------------------------------------------------
 // Release records and URL validation (GitHubUpdates.cs)
 // ---------------------------------------------------------------------------
@@ -186,7 +166,10 @@ pub struct UpdateError {
 
 impl UpdateError {
     fn new(kind: UpdateErrorKind, message: impl Into<String>) -> Self {
-        Self { kind, message: message.into() }
+        Self {
+            kind,
+            message: message.into(),
+        }
     }
 }
 
@@ -400,11 +383,17 @@ fn read_body(request: *mut c_void) -> Result<Vec<u8>, UpdateError> {
     let deadline = Instant::now() + REQUEST_TIMEOUT;
     loop {
         if Instant::now() > deadline {
-            return Err(UpdateError::new(UpdateErrorKind::Timeout, "Reading GitHub response timed out"));
+            return Err(UpdateError::new(
+                UpdateErrorKind::Timeout,
+                "Reading GitHub response timed out",
+            ));
         }
         let mut available = 0u32;
         if unsafe { wh::WinHttpQueryDataAvailable(request, &mut available) } == 0 {
-            return Err(http_error(UpdateErrorKind::Network, "Reading GitHub response"));
+            return Err(http_error(
+                UpdateErrorKind::Network,
+                "Reading GitHub response",
+            ));
         }
         if available == 0 {
             break;
@@ -420,7 +409,10 @@ fn read_body(request: *mut c_void) -> Result<Vec<u8>, UpdateError> {
             )
         } == 0
         {
-            return Err(http_error(UpdateErrorKind::Network, "Reading GitHub response"));
+            return Err(http_error(
+                UpdateErrorKind::Network,
+                "Reading GitHub response",
+            ));
         }
         if read == 0 {
             break;
@@ -438,9 +430,7 @@ fn get(
     follow_redirects: bool,
 ) -> Result<Response, UpdateError> {
     let host = wide(host);
-    let connect = Handle(unsafe {
-        wh::WinHttpConnect(session.0, host.as_ptr(), 443, 0)
-    });
+    let connect = Handle(unsafe { wh::WinHttpConnect(session.0, host.as_ptr(), 443, 0) });
     if connect.0.is_null() {
         return Err(http_error(UpdateErrorKind::Network, "Connecting to GitHub"));
     }
@@ -459,7 +449,10 @@ fn get(
         )
     });
     if request.0.is_null() {
-        return Err(http_error(UpdateErrorKind::Network, "Opening GitHub request"));
+        return Err(http_error(
+            UpdateErrorKind::Network,
+            "Opening GitHub request",
+        ));
     }
 
     if follow_redirects {
@@ -487,18 +480,31 @@ fn get(
         )
     };
     if send == 0 {
-        return Err(http_error(UpdateErrorKind::Network, "Sending GitHub request"));
+        return Err(http_error(
+            UpdateErrorKind::Network,
+            "Sending GitHub request",
+        ));
     }
     if unsafe { wh::WinHttpReceiveResponse(request.0, std::ptr::null_mut()) } == 0 {
         return Err(http_error(UpdateErrorKind::Network, "Waiting for GitHub"));
     }
 
-    let status = query_u32(request.0, wh::WINHTTP_QUERY_STATUS_CODE | wh::WINHTTP_QUERY_FLAG_NUMBER)
-        .unwrap_or(0);
+    let status = query_u32(
+        request.0,
+        wh::WINHTTP_QUERY_STATUS_CODE | wh::WINHTTP_QUERY_FLAG_NUMBER,
+    )
+    .unwrap_or(0);
     let etag = query_string(request.0, wh::WINHTTP_QUERY_ETAG).filter(|value| is_entity_tag(value));
-    let final_url = follow_redirects.then(|| query_string(request.0, wh::WINHTTP_OPTION_URL)).flatten();
+    let final_url = follow_redirects
+        .then(|| query_string(request.0, wh::WINHTTP_OPTION_URL))
+        .flatten();
     let body = read_body(request.0)?;
-    Ok(Response { status, etag, body, final_url })
+    Ok(Response {
+        status,
+        etag,
+        body,
+        final_url,
+    })
 }
 
 fn parse_releases(body: &[u8]) -> Result<Vec<Release>, UpdateError> {
@@ -511,10 +517,21 @@ fn parse_releases(body: &[u8]) -> Result<Vec<Release>, UpdateError> {
     Ok(values
         .iter()
         .map(|value| Release {
-            tag: value.get("tag_name").and_then(Value::as_str).unwrap_or_default().to_string(),
-            url: value.get("html_url").and_then(Value::as_str).unwrap_or_default().to_string(),
+            tag: value
+                .get("tag_name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            url: value
+                .get("html_url")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             draft: value.get("draft").and_then(Value::as_bool).unwrap_or(false),
-            prerelease: value.get("prerelease").and_then(Value::as_bool).unwrap_or(false),
+            prerelease: value
+                .get("prerelease")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
         .collect())
 }
@@ -543,7 +560,10 @@ fn stable_release_from_redirect(session: &Handle) -> Result<Option<Release>, Upd
     if !response.is_success() {
         return Err(UpdateError::new(
             UpdateErrorKind::Network,
-            format!("GitHub returned HTTP {} for the stable release page", response.status),
+            format!(
+                "GitHub returned HTTP {} for the stable release page",
+                response.status
+            ),
         ));
     }
     let Some(final_url) = response.final_url else {
@@ -570,7 +590,12 @@ fn stable_release_from_redirect(session: &Handle) -> Result<Option<Release>, Upd
     if !is_release_page(&url) {
         return Ok(None);
     }
-    Ok(Some(Release { tag, url, draft: false, prerelease: false }))
+    Ok(Some(Release {
+        tag,
+        url,
+        draft: false,
+        prerelease: false,
+    }))
 }
 
 fn percent_decode(value: &str) -> String {
@@ -601,22 +626,30 @@ pub fn get_latest(
 ) -> Result<UpdateCheck, UpdateError> {
     let session = open_session()?;
     let cached_eligible = channel_is_current && is_eligible(cached_release, include_prerelease);
-    let conditional = cached_eligible
-        && etag
-            .map(|value| is_entity_tag(value))
-            .unwrap_or(false);
+    let conditional = cached_eligible && etag.map(|value| is_entity_tag(value)).unwrap_or(false);
 
-    let mut headers = String::from("Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n");
+    let mut headers =
+        String::from("Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n");
     if conditional {
         headers.push_str("If-None-Match: ");
         headers.push_str(etag.unwrap_or_default().trim());
         headers.push_str("\r\n");
     }
 
-    let response = get(&session, RELEASES_API_HOST, RELEASES_API_PATH, &headers, false)?;
+    let response = get(
+        &session,
+        RELEASES_API_HOST,
+        RELEASES_API_PATH,
+        &headers,
+        false,
+    )?;
     if response.status == 304 {
         return Ok(UpdateCheck {
-            release: if cached_eligible { cached_release.cloned() } else { None },
+            release: if cached_eligible {
+                cached_release.cloned()
+            } else {
+                None
+            },
             etag: response.etag.or_else(|| etag.map(str::to_string)),
         });
     }
@@ -639,7 +672,10 @@ pub fn get_latest(
         };
         return Err(UpdateError::new(
             kind,
-            format!("GitHub returned HTTP {} for the release listing", response.status),
+            format!(
+                "GitHub returned HTTP {} for the release listing",
+                response.status
+            ),
         ));
     }
 
@@ -650,8 +686,79 @@ pub fn get_latest(
     })
 }
 
-/// Test hook for the exact release-comparison behavior of the C# port.
-#[allow(dead_code)]
-pub fn compare_versions(current: &str, latest: Option<&str>) -> UpdateComparison {
-    compare(current, latest)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum UpdateComparison {
+        NewerRelease,
+        CurrentRelease,
+        NoEligibleRelease,
+        UnknownVersion,
+    }
+
+    /// Port of `ApplicationVersion.Compare`.
+    pub fn compare(current: &str, latest: Option<&str>) -> UpdateComparison {
+        let Some(installed) = ReleaseVersion::parse(current) else {
+            return UpdateComparison::UnknownVersion;
+        };
+        let Some(available) = latest.and_then(ReleaseVersion::parse) else {
+            return UpdateComparison::NoEligibleRelease;
+        };
+        if available > installed {
+            UpdateComparison::NewerRelease
+        } else {
+            UpdateComparison::CurrentRelease
+        }
+    }
+
+    /// Test hook for the exact release-comparison behavior of the C# port.
+    pub fn compare_versions(current: &str, latest: Option<&str>) -> UpdateComparison {
+        compare(current, latest)
+    }
+
+    #[test]
+    fn test_compare_versions_newer() {
+        assert_eq!(
+            compare_versions("1.0.0", Some("1.0.1")),
+            UpdateComparison::NewerRelease
+        );
+        assert_eq!(
+            compare_versions("1.0.0", Some("2.0.0")),
+            UpdateComparison::NewerRelease
+        );
+        assert_eq!(
+            compare_versions("1.0.0-preview.1", Some("1.0.0")),
+            UpdateComparison::NewerRelease
+        );
+    }
+
+    #[test]
+    fn test_compare_versions_current_or_older() {
+        assert_eq!(
+            compare_versions("1.0.0", Some("1.0.0")),
+            UpdateComparison::CurrentRelease
+        );
+        assert_eq!(
+            compare_versions("1.1.0", Some("1.0.0")),
+            UpdateComparison::CurrentRelease
+        );
+    }
+
+    #[test]
+    fn test_compare_versions_no_eligible_or_invalid() {
+        assert_eq!(
+            compare_versions("1.0.0", None),
+            UpdateComparison::NoEligibleRelease
+        );
+        assert_eq!(
+            compare_versions("1.0.0", Some("invalid-version")),
+            UpdateComparison::NoEligibleRelease
+        );
+        assert_eq!(
+            compare_versions("invalid-installed", Some("1.0.0")),
+            UpdateComparison::UnknownVersion
+        );
+    }
 }

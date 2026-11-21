@@ -770,18 +770,7 @@ impl App {
             }
             ConfirmAction::DeletePlaylist(id) => self.delete_playlist(&id),
             ConfirmAction::RestoreBackup(path) => self.restore_backup(&path),
-            ConfirmAction::ClearQueue => self.clear_queue(),
             ConfirmAction::RemoveLyrics => self.remove_lyrics(),
-            ConfirmAction::Reset(groups) => {
-                let list: Vec<String> = groups
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect();
-                self.settings.reset_groups(&list);
-                self.publish_settings();
-                self.refresh_view();
-            }
         }
         self.close_modal();
     }
