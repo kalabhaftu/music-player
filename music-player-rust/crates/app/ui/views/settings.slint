@@ -1,9 +1,91 @@
 import { State, Actions } from "../state.slint";
 import { NavSettingItem, FolderRootItem, ExtensionItem } from "../models.slint";
 import { Palette, IcBtn, TextBtn, ActionBtn, SectionTitle, PlayerSlider, CustomToggle } from "../widgets.slint";
-import { ListView, Slider, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 
-// ---- Settings ----------------------------------------------------------------
+// ---- Custom Themed WebUI Components -------------------------------------------
+
+component CustomSelect inherits Rectangle {
+    in property <[string]> options;
+    in-out property <string> current-value;
+    in property <bool> enabled: true;
+    callback selected(string);
+
+    min-width: 130px;
+    height: 31px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: Palette.panel-2;
+
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+        alignment: center;
+        spacing: 6px;
+        Text {
+            text: root.current-value;
+            color: root.enabled ? Palette.text : Palette.muted;
+            font-size: 10px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Text {
+            text: "▾";
+            color: Palette.muted;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            popup.show();
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0px;
+        y: parent.height + 2px;
+        width: parent.width;
+        Rectangle {
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Palette.border;
+            background: #181b19;
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+                for opt in root.options : Rectangle {
+                    height: 28px;
+                    border-radius: 6px;
+                    background: item-area.has-hover ? #222622 : (opt == root.current-value ? #222622 : transparent);
+                    item-area := TouchArea {
+                        clicked => {
+                            root.current-value = opt;
+                            root.selected(opt);
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        alignment: start;
+                        Text {
+                            text: opt;
+                            color: opt == root.current-value ? State.accent : Palette.text;
+                            font-size: 10px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- Settings Rows -----------------------------------------------------------
 component SettingRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
@@ -73,9 +155,8 @@ component SettingComboRow inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            ComboBox {
-                width: 170px;
-                model: root.options;
+            CustomSelect {
+                options: root.options;
                 current-value: root.value;
                 selected(value) => { root.changed(value); }
             }
@@ -120,62 +201,168 @@ component SettingsNavTab inherits Rectangle {
 component SettingColorRow inherits Rectangle {
     in property <string> label;
     in property <string> description;
-    in property <string> value;
     in property <color> swatch;
     in property <bool> enabled: true;
     in property <string> setting;
-    height: 56px;
+    height: 52px;
 
     HorizontalLayout {
-        spacing: 12px;
+        spacing: 18px;
         SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
-        Rectangle {
-            width: 34px;
-            height: 30px;
-            border-radius: 5px;
-            border-width: 1px;
-            border-color: Palette.border;
-            background: root.swatch;
-            opacity: root.enabled ? 1.0 : 0.4;
-        }
-        LineEdit {
-            width: 100px;
-            text: root.value;
-            enabled: root.enabled;
-            accepted(value) => { Actions.set-setting(root.setting, value); }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 42px;
+                height: 30px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.border;
+                background: Palette.panel-2;
+                opacity: root.enabled ? 1.0 : 0.38;
+
+                Rectangle {
+                    x: 3px;
+                    y: 3px;
+                    width: parent.width - 6px;
+                    height: parent.height - 6px;
+                    border-radius: 5px;
+                    background: root.swatch;
+                }
+            }
         }
     }
     Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
-component SettingSliderRow inherits Rectangle {
+component SettingRangeRow inherits Rectangle {
     in property <string> label;
     in property <string> description;
-    in property <int> value;
-    in property <int> minimum;
-    in property <int> maximum;
-    in property <string> suffix: "px";
-    in property <string> setting;
+    in-out property <int> value;
+    in property <int> minimum: 0;
+    in property <int> maximum: 60;
     in property <bool> enabled: true;
-    height: 58px;
+    in property <string> setting;
+    height: 52px;
+
     HorizontalLayout {
-        spacing: 14px;
+        spacing: 18px;
         SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
-        Slider {
-            width: 180px;
-            minimum: root.minimum;
-            maximum: root.maximum;
-            value: root.value;
-            enabled: root.enabled;
-            changed value => { Actions.set-setting(root.setting, "\{round(self.value)}"); }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            opacity: root.enabled ? 1.0 : 0.38;
+            slider := PlayerSlider {
+                width: 180px;
+                minimum: root.minimum;
+                maximum: root.maximum;
+                value: root.value;
+                fill-color: slider.hovered ? State.accent : #e2e6e1;
+                track-color: #2e332f;
+                changed(v) => {
+                    if root.enabled {
+                        root.value = round(v);
+                        Actions.set-setting(root.setting, "\{round(v)}");
+                    }
+                }
+            }
+            Text {
+                width: 38px;
+                text: "\{root.value}%";
+                color: Palette.muted;
+                font-size: 11px;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
         }
-        Text {
-            text: "\{root.value}\{root.suffix}";
-            color: root.enabled ? Palette.muted : Palette.muted-2;
-            font-size: 10px;
-            width: 44px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
+
+component SettingNumberRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in-out property <int> value;
+    in property <int> minimum: 180;
+    in property <int> maximum: 480;
+    in property <int> step: 10;
+    in property <string> setting;
+    height: 52px;
+
+    HorizontalLayout {
+        spacing: 18px;
+        SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 104px;
+                height: 31px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.border;
+                background: Palette.panel-2;
+
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    // Minus button
+                    Rectangle {
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 4px;
+                        background: minus-area.has-hover ? #222622 : transparent;
+                        minus-area := TouchArea {
+                            clicked => {
+                                root.value = max(root.minimum, root.value - root.step);
+                                Actions.set-setting(root.setting, "\{root.value}");
+                            }
+                        }
+                        Text {
+                            text: "−";
+                            color: Palette.muted;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Value display
+                    Text {
+                        text: "\{root.value}";
+                        color: Palette.text;
+                        font-size: 12px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    // Plus button
+                    Rectangle {
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 4px;
+                        background: plus-area.has-hover ? #222622 : transparent;
+                        plus-area := TouchArea {
+                            clicked => {
+                                root.value = min(root.maximum, root.value + root.step);
+                                Actions.set-setting(root.setting, "\{root.value}");
+                            }
+                        }
+                        Text {
+                            text: "+";
+                            color: Palette.muted;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
         }
     }
     Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
@@ -234,14 +421,18 @@ component SettingNavOrderRow inherits Rectangle {
 
 export component SettingsView inherits Rectangle {
     VerticalLayout {
-        padding: 18px;
-        spacing: 11px;
+        padding-top: 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-bottom: 32px;
+        spacing: 12px;
 
         VerticalLayout {
             spacing: 5px;
             Text { text: "Settings"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
             Text { text: "Choose how Music Player looks and behaves."; color: Palette.muted; font-size: 12px; }
         }
+        Rectangle { height: 10px; }
 
         // Settings navigation menu (matches original .settings-menu: Appearance, Library, Playback, Equalizer, Advanced, About)
         Rectangle {
@@ -307,7 +498,6 @@ export component SettingsView inherits Rectangle {
                         SettingColorRow {
                             label: "Custom accent color";
                             description: "Applied to controls when enabled; artwork still colors the interface.";
-                            value: State.accent-color;
                             swatch: State.accent-manual;
                             enabled: State.accent-manual-enabled;
                             setting: "accent-color";
@@ -322,7 +512,6 @@ export component SettingsView inherits Rectangle {
                         SettingColorRow {
                             label: "Custom selection color";
                             description: "Used when text selection is set to Custom.";
-                            value: State.selection-color;
                             swatch: State.selection-color-value;
                             enabled: State.selection-color-mode == "Custom";
                             setting: "selection-color";
@@ -333,14 +522,13 @@ export component SettingsView inherits Rectangle {
                             checked: State.transparent-window;
                             toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
                         }
-                        SettingSliderRow {
+                        SettingRangeRow {
                             label: "Transparency";
                             description: "0% is opaque. The player always remains at least 40% solid.";
                             value: State.window-transparency;
                             minimum: 0;
                             maximum: 60;
                             enabled: State.transparent-window;
-                            suffix: "%";
                             setting: "window-transparency";
                         }
                         SettingComboRow {
@@ -355,7 +543,7 @@ export component SettingsView inherits Rectangle {
                             spacing: 18px;
                             SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
                             HorizontalLayout {
-                                spacing: 8px;
+                                spacing: 9px;
                                 alignment: center;
                                 for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
                                     width: 24px;
@@ -479,7 +667,7 @@ export component SettingsView inherits Rectangle {
                             checked: State.minimize-to-tray;
                             toggled(value) => { Actions.set-setting("minimize-to-tray", value ? "true" : "false"); }
                         }
-                        SettingSliderRow {
+                        SettingNumberRow {
                             label: "Navigation width";
                             description: "Expanded sidebar width in logical pixels.";
                             value: State.navigation-width;
@@ -487,7 +675,7 @@ export component SettingsView inherits Rectangle {
                             maximum: 360;
                             setting: "navigation-width";
                         }
-                        SettingSliderRow {
+                        SettingNumberRow {
                             label: "Browse grid spacing";
                             description: "Spacing between album, artist, and playlist tiles.";
                             value: State.browse-width;
