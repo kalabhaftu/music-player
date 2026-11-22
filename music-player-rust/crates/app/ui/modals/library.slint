@@ -73,8 +73,9 @@ export component ExclusionsModal inherits Rectangle {
         padding-right: 18px;
         spacing: 12px;
 
+        SectionTitle { text: "File extensions"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
         Text {
-            text: "Audio files are indexed for playback. Video files are opened in their own window when supported.";
+            text: "Audio types are included by default. Video types are off until enabled. Enabled video files open in a separate Music Player window and use the media engine already included with the app; playback still depends on the file’s codec.";
             color: Palette.muted;
             font-size: 10px;
             wrap: word-wrap;
@@ -131,7 +132,13 @@ export component ExclusionsModal inherits Rectangle {
             }
         }
 
-        SectionTitle { text: "Ignored folders"; }
+        SectionTitle { text: "Folders"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
+        Text {
+            text: "Windows and common app/cache locations are skipped automatically. Excluding a folder also excludes its subfolders.";
+            color: Palette.muted;
+            font-size: 10px;
+            wrap: word-wrap;
+        }
         ScrollView {
             height: 110px;
             VerticalLayout {

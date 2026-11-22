@@ -338,6 +338,7 @@ impl App {
         self.poll_lyrics_search();
         self.poll_update_check();
         self.poll_artwork_repair();
+        self.poll_duplicate_load();
         self.poll_os_commands();
         if self.startup_scan_deferred {
             self.startup_scan_deferred = false;

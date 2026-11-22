@@ -65,6 +65,10 @@ impl App {
         state.set_can_go_forward(false);
         self.persist_view_context();
         self.refresh_view();
+        if view == "Duplicates" && self.duplicate_fingerprints_ready {
+            let sort = self.dup_sort.clone();
+            self.load_duplicates(&sort, self.dup_desc, 0);
+        }
         if view == "Queue" {
             self.publish_queue(true);
         }

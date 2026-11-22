@@ -115,22 +115,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_prepare_duplicates(move || {
             let mut app = a.borrow_mut();
-            match app.store.prepare_duplicate_fingerprints() {
-                Ok(_) => {
-                    {
-                        let sort = app.dup_sort.clone();
-                        let desc = app.dup_desc;
-                        app.load_duplicates(&sort, desc, 0);
-                    }
-                    app.ui
-                        .global::<State>()
-                        .set_duplicate_files(ui_model(Vec::<TrackItem>::new()).into());
-                }
-                Err(err) => {
-                    LocalAppLog::shared().error("duplicates", "fingerprint failed", Some(&err));
-                    app.show_notice("Duplicates could not be prepared.", NoticeSeverity::Error);
-                }
-            }
+            app.duplicate_fingerprints_ready = false;
+            app.start_duplicate_load();
         });
     }
     {
@@ -148,5 +134,10 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.groups_offset += 60;
             app.refresh_view();
         });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>()
+            .on_load_more_artist_albums(move || a.borrow_mut().load_more_artist_albums());
     }
 }

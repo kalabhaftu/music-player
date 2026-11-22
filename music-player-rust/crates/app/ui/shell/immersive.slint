@@ -232,14 +232,17 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 Text { text: State.current-time; color: #d0d2ce; width: 44px; font-size: 12px; vertical-alignment: center; }
                 PlayerSlider {
                     horizontal-stretch: 1;
+                    commit-on-release: true;
                     minimum: 0.0;
                     maximum: 1.0;
                     value: State.progress;
-                    changed(val) => { Actions.seek-fraction(val); }
+                    preview(val) => { Actions.preview-seek-fraction(val); }
+                    finished(val) => { Actions.seek-fraction(val); }
                     scrolled(event) => {
-                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (!State.has-track) { return reject; }
+                        let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
                         if (delta != 0) {
-                            Actions.seek-relative(delta);
+                            Actions.seek-wheel(delta);
                             return accept;
                         }
                         reject

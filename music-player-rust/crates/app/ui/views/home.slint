@@ -11,9 +11,9 @@ export component HomeSectionHeader inherits Rectangle {
     HorizontalLayout {
         Text {
             text: root.title;
-            color: Palette.text-strong;
+            color: Palette.text;
             font-size: 19px;
-            font-weight: 750;
+            font-weight: 700;
             letter-spacing: -0.65px;
             horizontal-stretch: 1;
             vertical-alignment: center;
@@ -79,9 +79,9 @@ export component HomeQuickTrackTile inherits Rectangle {
             Text {
                 min-width: 0px;
                 text: root.item.title;
-                color: Palette.text-strong;
+                color: Palette.text;
                 font-size: 12px;
-                font-weight: 650;
+                font-weight: 700;
                 overflow: elide;
             }
             if root.item.artist != "" : Text {
@@ -192,7 +192,7 @@ export component HomeView inherits Rectangle {
 
             VerticalLayout {
                 spacing: 5px;
-                Text { text: State.home-greeting; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: State.home-greeting; color: Palette.text; font-size: 28px; font-weight: 700; letter-spacing: -0.65px; }
                 Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
             }
 

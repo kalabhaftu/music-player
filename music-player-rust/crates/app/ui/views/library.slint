@@ -7,17 +7,18 @@ import {
 
 // ---- Songs-like table views ------------------------------------------------
 export component SongsView inherits Rectangle {
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 12px;
+        spacing: 0px;
 
         HorizontalLayout {
             VerticalLayout {
                 spacing: 5px;
-                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
                 Text { text: State.view-subtitle; color: Palette.muted; font-size: 12px; }
             }
             Rectangle { horizontal-stretch: 1; }
@@ -30,6 +31,8 @@ export component SongsView inherits Rectangle {
                 }
             }
         }
+
+        Rectangle { height: 22px; }
 
         HorizontalLayout {
             height: 34px;
@@ -50,11 +53,14 @@ export component SongsView inherits Rectangle {
             }
         }
 
+        Rectangle { height: 12px; }
+
         TrackTable {
-            vertical-stretch: 1;
+            scrollable: false;
             sort(column) => { Actions.sort-view(column); }
             empty-text: State.view == "Videos" ? "No videos indexed. Enable video file types in scan exclusions." : "No tracks to show.";
         }
+      }
     }
 }
 
@@ -64,25 +70,38 @@ export component GridView inherits Rectangle {
     in property <bool> round: false;
     in property <string> empty-text: "Nothing here yet.";
 
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 12px;
+        spacing: 0px;
 
         VerticalLayout {
             spacing: 5px;
-            Text { text: root.title; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+            Text { text: root.title; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
             Text { text: root.title == "Albums" ? "\{State.groups-total} albums" : (root.title == "Artists" ? "\{State.groups-total} artists" : "\{State.groups-total} genres"); color: Palette.muted; font-size: 12px; }
         }
 
+        Rectangle { height: 22px; }
+
         GroupGrid {
-            vertical-stretch: 1;
+            scrollable: false;
             round: root.round;
             kind: root.title == "Albums" ? "album" : (root.title == "Artists" ? "artist" : (root.title == "Genres" ? "genre" : "folder"));
             empty-text: root.empty-text;
         }
+        if State.groups.length > 0 && State.groups-total > State.groups.length : VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 12px; }
+            ActionBtn {
+                label: "Load more";
+                clicked => { Actions.load-more-groups(); }
+            }
+            Rectangle { height: 12px; }
+        }
+      }
     }
 }
 
@@ -119,24 +138,36 @@ component FolderTile inherits Rectangle {
             drop-shadow-offset-y: 14px;
             drop-shadow-blur: 28px;
             drop-shadow-color: #00000040;
-            background: @linear-gradient(145deg, Palette.ga(root.item.gradient) 0%, Palette.gb(root.item.gradient) 100%);
+            background: @linear-gradient(150deg, Palette.ga(root.item.gradient) 0%, Palette.badge(root.item.gradient) 58%, Palette.gb(root.item.gradient) 100%);
 
-            Image {
-                source: @image-url("../../assets/icons/folder.svg");
-                width: 32px;
-                height: 32px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: #ffffffd0;
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: #ffffffe0;
+                font-size: clamp(State.window-width * 0.02px, 16px, 26px);
+                font-weight: 900;
+                letter-spacing: -1px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
             }
         }
         VerticalLayout {
-            spacing: 3px;
+            spacing: 4px;
             min-width: 0px;
             Text {
                 min-width: 0px;
                 text: root.item.name;
-                color: Palette.text-strong;
+                color: Palette.text;
                 font-size: 13px;
                 font-weight: 750;
                 overflow: elide;
@@ -159,10 +190,10 @@ export component FoldersView inherits Rectangle {
             padding-right: 24px;
             padding-top: 20px;
             padding-bottom: 32px;
-            spacing: 20px;
+            spacing: 0px;
 
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 12px;
                 VerticalLayout {
                     spacing: 5px;
                     horizontal-stretch: 1;
@@ -170,24 +201,27 @@ export component FoldersView inherits Rectangle {
                         text: "Folders";
                         color: Palette.text;
                         font-size: 30px;
-                        font-weight: 800;
+                        font-weight: 700;
                         letter-spacing: -0.65px;
                     }
                 }
-                ActionBtn {
-                    label: "＋ Add folder";
-                    primary: true;
-                    clicked => { Actions.open-modal("folders"); }
-                }
-                ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
-                ActionBtn {
-                    label: "Rebuild";
-                    clicked => { Actions.rebuild-library-index(); }
-                }
-                ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
-                ActionBtn {
-                    label: "Exclusions";
-                    clicked => { Actions.open-modal("exclusions"); }
+                HorizontalLayout {
+                    spacing: 6px;
+                    ActionBtn {
+                        label: "＋ Add folder";
+                        primary: true;
+                        clicked => { Actions.open-modal("folders"); }
+                    }
+                    ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                    ActionBtn {
+                        label: "Rebuild";
+                        clicked => { Actions.rebuild-library-index(); }
+                    }
+                    ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                    ActionBtn {
+                        label: "Exclusions";
+                        clicked => { Actions.open-modal("exclusions"); }
+                    }
                 }
             }
 
@@ -196,6 +230,9 @@ export component FoldersView inherits Rectangle {
                 color: #ffb04a;
                 font-size: 11px;
             }
+
+            if State.scan-active || State.scan-paused : Rectangle { height: 22px; }
+            if !State.scan-active && !State.scan-paused : Rectangle { height: 24px; }
 
             // Scan status row: dot + label + counters.
             if State.scan-active || State.scan-paused : Rectangle {
@@ -246,26 +283,43 @@ export component FoldersView inherits Rectangle {
                 }
             }
 
-            SectionTitle { text: "Indexed folders · \{State.groups-total}"; }
+            if State.scan-active || State.scan-paused : Rectangle { height: 24px; }
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: "Indexed folders";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                    vertical-alignment: center;
+                }
+                Text { text: "\{State.groups-total}"; color: Palette.muted; font-size: 16px; vertical-alignment: center; }
+            }
+            Rectangle { height: 13px; }
             if State.groups.length == 0 : EmptyState {
                 text: "Indexed folders will appear here.";
             }
-            if State.groups.length > 0 : ScrollView {
-                vertical-stretch: 1;
-                GridLayout {
-                    width: 100%;
-                    spacing: Palette.card-gap(State.browse-width);
-                    for item[index] in State.groups : FolderTile {
-                        item: item;
-                        col: Math.mod(index, State.card-columns);
-                        row: index / State.card-columns;
-                    }
+            if State.groups.length > 0 : GridLayout {
+                width: 100%;
+                spacing: Palette.card-gap(State.browse-width);
+                for item[index] in State.groups : FolderTile {
+                    item: item;
+                    col: Math.mod(index, State.card-columns);
+                    row: index / State.card-columns;
                 }
             }
-            if State.groups-total > State.groups.length : ActionBtn {
-                label: "Load more folders";
-                clicked => { Actions.load-more-groups(); }
+            if State.groups.length > 0 && State.groups-total > State.groups.length : VerticalLayout {
+                spacing: 0px;
+                Rectangle { height: 12px; }
+                ActionBtn {
+                    label: "Load more folders";
+                    clicked => { Actions.load-more-groups(); }
+                }
             }
+
+            Rectangle { height: 24px; }
 
             HorizontalLayout {
                 spacing: 8px;
@@ -284,6 +338,7 @@ export component FoldersView inherits Rectangle {
                     manage-area := TouchArea { clicked => { Actions.open-modal("folders"); } }
                 }
             }
+            Rectangle { height: 13px; }
             if State.folder-roots.length == 0 : EmptyState { text: "No music folders added yet."; }
             if State.folder-roots.length > 0 : GridLayout {
                 width: 100%;
@@ -325,7 +380,7 @@ export component FoldersView inherits Rectangle {
                             spacing: 3px;
                             horizontal-stretch: 1;
                             min-width: 0px;
-                            Text { text: rootEntry.name; color: Palette.text-strong; font-size: 12px; font-weight: 650; overflow: elide; }
+                            Text { text: rootEntry.name; color: Palette.text-strong; font-size: 12px; font-weight: 700; overflow: elide; }
                             Text {
                                 text: rootEntry.is-available
                                     ? "\{rootEntry.path} · \{rootEntry.track-count} tracks · Available"
@@ -376,24 +431,31 @@ export component DetailView inherits Rectangle {
             }
 
             if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
-                spacing: 13px;
-                Text {
-                    text: "Albums";
-                    color: Palette.text;
-                    font-size: 19px;
-                    font-weight: 750;
-                    letter-spacing: -0.65px;
+                spacing: 0px;
+                SectionTitle { text: "Albums"; }
+                Rectangle { height: 13px; }
+                GridLayout {
+                    width: 100%;
+                    spacing: Palette.card-gap(State.browse-width);
+                    for album[index] in State.artist-albums : CardTile {
+                        item: album;
+                        col: Math.mod(index, State.card-columns);
+                        row: index / State.card-columns;
+                        play => { Actions.play-group("album", album.name); }
+                        open => { Actions.set-view("Album", "", album.name, ""); }
+                    }
                 }
-                Rectangle {
-                    height: 190px;
-                    ListView {
-                        for album in State.artist-albums : CardTile {
-                            width: 150px;
-                            item: album;
-                            play => { Actions.play-group("album", album.name); }
-                            open => { Actions.set-view("Album", "", album.name, ""); }
+                if State.artist-albums-have-more : VerticalLayout {
+                    spacing: 0px;
+                    Rectangle { height: 12px; }
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionBtn {
+                            label: "More albums";
+                            clicked => { Actions.load-more-artist-albums(); }
                         }
                     }
+                    Rectangle { height: 12px; }
                 }
             }
 
@@ -404,7 +466,7 @@ export component DetailView inherits Rectangle {
                     text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
                     color: Palette.text;
                     font-size: 19px;
-                    font-weight: 750;
+                    font-weight: 700;
                     letter-spacing: -0.65px;
                 }
 

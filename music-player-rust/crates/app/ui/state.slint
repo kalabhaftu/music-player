@@ -79,6 +79,7 @@ export global State {
     in property <string> current-title: "";
     in property <string> current-artist: "";
     in property <string> current-album: "";
+    in property <bool> current-unavailable: false;
     in property <bool> current-favorite: false;
     in property <image> current-cover;
     in property <bool> current-has-cover: false;
@@ -101,6 +102,7 @@ export global State {
     in property <image> hero-cover;
     in property <bool> hero-has-cover: false;
     in property <[GroupItem]> artist-albums;
+    in property <bool> artist-albums-have-more: false;
 
     // ---- Queue / right panel ----
     in property <[QueueItem]> queue-items;
@@ -141,6 +143,7 @@ export global State {
     in property <int> duplicates-pages: 1;
     in property <string> duplicates-sort: "Title";
     in property <bool> duplicates-descending: false;
+    in property <bool> duplicate-loading: false;
     in property <[TrackItem]> duplicate-files;
     in property <string> duplicate-group-title: "";
     in property <[string]> duplicate-locations;
@@ -334,6 +337,8 @@ export global Actions {
     callback next();
     callback previous();
     callback seek-fraction(float);
+    callback preview-seek-fraction(float);
+    callback seek-wheel(int);
     callback seek-relative(int);
     callback volume-changed(int);
     callback toggle-shuffle();
@@ -419,6 +424,7 @@ export global Actions {
     // ---- Duplicates ----
     callback load-duplicates(string, bool, int); // sort, descending, page
     callback load-more-duplicates();
+    callback load-more-artist-albums();
     callback open-duplicate-files(string);
     callback close-duplicate-files();
     callback prepare-duplicates();

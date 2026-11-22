@@ -15,11 +15,6 @@ component SmartPlaylistTile inherits Rectangle {
 
     area := TouchArea {
         clicked => { Actions.set-view(root.card.id, "", "", ""); }
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
-                Actions.play-view(root.card.id);
-            }
-        }
     }
 
     VerticalLayout {
@@ -54,6 +49,12 @@ component SmartPlaylistTile inherits Rectangle {
             }
 
             Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
+            }
+
+            Rectangle {
                 width: 38px;
                 height: 38px;
                 x: parent.width - self.width - 10px;
@@ -77,11 +78,11 @@ component SmartPlaylistTile inherits Rectangle {
         }
 
         VerticalLayout {
-            spacing: 3px;
+            spacing: 4px;
             min-width: 0px;
             Text {
                 text: root.card.name;
-                color: Palette.text-strong;
+                color: Palette.text;
                 font-size: 13px;
                 font-weight: 750;
                 overflow: elide;
@@ -109,12 +110,6 @@ component PlaylistTile inherits Rectangle {
             if (root.card.is-smart) { Actions.set-view(root.card.id, "", "", ""); }
             else { Actions.set-view("Playlist", "", "", root.card.id); }
         }
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
-                if (root.card.is-smart) { Actions.play-view(root.card.id); }
-                else { Actions.play-playlist(root.card.id); }
-            }
-        }
     }
 
     VerticalLayout {
@@ -136,14 +131,14 @@ component PlaylistTile inherits Rectangle {
                     : root.card.id == "With Lyrics" ? @linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #1e1b4b 100%)
                     : root.card.id == "Videos" ? @linear-gradient(135deg, #3b82f6 0%, #1d4ed8 60%, #0f172a 100%)
                     : @linear-gradient(135deg, #10b981 0%, #06b6d4 60%, #134e4a 100%))
-                : @linear-gradient(150deg, Palette.ga(root.card.gradient) 0%, Palette.gb(root.card.gradient) 100%);
+                : @linear-gradient(150deg, Palette.ga(root.card.gradient) 0%, Palette.badge(root.card.gradient) 58%, Palette.gb(root.card.gradient) 100%);
 
             if !root.card.is-smart : Text {
                 text: root.card.initials;
-                color: #ffffffd0;
-                font-size: 20px;
-                font-weight: 800;
-                letter-spacing: -0.5px;
+                color: #ffffffe0;
+                font-size: clamp(State.window-width * 0.02px, 16px, 26px);
+                font-weight: 900;
+                letter-spacing: -1px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -157,6 +152,12 @@ component PlaylistTile inherits Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 colorize: #ffffff;
+            }
+
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
             }
 
             Rectangle {
@@ -188,17 +189,17 @@ component PlaylistTile inherits Rectangle {
         }
 
         VerticalLayout {
-            spacing: 3px;
+            spacing: 4px;
             min-width: 0px;
             Text {
                 text: root.card.name;
-                color: Palette.text-strong;
+                color: Palette.text;
                 font-size: 13px;
                 font-weight: 750;
                 overflow: elide;
             }
-            Text {
-                text: "\{root.card.track-count} songs";
+            if root.card.track-count > 0 : Text {
+                text: root.card.track-count == 1 ? "1 song" : "\{root.card.track-count} songs";
                 color: Palette.muted;
                 font-size: 11px;
             }
@@ -226,12 +227,13 @@ export component PlaylistsList inherits Rectangle {
 }
 
 export component PlaylistsView inherits Rectangle {
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 16px;
+        spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -241,7 +243,7 @@ export component PlaylistsView inherits Rectangle {
                     text: "Playlists";
                     color: Palette.text;
                     font-size: 30px;
-                    font-weight: 800;
+                    font-weight: 700;
                     letter-spacing: -0.65px;
                 }
                 Text {
@@ -262,9 +264,9 @@ export component PlaylistsView inherits Rectangle {
             }
         }
 
-        ScrollView {
-            vertical-stretch: 1;
-            VerticalLayout {
+        Rectangle { height: 24px; }
+
+        VerticalLayout {
                 spacing: 24px;
                 if State.smart-playlists.length > 0 : VerticalLayout {
                     spacing: 13px;
@@ -295,23 +297,24 @@ export component PlaylistsView inherits Rectangle {
                         }
                     }
                 }
-            }
         }
+      }
     }
 }
 
 
 // ---- Playlist detail ---------------------------------------------------------
 export component PlaylistView inherits Rectangle {
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 12px;
+        spacing: 0px;
 
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 12px;
             VerticalLayout {
                 spacing: 5px;
                 horizontal-stretch: 1;
@@ -319,49 +322,64 @@ export component PlaylistView inherits Rectangle {
                     text: State.playlist-name;
                     color: Palette.text;
                     font-size: 30px;
-                    font-weight: 800;
+                    font-weight: 700;
                     letter-spacing: -0.65px;
                     overflow: elide;
                 }
-                if State.playlist-empty-message != "" : Text {
-                    text: State.playlist-empty-message;
+                if State.view-search == "" : Text {
+                    text: "\{State.playlist-track-total} tracks";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
+                if State.view-search != "" : Text {
+                    text: "\{State.playlist-track-total} matching tracks";
                     color: Palette.muted;
                     font-size: 12px;
                 }
             }
-            ActionBtn {
-                label: "Play";
-                primary: true;
-                clicked => { Actions.play-playlist(State.view-playlist-id); }
-            }
-            ActionBtn {
-                label: "Shuffle";
-                clicked => { Actions.play-playlist-shuffle(State.view-playlist-id); }
-            }
-            ActionBtn {
-                label: "Rename…";
-                clicked => { Actions.open-modal("rename-playlist"); }
-            }
-            ActionBtn {
-                label: "Export";
-                clicked => { Actions.export-m3u(State.view-playlist-id); }
-            }
-            ActionBtn {
-                label: "Delete";
-                danger: true;
-                clicked => { Actions.open-modal("delete-playlist"); }
+            HorizontalLayout {
+                spacing: 8px;
+                ActionBtn {
+                    label: "Play";
+                    primary: true;
+                    clicked => { Actions.play-playlist(State.view-playlist-id); }
+                }
+                ActionBtn {
+                    label: "Shuffle";
+                    clicked => { Actions.play-playlist-shuffle(State.view-playlist-id); }
+                }
+                ActionBtn {
+                    label: "Rename";
+                    clicked => { Actions.open-modal("rename-playlist"); }
+                }
+                ActionBtn {
+                    label: "Export";
+                    clicked => { Actions.export-m3u(State.view-playlist-id); }
+                }
+                ActionBtn {
+                    label: "Delete";
+                    danger: true;
+                    clicked => { Actions.delete-playlist(State.view-playlist-id); }
+                }
             }
         }
 
-        TrackTable {
-            vertical-stretch: 1;
+        Rectangle { height: 22px; }
+
+        if State.tracks.length == 0 && !State.page-loading : EmptyState {
+            text: State.view-search == "" ? "This playlist is empty" : "No tracks match this search";
+            subtitle: State.view-search == "" ? "Add tracks from your library to get started." : "Try another title, artist, or album.";
+        }
+        if State.tracks.length > 0 || State.page-loading : TrackTable {
+            scrollable: false;
             show-added: false;
             show-year: false;
             first-column: "TITLE";
             show-remove: true;
             sort(column) => { Actions.sort-view(column); }
-            empty-text: "This playlist is empty…";
+            empty-text: "";
         }
+      }
     }
 }
 

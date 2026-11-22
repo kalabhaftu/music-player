@@ -163,6 +163,17 @@ impl LibraryStore {
         playlists::get_playlist_entries(&conn, id)
     }
 
+    pub fn get_playlist_entries_page(
+        &self,
+        id: &str,
+        search: Option<&str>,
+        offset: u32,
+        page_size: u32,
+    ) -> Result<(Vec<PlaylistEntry>, i64)> {
+        let conn = self.conn.lock().unwrap();
+        playlists::get_playlist_entries_page(&conn, id, search, offset, page_size)
+    }
+
     pub fn add_tracks_to_playlist(&self, id: &str, paths: &[String]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         playlists::add_tracks_to_playlist(&conn, id, paths)
@@ -379,5 +390,10 @@ impl LibraryStore {
     ) -> Result<Vec<crate::duplicates::ExactDuplicateGroup>> {
         let conn = self.conn.lock().unwrap();
         crate::duplicates::DuplicateDetector::get_duplicate_groups(&conn, offset, page_size)
+    }
+
+    pub fn get_duplicate_tracks(&self, sha256: &str) -> Result<Vec<Track>> {
+        let conn = self.conn.lock().unwrap();
+        crate::duplicates::DuplicateDetector::get_duplicate_tracks(&conn, sha256)
     }
 }

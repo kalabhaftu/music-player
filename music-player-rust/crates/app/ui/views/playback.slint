@@ -1,6 +1,6 @@
 import { State, Actions } from "../state.slint";
 import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
-import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState } from "../widgets.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState, HeroDetail } from "../widgets.slint";
 import { ScrollView, ListView, Slider, ComboBox } from "std-widgets.slint";
 
 // ---- Queue ------------------------------------------------------------------
@@ -171,12 +171,13 @@ component QueueRow inherits Rectangle {
 }
 
 export component QueueView inherits Rectangle {
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 12px;
+        spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -184,10 +185,10 @@ export component QueueView inherits Rectangle {
                 spacing: 5px;
                 horizontal-stretch: 1;
                 Text {
-                    text: "Playback queue";
+                    text: "Queue";
                     color: Palette.text;
                     font-size: 30px;
-                    font-weight: 800;
+                    font-weight: 700;
                     letter-spacing: -0.65px;
                 }
                 Text {
@@ -196,13 +197,15 @@ export component QueueView inherits Rectangle {
                     font-size: 12px;
                 }
             }
-            if State.queue-count > 0 : ActionBtn {
+            ActionBtn {
                 label: "Clear upcoming";
                 clicked => { Actions.clear-queue(); }
             }
         }
 
-        if State.queue-items.length > 0 : ListView {
+        Rectangle { height: 22px; }
+
+        if State.queue-items.length > 0 : VerticalLayout {
             for row[index] in State.queue-items : QueueRow {
                 item: row;
                 index: index;
@@ -212,119 +215,76 @@ export component QueueView inherits Rectangle {
             }
         }
         if State.queue-items.length == 0 : EmptyState {
-            vertical-stretch: 1;
-            text: "Queue is empty. Songs you add will appear here.";
+            text: "Queue is empty";
+            subtitle: "Songs you add will appear here.";
         }
-        if State.queue-more-count > 0 : ActionBtn {
-            label: "Load more queued tracks (\{State.queue-more-count} remaining)";
-            clicked => { Actions.load-more-queue(); }
+        if State.queue-more-count > 0 : VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 12px; }
+            ActionBtn {
+                label: "Load more queued tracks (\{State.queue-more-count} remaining)";
+                clicked => { Actions.load-more-queue(); }
+            }
+            Rectangle { height: 12px; }
         }
+      }
     }
 }
 
 
 // ---- Now Playing --------------------------------------------------------------
 export component NowPlayingView inherits Rectangle {
-    if State.has-track : HorizontalLayout {
-        padding: 28px;
-        spacing: 28px;
-
+    ScrollView {
         VerticalLayout {
-            width: State.window-width <= 700 ? 110px : 190px;
-            alignment: start;
-            spacing: 16px;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
 
-            Rectangle {
-                height: self.width;
-                border-radius: 8px;
-                clip: true;
-                background: Palette.panel-2;
-                if State.current-has-cover : Image {
-                    source: State.current-cover;
-                    width: parent.width;
-                    height: parent.height;
-                    image-fit: ImageFit.cover;
+            if State.has-track : HeroDetail {
+                eyebrow: "Now playing";
+                title: State.current-title;
+                subtitle: State.current-artist + (State.current-album != "" ? " · " + State.current-album : "");
+                cover: State.current-cover;
+                has-cover: State.current-has-cover;
+                initials: State.current-initials;
+                now-playing: true;
+                favorite: State.current-favorite;
+                toggle-favorite => { Actions.toggle-favorite(State.current-id); }
+                show-location => { Actions.open-file-location(State.current-id); }
+                details => { Actions.open-details(State.current-id); }
+            }
+
+            if !State.has-track : VerticalLayout {
+                spacing: 22px;
+                HorizontalLayout {
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Now Playing"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                        Text { text: "Nothing is playing."; color: Palette.muted; font-size: 12px; }
+                    }
                 }
-                if !State.current-has-cover : Text {
-                    text: State.current-initials;
-                    color: Palette.text;
-                    font-size: 34px;
-                    font-weight: 900;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                EmptyState {
+                    text: "Choose a song to begin";
+                    subtitle: "Playback stays active as you move between views.";
                 }
             }
         }
-
-        VerticalLayout {
-            alignment: center;
-            spacing: 14px;
-            horizontal-stretch: 1;
-
-            Text {
-                text: "Now Playing";
-                color: State.accent;
-                font-size: 10px;
-                font-weight: 700;
-            }
-            Text {
-                text: State.current-title;
-                color: Palette.text;
-                font-size: 30px;
-                font-weight: 800;
-                overflow: elide;
-            }
-            Text {
-                text: State.current-artist;
-                color: Palette.muted;
-                font-size: 14px;
-                overflow: elide;
-            }
-            Text {
-                text: State.current-album;
-                color: Palette.muted-2;
-                font-size: 12px;
-                overflow: elide;
-            }
-
-            HorizontalLayout {
-                spacing: 10px;
-                alignment: start;
-                IcBtn {
-                    icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
-                    tint: State.current-favorite ? State.accent : Palette.muted;
-                    clicked => { Actions.toggle-favorite(State.current-id); }
-                }
-                ActionBtn {
-                    label: "Track details";
-                    clicked => { Actions.open-details(State.current-id); }
-                }
-                ActionBtn {
-                    label: "Show in folder";
-                    clicked => { Actions.open-file-location(State.current-id); }
-                }
-                ActionBtn {
-                    label: "Lyrics";
-                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
-                }
-            }
-        }
-    }
-    if !State.has-track : EmptyState {
-        text: "Nothing is playing.";
     }
 }
 
 // ---- Lyrics ------------------------------------------------------------------
 export component LyricsView inherits Rectangle {
-    VerticalLayout {
+    ScrollView {
+      VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
-        spacing: 12px;
+        spacing: 0px;
 
-        if State.has-track : HorizontalLayout {
+        HorizontalLayout {
             spacing: 10px;
             VerticalLayout {
                 spacing: 5px;
@@ -333,28 +293,33 @@ export component LyricsView inherits Rectangle {
                     text: "Lyrics";
                     color: Palette.text;
                     font-size: 30px;
-                    font-weight: 800;
+                    font-weight: 700;
                     letter-spacing: -0.65px;
                 }
                 Text {
-                    text: "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded tags" : "LRCLIB")) : "");
+                    text: State.has-track
+                        ? "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded in audio tags" : "LRCLIB (online)")) : "")
+                        : "Choose a song to view lyrics.";
                     color: Palette.muted;
                     font-size: 12px;
                     overflow: elide;
                 }
             }
-            ActionBtn {
-                label: "Find lyrics…";
-                clicked => { Actions.open-find-lyrics(State.current-id); }
-            }
-            ActionBtn {
-                label: "Edit lyrics…";
+            if State.has-track : ActionBtn {
+                label: "Edit lyrics";
                 clicked => { Actions.open-edit-lyrics(); }
+            }
+            if State.has-track : ActionBtn {
+                label: "Find lyrics";
+                clicked => { Actions.open-find-lyrics(State.current-id); }
             }
         }
 
+        Rectangle { height: 22px; }
+
         if !State.has-track : EmptyState {
-            text: "Choose a song to view lyrics.";
+            text: "No track selected";
+            subtitle: "Lyrics appear here when a track is playing.";
         }
 
         if State.has-track && State.has-lyrics : Rectangle {
@@ -414,6 +379,7 @@ export component LyricsView inherits Rectangle {
             Text { text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics found"; color: Palette.text; font-size: 15px; font-weight: 750; horizontal-alignment: center; }
             Text { text: State.lyrics-searching ? "Searching LRCLIB for a match to this track." : "Lyrics saved in the audio file or beside it load automatically. You can also search online."; color: Palette.muted; font-size: 11px; horizontal-alignment: center; wrap: word-wrap; }
         }
+      }
     }
 }
 
@@ -429,33 +395,40 @@ export component AudioView inherits Rectangle {
 
             VerticalLayout {
                 spacing: 5px;
-                Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+                Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
                 Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; }
             }
 
             VerticalLayout {
-                spacing: 8px;
-                SectionTitle { text: "Volume"; }
+                spacing: 3px;
+                SectionTitle { text: "Volume"; font-size: 15px; letter-spacing: 0px; }
                 HorizontalLayout {
                     spacing: 10px;
-                    Rectangle { width: 120px; Text { text: "Output level"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; } }
+                    VerticalLayout {
+                        min-width: 220px;
+                        spacing: 3px;
+                        Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
+                        Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; }
+                    }
                     PlayerSlider {
                         horizontal-stretch: 1;
                         minimum: 0.0;
                         maximum: 100.0;
                         value: State.volume;
+                        fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                        track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
                         scroll-step: 4.0;
                         changed(val) => { Actions.volume-changed(round(val)); }
                     }
                     Text { text: "\{State.volume}%"; color: Palette.muted; width: 42px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
                     ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
                 }
-                Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; }
             }
 
             VerticalLayout {
-                spacing: 8px;
-                SectionTitle { text: "Audio output"; }
+                spacing: 3px;
+                SectionTitle { text: "Audio output"; font-size: 15px; letter-spacing: 0px; }
+                Text { text: "Choose a connected Windows playback device."; color: Palette.muted; font-size: 10px; }
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
@@ -480,8 +453,8 @@ export component AudioView inherits Rectangle {
             }
 
             VerticalLayout {
-                spacing: 8px;
-                SectionTitle { text: "Playback transition"; }
+                spacing: 3px;
+                SectionTitle { text: "Playback transition"; font-size: 15px; letter-spacing: 0px; }
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
@@ -497,7 +470,7 @@ export component AudioView inherits Rectangle {
 
             VerticalLayout {
                 spacing: 12px;
-                SectionTitle { text: "10-band equalizer"; }
+                SectionTitle { text: "10-band equalizer"; font-size: 15px; letter-spacing: 0px; }
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }

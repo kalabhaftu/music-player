@@ -15,25 +15,28 @@ export component PlayerBar inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: State.window-width <= 650 ? 8px : 14px;
+        padding-right: State.window-width <= 650 ? 8px : 14px;
         padding-top: 10px;
         padding-bottom: 10px;
-        spacing: 16px;
+        spacing: State.window-width <= 480 ? 6px
+            : (State.window-width <= 650 ? 8px
+            : (State.window-width <= 900 ? 10px : 16px));
 
         VerticalLayout {
-            horizontal-stretch: 1;
+            horizontal-stretch: State.window-width <= 650 && State.window-width > 480 ? 0.85 : 1;
             min-width: 0px;
             alignment: center;
 
             HorizontalLayout {
-                spacing: 11px;
+                spacing: State.window-width <= 900 ? 8px : 11px;
                 alignment: start;
 
                 Rectangle {
-                    width: 56px;
-                    height: 56px;
-                    border-radius: 12px;
+                    visible: State.window-width > 480;
+                    width: State.window-width <= 900 ? 44px : 56px;
+                    height: State.window-width <= 900 ? 44px : 56px;
+                    border-radius: 6px;
                     clip: true;
                     drop-shadow-offset-x: 0px;
                     drop-shadow-offset-y: 9px;
@@ -68,17 +71,18 @@ export component PlayerBar inherits Rectangle {
                         text: State.current-title == "" ? "Nothing playing" : State.current-title;
                         color: State.current-title == "" ? Palette.muted-2 : Palette.text;
                         font-size: 12px;
-                        font-weight: 650;
+                        font-weight: 700;
                         overflow: elide;
                     }
                     Text {
-                        text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? State.current-artist : "\{State.current-artist} • \{State.current-album}");
+                        text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? (State.current-unavailable ? "\{State.current-artist} • File unavailable" : State.current-artist) : (State.current-unavailable ? "\{State.current-artist} • \{State.current-album} • File unavailable" : "\{State.current-artist} • \{State.current-album}"));
                         color: Palette.muted;
                         font-size: 10px;
                         overflow: elide;
                     }
                 }
                 VerticalLayout {
+                    visible: State.window-width > 650;
                     alignment: center;
                     IcBtn {
                         width: 30px;
@@ -93,18 +97,22 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
-            horizontal-stretch: 1.25;
-            min-width: 260px;
+            horizontal-stretch: State.window-width <= 480 ? 1.1
+                : (State.window-width <= 900 ? 1.2 : 1.25);
+            min-width: State.window-width <= 480 ? 124px
+                : (State.window-width <= 650 ? 140px
+                : (State.window-width <= 900 ? 190px : 260px));
             alignment: center;
             spacing: 7px;
 
             HorizontalLayout {
                 alignment: center;
-                spacing: 8px;
+                spacing: State.window-width <= 1100 ? 5px : 8px;
 
                 IcBtn {
-                    width: 30px;
-                    height: 30px;
+                    visible: State.window-width > 650;
+                    width: State.window-width <= 650 ? 28px : 30px;
+                    height: State.window-width <= 650 ? 28px : 30px;
                     icon: @image-url("../../assets/icons/shuffle.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
@@ -112,20 +120,20 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.toggle-shuffle(); }
                 }
                 IcBtn {
-                    width: 30px;
-                    height: 30px;
+                    width: State.window-width <= 650 ? 28px : 30px;
+                    height: State.window-width <= 650 ? 28px : 30px;
                     icon: @image-url("../../assets/icons/skip-back.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
                     clicked => { Actions.previous(); }
                 }
                 Rectangle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 18px;
-                    background: #f4f6f3;
+                    width: State.window-width <= 650 ? 34px : 36px;
+                    height: State.window-width <= 650 ? 34px : 36px;
+                    border-radius: self.width / 2;
+                    background: play-area.has-hover ? (State.light-theme ? Palette.text-subtle : #ffffff) : (State.light-theme ? Palette.text : #f4f6f3);
                     animate background { duration: 100ms; }
-                    TouchArea {
+                    play-area := TouchArea {
                         clicked => { Actions.toggle-play(); }
                     }
                     Image {
@@ -138,16 +146,17 @@ export component PlayerBar inherits Rectangle {
                     }
                 }
                 IcBtn {
-                    width: 30px;
-                    height: 30px;
+                    width: State.window-width <= 650 ? 28px : 30px;
+                    height: State.window-width <= 650 ? 28px : 30px;
                     icon: @image-url("../../assets/icons/skip-forward.svg");
                     icon-size: 16px;
                     tint: Palette.icon-muted;
                     clicked => { Actions.next(); }
                 }
                 Rectangle {
-                    width: 30px;
-                    height: 30px;
+                    visible: State.window-width > 480;
+                    width: State.window-width <= 650 ? 28px : 30px;
+                    height: State.window-width <= 650 ? 28px : 30px;
                     IcBtn {
                         width: 100%;
                         height: 100%;
@@ -210,41 +219,63 @@ export component PlayerBar inherits Rectangle {
                 }
             }
 
-            HorizontalLayout {
+            Rectangle {
                 horizontal-stretch: 1;
-                max-width: 520px;
-                spacing: 8px;
-
-                Text {
-                    text: State.current-time;
-                    color: #747b74;
-                    font-size: 9px;
-                    width: 32px;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                }
-                PlayerSlider {
-                    horizontal-stretch: 1;
-                    minimum: 0.0;
-                    maximum: 1.0;
-                    value: State.progress;
-                    changed(val) => { Actions.seek-fraction(val); }
-                    scrolled(event) => {
-                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                height: 16px;
+                timeline-area := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    scroll-event(event) => {
+                        if (!State.has-track) { return reject; }
+                        let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
                         if (delta != 0) {
-                            Actions.seek-relative(delta);
+                            Actions.seek-wheel(delta);
                             return accept;
                         }
                         reject
                     }
                 }
-                Text {
-                    text: State.total-time;
-                    color: #747b74;
-                    font-size: 9px;
-                    width: 32px;
-                    horizontal-alignment: left;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    width: 100%;
+                    height: 100%;
+                    spacing: State.window-width <= 650 ? 4px : 8px;
+
+                    Text {
+                        text: State.current-time;
+                        color: #747b74;
+                        font-size: State.window-width <= 650 ? 8px : 9px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                    PlayerSlider {
+                        horizontal-stretch: 1;
+                        scrollable: false;
+                        commit-on-release: true;
+                        minimum: 0.0;
+                        maximum: 1.0;
+                        value: State.progress;
+                        fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                        track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                        thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                        preview(val) => { Actions.preview-seek-fraction(val); }
+                        finished(val) => { Actions.seek-fraction(val); }
+                        scrolled(event) => {
+                            if (!State.has-track) { return reject; }
+                            let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
+                            if (delta != 0) {
+                                Actions.seek-wheel(delta);
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+                    Text {
+                        text: State.total-time;
+                        color: #747b74;
+                        font-size: State.window-width <= 650 ? 8px : 9px;
+                        horizontal-alignment: left;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }
@@ -254,10 +285,11 @@ export component PlayerBar inherits Rectangle {
             alignment: center;
 
             HorizontalLayout {
-                spacing: 7px;
+                spacing: State.window-width <= 650 ? 2px : (State.window-width <= 900 ? 3px : 7px);
                 alignment: end;
 
                 IcBtn {
+                    visible: State.window-width > 900;
                     width: 30px;
                     height: 30px;
                     icon: @image-url("../../assets/icons/lyrics.svg");
@@ -276,6 +308,7 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
                 IcBtn {
+                    visible: State.window-width > 900;
                     width: 30px;
                     height: 30px;
                     icon: @image-url("../../assets/icons/equalizer.svg");
@@ -285,6 +318,7 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Audio", "", "", ""); }
                 }
                 IcBtn {
+                    visible: State.window-width > 480;
                     width: 30px;
                     height: 30px;
                     icon: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
@@ -292,38 +326,119 @@ export component PlayerBar inherits Rectangle {
                     tint: Palette.icon-muted;
                     clicked => { Actions.open-immersive-player(); }
                 }
-                IcBtn {
-                    width: 30px;
-                    height: 30px;
-                    icon: State.volume == 0 ? @image-url("../../assets/icons/mute.svg") : @image-url("../../assets/icons/volume.svg");
-                    icon-size: 16px;
-                    tint: State.volume == 0 ? State.accent : Palette.icon-muted;
-                    clicked => { Actions.set-volume-muted(); }
-                    scrolled(event) => {
-                        let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
-                        if (delta != 0) {
-                            Actions.volume-changed(clamp(State.volume + delta, 0, 100));
-                            return accept;
-                        }
-                        reject
-                    }
-                }
-                VerticalLayout {
-                    alignment: center;
-                    PlayerSlider {
-                        width: 88px;
-                        minimum: 0.0;
-                        maximum: 100.0;
-                        value: State.volume;
-                        scroll-step: 4.0;
-                        changed(val) => { Actions.volume-changed(round(val)); }
-                        scrolled(event) => {
-                            let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                Rectangle {
+                    width: State.window-width <= 650 ? 27px
+                        : (State.window-width <= 1100 ? 30px : 125px);
+                    height: 32px;
+                    clip: false;
+
+                    volume-host-area := TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        scroll-event(event) => {
+                            let delta = event.delta-y < 0px ? 4 : (event.delta-y > 0px ? -4 : 0);
                             if (delta != 0) {
                                 Actions.volume-changed(clamp(State.volume + delta, 0, 100));
                                 return accept;
                             }
                             reject
+                        }
+                    }
+
+                    volume-mute := IcBtn {
+                        width: State.window-width <= 650 ? 27px : 30px;
+                        height: State.window-width <= 650 ? 27px : 30px;
+                        icon: State.volume == 0 ? @image-url("../../assets/icons/mute.svg") : @image-url("../../assets/icons/volume.svg");
+                        icon-size: 16px;
+                        tint: State.volume == 0 ? State.accent : Palette.icon-muted;
+                        clicked => { Actions.set-volume-muted(); }
+                        scrolled(event) => {
+                            let delta = event.delta-y < 0px ? 4 : (event.delta-y > 0px ? -4 : 0);
+                            if (delta != 0) {
+                                Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+
+                    if State.window-width > 1100 : PlayerSlider {
+                        x: 37px;
+                        y: 8px;
+                        width: 88px;
+                        minimum: 0.0;
+                        maximum: 100.0;
+                        value: State.volume;
+                        fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                        track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                        thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                        scrollable: true;
+                        scroll-step: 4.0;
+                        changed(val) => { Actions.volume-changed(round(val)); }
+                        scrolled(event) => {
+                            let delta = event.delta-y < 0px ? 4 : (event.delta-y > 0px ? -4 : 0);
+                            if (delta != 0) {
+                                Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+
+                    if State.window-width <= 1100 : Rectangle {
+                        x: parent.width - 138px;
+                        y: -54px;
+                        width: 138px;
+                        height: 46px;
+                        visible: volume-mute.hovered || volume-popover-area.has-hover
+                            || volume-gap-area.has-hover || mobile-volume-slider.hovered;
+                        border-width: 1px;
+                        border-color: Palette.border;
+                        border-radius: 14px;
+                        background: Palette.panel-3;
+                        drop-shadow-offset-x: 0px;
+                        drop-shadow-offset-y: 18px;
+                        drop-shadow-blur: 50px;
+                        drop-shadow-color: #00000061;
+
+                        volume-popover-area := TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            scroll-event(event) => {
+                                let delta = event.delta-y < 0px ? 4 : (event.delta-y > 0px ? -4 : 0);
+                                if (delta != 0) {
+                                    Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                    return accept;
+                                }
+                                reject
+                            }
+                        }
+                        volume-gap-area := TouchArea {
+                            y: parent.height;
+                            width: parent.width;
+                            height: 8px;
+                        }
+                        mobile-volume-slider := PlayerSlider {
+                            x: 13px;
+                            y: 15px;
+                            width: 112px;
+                            minimum: 0.0;
+                            maximum: 100.0;
+                            value: State.volume;
+                            fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                            scrollable: true;
+                            scroll-step: 4.0;
+                            changed(val) => { Actions.volume-changed(round(val)); }
+                            scrolled(event) => {
+                                let delta = event.delta-y < 0px ? 4 : (event.delta-y > 0px ? -4 : 0);
+                                if (delta != 0) {
+                                    Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                    return accept;
+                                }
+                                reject
+                            }
                         }
                     }
                 }

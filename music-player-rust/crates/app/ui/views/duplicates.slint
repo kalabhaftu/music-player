@@ -1,107 +1,99 @@
 import { State, Actions } from "../state.slint";
-import { ListView } from "std-widgets.slint";
-import { Palette, ActionBtn, TrackHeader, TrackTable, IcBtn } from "../widgets.slint";
+import { ScrollView, ComboBox } from "std-widgets.slint";
+import { Palette, ActionBtn, EmptyState } from "../widgets.slint";
 
-// ---- Duplicates --------------------------------------------------------------
-export component DuplicatesView inherits Rectangle {
+component DuplicateTable inherits Rectangle {
     VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 12px;
-
         HorizontalLayout {
-            spacing: 10px;
-            VerticalLayout {
-                spacing: 5px;
-                horizontal-stretch: 1;
-                Text {
-                    text: "Duplicates";
-                    color: Palette.text;
-                    font-size: 30px;
-                    font-weight: 800;
-                    letter-spacing: -0.65px;
-                }
-                Text {
-                    text: "Find and manage duplicate tracks across your collection.";
-                    color: Palette.muted;
-                    font-size: 12px;
-                }
-            }
-            ActionBtn {
-                label: "Rescan duplicates";
-                primary: true;
-                clicked => { Actions.prepare-duplicates(); }
-            }
-        }
-
-        if State.duplicate-files.length == 0 : VerticalLayout {
+            height: 37px;
+            padding-left: 12px;
+            padding-right: 12px;
             spacing: 12px;
-
-            TrackHeader {
-                first-column: "Title";
-                show-added: false;
-                show-year: false;
-                show-album: true;
-                sort(s) => { Actions.load-duplicates(s, State.duplicates-descending, 0); }
-            }
-
-            Rectangle {
-                vertical-stretch: 1;
-                ListView {
-                    for row[index] in State.duplicates : Rectangle {
-                        height: 48px;
-                        background: dup-area.has-hover ? Palette.panel-2 : transparent;
-                        dup-area := TouchArea {
-                            clicked => { Actions.open-duplicate-files(row.first-id); }
-                        }
-                        HorizontalLayout {
-                            padding-left: 12px;
-                            padding-right: 12px;
-                            spacing: 12px;
-                            Text {
-                                text: row.title;
-                                color: Palette.text-strong;
-                                font-size: 12px;
-                                overflow: elide;
-                                horizontal-stretch: 3;
-                                vertical-alignment: center;
-                            }
-                            Text {
-                                text: row.artist;
-                                color: Palette.muted;
-                                font-size: 11px;
-                                overflow: elide;
-                                horizontal-stretch: 3;
-                                vertical-alignment: center;
-                            }
-                            Text {
-                                text: "\{row.copies}";
-                                color: Palette.text-subtle;
-                                font-size: 11px;
-                                width: 60px;
-                                horizontal-alignment: right;
-                                vertical-alignment: center;
-                            }
-                            Text {
-                                text: row.locations;
-                                color: Palette.muted-2;
-                                font-size: 10px;
-                                overflow: elide;
-                                width: 220px;
-                                vertical-alignment: center;
-                            }
-                        }
+            Text { text: "TITLE"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+            Text { text: "ARTIST"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+            Text { text: "COPIES"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; width: 64px; horizontal-alignment: right; vertical-alignment: center; }
+            Text { text: "LOCATIONS"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+        }
+        Rectangle { height: 1px; background: Palette.border; }
+        for row in State.duplicates : Rectangle {
+            height: 58px;
+            background: row-area.has-hover ? Palette.row-hover : transparent;
+            animate background { duration: 130ms; }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+            row-area := TouchArea { }
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 12px;
+                Text { text: row.title; color: Palette.text-subtle; font-size: 12px; overflow: elide; horizontal-stretch: 3; vertical-alignment: center; }
+                Text { text: row.artist; color: Palette.text-subtle; font-size: 12px; overflow: elide; horizontal-stretch: 3; vertical-alignment: center; }
+                Text { text: "\{row.copies}"; color: Palette.muted; font-size: 12px; width: 64px; horizontal-alignment: right; vertical-alignment: center; }
+                Rectangle {
+                    horizontal-stretch: 3;
+                    ActionBtn {
+                        label: "Show locations";
+                        clicked => { Actions.open-duplicate-files(row.first-id); }
                     }
                 }
             }
+        }
+    }
+}
+
+export component DuplicatesView inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
+
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: "Duplicates"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                Text { text: "\{State.duplicates-total} exact duplicate groups"; color: Palette.muted; font-size: 12px; }
+            }
+
+            Rectangle { height: 22px; }
 
             HorizontalLayout {
-                spacing: 10px;
+                height: 34px;
+                spacing: 7px;
+                Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                ComboBox {
+                    enabled: !State.duplicate-loading;
+                    model: ["Title", "Artist", "Album", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
+                    current-value: State.duplicates-sort;
+                    selected(value) => { Actions.load-duplicates(value, State.duplicates-descending, 0); }
+                }
+                ActionBtn {
+                    enabled: !State.duplicate-loading;
+                    label: State.duplicates-descending ? "Descending" : "Ascending";
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, !State.duplicates-descending, 0); }
+                }
+            }
+
+            Rectangle { height: 12px; }
+
+            if State.duplicates.length > 0 : DuplicateTable { }
+            if State.duplicates.length == 0 && State.duplicate-loading : EmptyState {
+                text: "Checking for exact duplicates";
+                subtitle: "Comparing indexed music files.";
+            }
+            if State.duplicates.length == 0 && !State.duplicate-loading : EmptyState {
+                text: State.view-search != "" ? "No duplicate groups match" : "No exact duplicates found";
+                subtitle: State.view-search != "" ? "Try another title, artist, or album." : "Duplicate groups are created as the library is indexed.";
+            }
+
+            if State.duplicates-pages > 1 : HorizontalLayout {
+                padding: 12px;
+                spacing: 8px;
                 alignment: center;
                 ActionBtn {
                     label: "Previous";
+                    enabled: State.duplicates-page > 0;
                     clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page - 1); }
                 }
                 Text {
@@ -112,33 +104,9 @@ export component DuplicatesView inherits Rectangle {
                 }
                 ActionBtn {
                     label: "Next";
+                    enabled: State.duplicates-page + 1 < State.duplicates-pages;
                     clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page + 1); }
                 }
-            }
-        }
-
-        if State.duplicate-files.length > 0 : VerticalLayout {
-            spacing: 10px;
-            HorizontalLayout {
-                spacing: 10px;
-                IcBtn {
-                    icon: @image-url("../../assets/icons/chevron-left.svg");
-                    clicked => { Actions.close-duplicate-files(); }
-                }
-                Text {
-                    text: State.duplicate-group-title;
-                    color: Palette.text;
-                    font-size: 16px;
-                    font-weight: 750;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-            }
-            TrackTable {
-                vertical-stretch: 1;
-                show-added: false;
-                show-year: false;
-                empty-text: "No duplicate files.";
             }
         }
     }

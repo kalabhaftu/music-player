@@ -42,7 +42,7 @@ export component TagsModal inherits Rectangle {
             }
         }
 
-        SectionTitle { text: "Additional format-specific fields"; }
+        SectionTitle { text: "Additional format-specific fields"; text-color: Palette.muted; font-size: 11px; letter-spacing: 0px; }
         ScrollView {
             height: 110px;
             VerticalLayout {
@@ -81,7 +81,7 @@ export component TagsModal inherits Rectangle {
             }
         }
 
-        SectionTitle { text: "Additional standard fields"; }
+        SectionTitle { text: "Additional standard fields"; text-color: Palette.muted; font-size: 11px; letter-spacing: 0px; }
         ScrollView {
             height: 100px;
             VerticalLayout {
@@ -138,7 +138,6 @@ export component DetailsModal inherits Rectangle {
             vertical-stretch: 1;
             VerticalLayout {
                 spacing: 12px;
-                SectionTitle { text: "File details"; }
                 for row in State.detail-rows : HorizontalLayout {
                     spacing: 12px;
                     Text {
@@ -157,7 +156,7 @@ export component DetailsModal inherits Rectangle {
                         vertical-alignment: center;
                     }
                 }
-                if State.detail-additional.length > 0 : SectionTitle { text: "Additional standard tags"; }
+                if State.detail-additional.length > 0 : SectionTitle { text: "Additional standard tags"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
                 for row in State.detail-additional : HorizontalLayout {
                     spacing: 12px;
                     Text {
@@ -176,7 +175,7 @@ export component DetailsModal inherits Rectangle {
                         vertical-alignment: center;
                     }
                 }
-                if State.detail-custom.length > 0 : SectionTitle { text: "Custom tags"; }
+                if State.detail-custom.length > 0 : SectionTitle { text: "Custom tags"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
                 for row in State.detail-custom : HorizontalLayout {
                     spacing: 12px;
                     Text {
@@ -195,7 +194,7 @@ export component DetailsModal inherits Rectangle {
                         vertical-alignment: center;
                     }
                 }
-                if State.detail-backups.length > 0 : SectionTitle { text: "Recent tag backups"; }
+                if State.detail-backups.length > 0 : SectionTitle { text: "Recent tag backups"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
                 for backup in State.detail-backups : HorizontalLayout {
                     spacing: 12px;
                     Text {

@@ -134,15 +134,16 @@ impl App {
             position,
             duration,
         );
+        let display_position = self.seek_preview_ms.unwrap_or(position);
         let progress = if duration > 0 {
-            (position as f32 / duration as f32).clamp(0.0, 1.0)
+            (display_position as f32 / duration as f32).clamp(0.0, 1.0)
         } else {
             0.0
         };
         let state = self.ui.global::<State>();
         state.set_is_playing(playing);
         state.set_progress(progress);
-        state.set_current_time(ss(fmt_time(position)));
+        state.set_current_time(ss(fmt_time(display_position)));
         state.set_total_time(ss(fmt_time(duration)));
         state.set_has_track(self.current.is_some());
         state.set_crossfading(self.crossfade_in_progress);
@@ -170,6 +171,8 @@ impl App {
     }
 
     pub(crate) fn update_current_track(&mut self, track: &Track) {
+        self.seek_wheel_timer.stop();
+        self.seek_preview_ms = None;
         self.current = Some(track.clone());
         self.id_to_path.insert(track.id(), track.path.clone());
         let state = self.ui.global::<State>();
@@ -177,6 +180,7 @@ impl App {
         state.set_current_title(ss(&track.title));
         state.set_current_artist(ss(&track.artist));
         state.set_current_album(ss(&track.album));
+        state.set_current_unavailable(track.unavailable);
         state.set_current_favorite(track.favorite);
         let (has_cover, cover) = track
             .artwork_path
@@ -247,7 +251,7 @@ impl App {
     pub(crate) fn track_to_ui(
         &mut self,
         track: &Track,
-        _index: i32,
+        index: i32,
         playing_path: &str,
     ) -> TrackItem {
         self.id_to_path.insert(track.id(), track.path.clone());
@@ -285,6 +289,7 @@ impl App {
             .unwrap_or((false, Image::default()));
         TrackItem {
             id: ss(track.id()),
+            position: (index - 1).max(0),
             title: ss(&track.title),
             artist: ss(&track.artist),
             album: ss(&track.album),
@@ -368,6 +373,7 @@ impl App {
         self.id_to_path.insert(id.clone(), path.to_string());
         TrackItem {
             id: ss(&id),
+            position: 0,
             title: ss(file_stem(path)),
             artist: ss("Unavailable"),
             album: ss(""),
@@ -936,6 +942,13 @@ impl App {
             .as_ref()
             .map(|t| t.path.clone())
             .unwrap_or_default();
+        if view == "Playlist" {
+            self.publish_playlist(&playlist_id, &playing);
+            self.ui
+                .global::<State>()
+                .set_has_roots(!self.settings.library_roots().is_empty());
+            return;
+        }
         let hide_dupes = self
             .settings
             .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
@@ -1054,6 +1067,9 @@ impl App {
         }
         if view == "Search" {
             self.publish_search_counts(&search);
+        }
+        if view == "Duplicates" && !self.duplicate_fingerprints_ready {
+            self.start_duplicate_load();
         }
     }
 
@@ -1410,40 +1426,70 @@ impl App {
     }
 
     pub(crate) fn publish_playlist(&mut self, playlist_id: &str, playing: &str) {
+        self.id_to_path.clear();
         let Some(playlist) = self.store.get_playlist(playlist_id).ok().flatten() else {
-            self.ui
-                .global::<State>()
-                .set_playlist_name(ss("Playlist not found."));
+            let state = self.ui.global::<State>();
+            state.set_playlist_name(ss("Playlist not found."));
+            state.set_playlist_track_total(0);
+            state.set_playlist_empty_message(ss("This playlist is empty."));
+            state.set_tracks(ui_model(Vec::<TrackItem>::new()).into());
+            state.set_tracks_total(0);
+            state.set_can_load_more(false);
+            state.set_page_loading(false);
+            state.set_view_title(ss("Playlist not found."));
+            state.set_view_subtitle(ss(""));
             return;
         };
-        let paths = self
+        let search = self
+            .ui
+            .global::<State>()
+            .get_view_search()
+            .to_string();
+        let offset = self.tracks_offset.min(u32::MAX as usize) as u32;
+        let page_size = TRACK_PAGE_SIZE.min(u32::MAX as usize) as u32;
+        let (entries, total) = self
             .store
-            .get_playlist_paths(playlist_id)
+            .get_playlist_entries_page(playlist_id, Some(&search), offset, page_size)
             .unwrap_or_default();
-        let tracks: Vec<Track> = paths
+        let items: Vec<TrackItem> = entries
             .iter()
-            .filter_map(|p| self.store.get_track(p).ok().flatten())
+            .map(|entry| {
+                let mut item = match &entry.track {
+                    Some(track) => self.track_to_ui(track, entry.position as i32 + 1, playing),
+                    None => self.placeholder_item(&entry.path, playing),
+                };
+                item.position = entry.position as i32;
+                if let Some(track) = &entry.track {
+                    self.track_cache.insert(entry.path.clone(), track.clone());
+                }
+                item
+            })
             .collect();
-        let items: Vec<TrackItem> = tracks
-            .iter()
-            .enumerate()
-            .map(|(i, t)| self.track_to_ui(t, i as i32 + 1, playing))
-            .collect();
-        for path in &paths {
-            if self.store.get_track(path).ok().flatten().is_none() {
-                self.placeholder_item(path, playing);
-            }
-        }
         let state = self.ui.global::<State>();
-        state.set_playlist_tracks(ui_model(items).into());
+        state.set_playlist_tracks(ui_model(items.clone()).into());
         state.set_playlist_name(ss(&playlist.name));
-        state.set_playlist_track_total(paths.len() as i32);
-        state.set_playlist_empty_message(ss(if paths.is_empty() {
-            "This playlist is empty. Use a track's menu to add songs."
+        state.set_playlist_track_total(total as i32);
+        state.set_playlist_empty_message(ss(if total == 0 && !search.trim().is_empty() {
+            "No tracks match this search. Try another title, artist, or album."
+        } else if total == 0 {
+            "This playlist is empty. Add tracks from your library to get started."
         } else {
             ""
         }));
-        self.view_paths = paths;
+        state.set_tracks(ui_model(items).into());
+        state.set_tracks_total(total as i32);
+        state.set_can_load_more(offset as usize + (page_size as usize) < total as usize);
+        state.set_view_title(ss(&playlist.name));
+        state.set_view_subtitle(ss(format!(
+            "{} {}tracks",
+            total,
+            if search.trim().is_empty() { "" } else { "matching " }
+        )));
+        state.set_page_loading(false);
+        self.view_paths = self
+            .store
+            .get_playlist_paths(playlist_id)
+            .unwrap_or_default();
     }
 
     pub(crate) fn publish_detail_hero(&mut self, view: &str, value: &str) {
@@ -1478,19 +1524,45 @@ impl App {
             }
         }
         let mut albums = Vec::new();
+        let mut albums_have_more = false;
         if column == "artist" {
-            if let Ok((groups, _)) =
+            if let Ok((groups, total)) =
                 self.store
                     .query_group_page("album", Some(value), 0, 30, hide_dupes)
             {
                 albums = groups.iter().map(group_to_ui).collect();
+                albums_have_more = total > albums.len() as i64;
             }
         }
+        self.artist_album_items = albums.clone();
         let state = self.ui.global::<State>();
         state.set_hero_subtitle(ss(subtitle));
         state.set_hero_cover(cover);
         state.set_hero_has_cover(has_cover);
         state.set_artist_albums(ui_model(albums).into());
+        state.set_artist_albums_have_more(albums_have_more);
+    }
+
+    pub(crate) fn load_more_artist_albums(&mut self) {
+        let state = self.ui.global::<State>();
+        let artist = state.get_view_group_value().to_string();
+        if artist.is_empty() || !state.get_artist_albums_have_more() {
+            return;
+        }
+        let offset = self.artist_album_items.len() as u32;
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        let Ok((groups, total)) = self
+            .store
+            .query_group_page("album", Some(&artist), offset, 30, hide_dupes)
+        else {
+            return;
+        };
+        self.artist_album_items
+            .extend(groups.iter().map(group_to_ui));
+        state.set_artist_albums(ui_model(self.artist_album_items.clone()).into());
+        state.set_artist_albums_have_more(total > self.artist_album_items.len() as i64);
     }
 
     // ---- Lyrics -------------------------------------------------------------
@@ -1619,20 +1691,103 @@ impl App {
 
     // ---- Duplicates ---------------------------------------------------------
 
+    pub(crate) fn start_duplicate_load(&mut self) {
+        if self.duplicate_prepare_rx.is_some() {
+            return;
+        }
+        if self.duplicate_fingerprints_ready {
+            self.load_duplicates(&self.dup_sort.clone(), self.dup_desc, 0);
+            return;
+        }
+        self.ui.global::<State>().set_duplicate_loading(true);
+        let store = self.store.clone();
+        let (tx, rx) = mpsc::channel();
+        self.duplicate_prepare_rx = Some(rx);
+        std::thread::spawn(move || {
+            let result = store
+                .prepare_duplicate_fingerprints()
+                .map(|_| ())
+                .map_err(|error| error.to_string());
+            let _ = tx.send(result);
+        });
+    }
+
+    pub(crate) fn poll_duplicate_load(&mut self) {
+        let Some(rx) = &self.duplicate_prepare_rx else {
+            return;
+        };
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => Err("duplicate scan stopped unexpectedly".into()),
+        };
+        self.duplicate_prepare_rx = None;
+        self.ui.global::<State>().set_duplicate_loading(false);
+        match result {
+            Ok(()) => {
+                self.duplicate_fingerprints_ready = true;
+                let sort = self.dup_sort.clone();
+                self.load_duplicates(&sort, self.dup_desc, 0);
+            }
+            Err(error) => {
+                LocalAppLog::shared().error("duplicates", "fingerprint failed", Some(&error));
+                self.show_notice("Duplicate groups could not be loaded.", NoticeSeverity::Error);
+            }
+        }
+    }
+
     pub(crate) fn load_duplicates(&mut self, sort: &str, descending: bool, page: usize) {
+        if !self.duplicate_fingerprints_ready && self.duplicate_prepare_rx.is_some() {
+            return;
+        }
         self.dup_sort = sort.to_string();
         self.dup_desc = descending;
-        self.dup_page = page;
-        let page_size = 20usize;
-        let groups = self
-            .store
-            .get_duplicate_groups(page * page_size, page_size)
-            .unwrap_or_default();
-        let total = self
+        let page_size = 100usize;
+        let search = self.ui.global::<State>().get_view_search().to_string();
+        let mut groups = self
             .store
             .get_duplicate_groups(0, 10000)
-            .map(|g| g.len())
-            .unwrap_or(0);
+            .unwrap_or_default();
+        if !search.trim().is_empty() {
+            let needle = search.trim().to_lowercase();
+            groups.retain(|group| {
+                let track = &group.representative;
+                [
+                    track.title.as_str(),
+                    track.artist.as_str(),
+                    track.album.as_str(),
+                    track.genre.as_str(),
+                    track.path.as_str(),
+                ]
+                .iter()
+                .any(|field| field.to_lowercase().contains(&needle))
+            });
+        }
+        groups.sort_by(|left, right| {
+            let left_track = &left.representative;
+            let right_track = &right.representative;
+            let compare_text = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase());
+            match sort.to_ascii_lowercase().as_str() {
+                "artist" => compare_text(&left_track.artist, &right_track.artist),
+                "album" => compare_text(&left_track.album, &right_track.album),
+                "year" => left_track.year.cmp(&right_track.year),
+                "added" => left_track.added_utc.cmp(&right_track.added_utc),
+                "duration" => left_track.duration_ms.cmp(&right_track.duration_ms),
+                "playcount" => left_track.play_count.cmp(&right_track.play_count),
+                "lastplayed" => left_track.last_played_utc.cmp(&right_track.last_played_utc),
+                "path" => compare_text(&left_track.path, &right_track.path),
+                "rating" => left_track.rating.cmp(&right_track.rating),
+                _ => compare_text(&left_track.title, &right_track.title),
+            }
+            .then_with(|| compare_text(&left_track.title, &right_track.title))
+            .then_with(|| left_track.path.cmp(&right_track.path))
+        });
+        if descending {
+            groups.reverse();
+        }
+        let total = groups.len();
+        let pages = ((total + page_size - 1) / page_size).max(1);
+        let page = page.min(pages - 1);
         let playing = self
             .current
             .as_ref()
@@ -1640,15 +1795,18 @@ impl App {
             .unwrap_or_default();
         let items: Vec<DuplicateItem> = groups
             .iter()
+            .skip(page * page_size)
+            .take(page_size)
             .map(|g| self.duplicate_to_ui(g, &playing))
             .collect();
         let state = self.ui.global::<State>();
         state.set_duplicates(ui_model(items).into());
         state.set_duplicates_total(total as i32);
         state.set_duplicates_page(page as i32);
-        state.set_duplicates_pages(((total + page_size - 1) / page_size).max(1) as i32);
+        state.set_duplicates_pages(pages as i32);
         state.set_duplicates_sort(ss(sort));
         state.set_duplicates_descending(descending);
+        state.set_duplicate_loading(false);
     }
 
     pub(crate) fn duplicate_to_ui(
@@ -1656,12 +1814,15 @@ impl App {
         group: &ExactDuplicateGroup,
         _playing: &str,
     ) -> DuplicateItem {
+        let id = group.representative.id();
+        self.id_to_path
+            .insert(id.clone(), group.representative.path.clone());
         DuplicateItem {
             title: ss(&group.representative.title),
             artist: ss(&group.representative.artist),
             copies: group.copy_count as i32,
             locations: ss(format!("{} copies", group.copy_count)),
-            first_id: ss(group.representative.id()),
+            first_id: ss(id),
         }
     }
 
@@ -1677,18 +1838,14 @@ impl App {
         else {
             return;
         };
-        let playing = self
-            .current
-            .as_ref()
-            .map(|t| t.path.clone())
-            .unwrap_or_default();
-        let files: Vec<TrackItem> = vec![group.representative.clone()]
-            .iter()
-            .map(|t| self.track_to_ui(t, 1, &playing))
-            .collect();
+        let Ok(files) = self.store.get_duplicate_tracks(&group.sha256) else {
+            return;
+        };
         let state = self.ui.global::<State>();
-        state.set_duplicate_files(ui_model(files).into());
-        state.set_duplicate_group_title(ss(&group.representative.title));
+        let paths: Vec<SharedString> = files.iter().map(|file| ss(&file.path)).collect();
+        state.set_duplicate_locations(ui_model(paths).into());
+        state.set_duplicate_locations_total(files.len() as i32);
+        self.open_modal("duplicate-locations");
     }
 
     // ---- Toasts (C# 4-second InfoBar notice) -------------------------------

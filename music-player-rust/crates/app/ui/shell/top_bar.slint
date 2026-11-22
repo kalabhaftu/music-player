@@ -20,32 +20,45 @@ export component TopBar inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        spacing: 9px;
+        padding-left: State.window-width <= 700 ? 8px : 16px;
+        padding-right: State.window-width <= 700 ? 8px : 16px;
+        spacing: State.window-width <= 700 ? 5px : 9px;
 
         IcBtn {
+            width: State.window-width <= 650 ? 28px : 32px;
+            height: State.window-width <= 650 ? 28px : 32px;
             icon: @image-url("../../assets/icons/panel-left.svg");
             icon-size: 16px;
             tint: Palette.muted;
+            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
             clicked => { Actions.toggle-sidebar(); }
         }
         IcBtn {
+            width: State.window-width <= 650 ? 28px : 32px;
+            height: State.window-width <= 650 ? 28px : 32px;
             icon: @image-url("../../assets/icons/chevron-left.svg");
             icon-size: 16px;
-            tint: State.can-go-back ? Palette.muted : Palette.disabled;
+            tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
+            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
             clicked => { if (State.can-go-back) { Actions.go-back(); } }
         }
         IcBtn {
+            visible: State.window-width > 480;
+            width: State.window-width <= 650 ? 28px : 32px;
+            height: State.window-width <= 650 ? 28px : 32px;
             icon: @image-url("../../assets/icons/chevron-right.svg");
             icon-size: 16px;
-            tint: State.can-go-forward ? Palette.muted : Palette.disabled;
+            tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
+            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
             clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
         }
 
         // Pill Search Box
         Rectangle {
-            horizontal-stretch: 10;
+            // `.search-box { flex:1; max-width:520px }` shares the free space
+            // with `.top-spacer { flex:1 }`. Giving this a larger stretch made
+            // the Slint field consume the toolbar and visibly exceed its CSS size.
+            horizontal-stretch: 1;
             min-width: 0px;
             max-width: 520px;
             height: 38px;
@@ -55,8 +68,8 @@ export component TopBar inherits Rectangle {
             clip: true;
 
             HorizontalLayout {
-                padding-left: 13px;
-                padding-right: 13px;
+                padding-left: State.window-width <= 900 ? 10px : 13px;
+                padding-right: State.window-width <= 900 ? 10px : 13px;
                 spacing: 9px;
                 alignment: center;
 
@@ -100,7 +113,7 @@ export component TopBar inherits Rectangle {
                     }
                 }
 
-                if State.view-search == "" : Rectangle {
+                if State.window-width > 900 : Rectangle {
                     width: 31px;
                     height: 18px;
                     Text {
@@ -112,7 +125,7 @@ export component TopBar inherits Rectangle {
                     }
                 }
 
-                if State.view-search != "" : IcBtn {
+                if State.view-search != "" && search-input.has-focus : IcBtn {
                     icon: @image-url("../../assets/icons/close.svg");
                     icon-size: 12px;
                     tint: Palette.muted-2;
@@ -124,13 +137,13 @@ export component TopBar inherits Rectangle {
         }
 
         // Spacer to push right actions to the edge
-        Rectangle { horizontal-stretch: 1; }
+        Rectangle { horizontal-stretch: 1; visible: State.window-width > 900; }
 
         if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
             Rectangle {
-                width: 32px;
-                height: 32px;
-                border-radius: 16px;
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                border-radius: self.width / 2;
                 background: scan-area.has-hover ? Palette.overlay : transparent;
                 border-width: 2px;
                 border-color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
@@ -146,15 +159,24 @@ export component TopBar inherits Rectangle {
         }
 
         IcBtn {
+            width: State.window-width <= 650 ? 28px : 32px;
+            height: State.window-width <= 650 ? 28px : 32px;
+            // `.panel-toggle` is hidden while the desktop right panel is open;
+            // it remains available on the compact layouts where CSS exposes it.
+            visible: State.window-width <= 1180 || !State.right-panel-open;
             icon: @image-url("../../assets/icons/queue.svg");
             icon-size: 16px;
             tint: State.right-panel-open ? State.accent : Palette.muted;
+            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
             clicked => { Actions.toggle-right-panel(); }
         }
         IcBtn {
+            width: State.window-width <= 650 ? 28px : 32px;
+            height: State.window-width <= 650 ? 28px : 32px;
             icon: @image-url("../../assets/icons/more.svg");
             icon-size: 16px;
             tint: State.tools-menu-open ? Palette.text : Palette.muted;
+            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
             clicked => { Actions.toggle-tools-menu(); }
         }
     }

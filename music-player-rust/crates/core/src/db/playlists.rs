@@ -112,6 +112,78 @@ pub fn get_playlist_entries(conn: &Connection, playlist_id: &str) -> Result<Vec<
     Ok(entries)
 }
 
+pub fn get_playlist_entries_page(
+    conn: &Connection,
+    playlist_id: &str,
+    search: Option<&str>,
+    offset: u32,
+    page_size: u32,
+) -> Result<(Vec<PlaylistEntry>, i64)> {
+    let search = search.map(str::trim).filter(|value| !value.is_empty());
+    let escaped_search = search.map(|value| {
+        value
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    });
+    let pattern = escaped_search.as_deref().map(|value| format!("%{value}%"));
+    let use_fts = search.is_some_and(|value| value.chars().count() >= 3);
+    let fts_phrase = search
+        .filter(|_| use_fts)
+        .map(|value| format!("\"{}\"", value.replace('"', "\"\"")));
+    let metadata_match = "(t.title LIKE ?2 ESCAPE '\\\\' OR t.artist LIKE ?2 ESCAPE '\\\\' OR t.album LIKE ?2 ESCAPE '\\\\' OR t.album_artist LIKE ?2 ESCAPE '\\\\' OR t.genre LIKE ?2 ESCAPE '\\\\' OR t.path LIKE ?2 ESCAPE '\\\\')";
+    let predicate = if search.is_none() {
+        "1 = 1".to_string()
+    } else if use_fts {
+        format!(
+            "(pt.track_path LIKE ?2 ESCAPE '\\\\' OR (t.rowid IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?3) AND {metadata_match}))"
+        )
+    } else {
+        format!("(pt.track_path LIKE ?2 ESCAPE '\\\\' OR {metadata_match})")
+    };
+    let sql = format!(
+        "SELECT pt.position, pt.track_path, t.path, t.title, t.artist, t.album, t.album_artist, t.genre, t.year, t.track_number, t.duration_ms, t.file_size, t.modified_utc, t.added_utc, t.favorite, t.rating, t.play_count, t.last_played_utc, t.artwork_path, t.has_lyrics FROM playlist_tracks pt LEFT JOIN tracks t ON t.path = pt.track_path COLLATE NOCASE WHERE pt.playlist_id = ?1 AND {predicate} ORDER BY pt.position ASC LIMIT ?4 OFFSET ?5"
+    );
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM playlist_tracks pt LEFT JOIN tracks t ON t.path = pt.track_path COLLATE NOCASE WHERE pt.playlist_id = ?1 AND {predicate}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(params![
+        playlist_id,
+        pattern.as_deref(),
+        fts_phrase.as_deref(),
+        page_size.max(1) as i64,
+        offset as i64
+    ])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        let position = row.get::<_, i64>(0)?.max(0) as u32;
+        let path: String = row.get(1)?;
+        let track = if row.get::<_, Option<String>>(2)?.is_some() {
+            Some(row_to_track(row)?)
+        } else {
+            None
+        };
+        entries.push(PlaylistEntry { position, path, track });
+    }
+
+    let total = match (search.is_some(), use_fts) {
+        (false, _) => conn.query_row(&count_sql, params![playlist_id], |row| row.get::<_, i64>(0))?,
+        (true, true) => conn.query_row(
+            &count_sql,
+            params![playlist_id, pattern.as_deref(), fts_phrase.as_deref()],
+            |row| row.get::<_, i64>(0),
+        )?,
+        (true, false) => conn.query_row(
+            &count_sql,
+            params![playlist_id, pattern.as_deref()],
+            |row| row.get::<_, i64>(0),
+        )?,
+    };
+    Ok((entries, total))
+}
+
 pub fn add_tracks_to_playlist(conn: &Connection, playlist_id: &str, paths: &[String]) -> Result<()> {
     let max_pos: i64 = conn.query_row(
         "SELECT COALESCE(MAX(position), -1) FROM playlist_tracks WHERE playlist_id = ?1",

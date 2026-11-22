@@ -93,8 +93,8 @@ component SettingsNavTab inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    horizontal-stretch: 1;
-    min-width: 48px;
+    horizontal-stretch: 0;
+    min-width: 0px;
     height: 38px;
     border-radius: 8px;
     background: area.pressed || root.selected || area.has-hover
@@ -102,14 +102,18 @@ component SettingsNavTab inherits Rectangle {
         : transparent;
     animate background { duration: 110ms; }
     area := TouchArea { clicked => { root.clicked(); } }
-    Text {
-        text: root.label;
-        color: root.selected ? Palette.text : Palette.muted;
-        font-size: 11px;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        Text {
+            text: root.label;
+            color: root.selected ? Palette.text : Palette.muted;
+            font-size: 11px;
+            font-weight: 700;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            overflow: elide;
+        }
     }
 }
 
@@ -235,7 +239,7 @@ export component SettingsView inherits Rectangle {
 
         VerticalLayout {
             spacing: 5px;
-            Text { text: "Settings"; color: Palette.text; font-size: 30px; font-weight: 800; letter-spacing: -0.65px; }
+            Text { text: "Settings"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
             Text { text: "Choose how Music Player looks and behaves."; color: Palette.muted; font-size: 12px; }
         }
 
@@ -277,7 +281,7 @@ export component SettingsView inherits Rectangle {
                     // Section 1: Appearance
                     appearance-section := VerticalLayout {
                         spacing: 0px;
-                        Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Match the player to your desktop."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
                         SettingComboRow {
@@ -377,7 +381,7 @@ export component SettingsView inherits Rectangle {
                     // Section 2: Library
                     library-section := VerticalLayout {
                         spacing: 0px;
-                        Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Local folders and indexed tracks."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
                         HorizontalLayout {
@@ -427,7 +431,7 @@ export component SettingsView inherits Rectangle {
                     // Section 3: Playback
                     playback-section := VerticalLayout {
                         spacing: 0px;
-                        Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Keep playback state and the queue easy to reach."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
                         SettingSwitchRow {
@@ -466,7 +470,7 @@ export component SettingsView inherits Rectangle {
                     // Section 4: Advanced
                     advanced-section := VerticalLayout {
                         spacing: 0px;
-                        Text { text: "Advanced"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "Advanced"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Application behavior, navigation, and diagnostics."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
                         SettingSwitchRow {
@@ -499,7 +503,7 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
                         }
                         Rectangle { height: 10px; }
-                        SectionTitle { text: "Navigation order and visibility"; }
+                        SectionTitle { text: "Navigation order and visibility"; font-size: 12px; letter-spacing: 0px; }
                         Text { text: "Drag the grip or use the arrows to reorder. Use the switch to hide a destination."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
                         Rectangle { height: 6px; }
                         VerticalLayout {
@@ -513,13 +517,13 @@ export component SettingsView inherits Rectangle {
                     // Section 5: About
                     about-section := VerticalLayout {
                         spacing: 8px;
-                        Text { text: "About Music Player"; color: Palette.text; font-size: 15px; font-weight: 750; }
+                        Text { text: "About Music Player"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "A local music library and player for Windows."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 4px; }
                         HorizontalLayout {
                             height: 50px;
                             spacing: 12px;
-                            Text { text: "Music Player"; color: Palette.text; font-size: 18px; font-weight: 800; vertical-alignment: center; }
+                            Text { text: "Music Player"; color: Palette.text; font-size: 18px; font-weight: 700; vertical-alignment: center; }
                             Text { text: State.about-rows.length > 0 ? "Version " + State.about-rows[0].value : "Version unavailable"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
                             Rectangle { horizontal-stretch: 1; }
                             ActionBtn { label: "View repository"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); } }
@@ -547,7 +551,7 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "View all releases"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/releases"); } }
                         }
                         Rectangle { height: 8px; }
-                        SectionTitle { text: "Version history"; }
+                        SectionTitle { text: "Version history"; font-size: 12px; letter-spacing: 0px; }
                         Text {
                             text: "Release history is unavailable offline. Use “View all releases” when connected.";
                             color: Palette.muted;
@@ -555,7 +559,7 @@ export component SettingsView inherits Rectangle {
                             wrap: word-wrap;
                         }
                         Rectangle { height: 8px; }
-                        SectionTitle { text: "Open-source software"; }
+                        SectionTitle { text: "Open-source software"; font-size: 12px; letter-spacing: 0px; }
                         Text {
                             text: "Music Player is distributed under the MIT License. Third-party components keep their own licenses and attributions.";
                             color: Palette.muted;
@@ -570,7 +574,7 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }
                         }
                         Rectangle { height: 8px; }
-                        SectionTitle { text: "Privacy and network use"; }
+                        SectionTitle { text: "Privacy and network use"; font-size: 12px; letter-spacing: 0px; }
                         Text {
                             text: "Your music library stays on this device. Manual checks, and automatic checks when enabled, contact GitHub for release information. Searching LRCLIB sends the current track title and artist to LRCLIB to find matching lyrics.";
                             color: Palette.muted;

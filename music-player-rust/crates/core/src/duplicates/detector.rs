@@ -179,4 +179,16 @@ impl DuplicateDetector {
 
         Ok(groups)
     }
+
+    /// Returns every indexed file that belongs to an exact-content group.
+    pub fn get_duplicate_tracks(conn: &Connection, sha256: &str) -> SqlResult<Vec<Track>> {
+        let mut stmt = conn.prepare(
+            "SELECT t.* FROM tracks t
+             JOIN track_fingerprints f ON f.path = t.path
+             WHERE f.sha256 = ?1 AND f.file_size = t.file_size AND f.modified_utc = t.modified_utc
+             ORDER BY t.path",
+        )?;
+        let rows = stmt.query_map(params![sha256], row_to_track)?;
+        rows.collect()
+    }
 }

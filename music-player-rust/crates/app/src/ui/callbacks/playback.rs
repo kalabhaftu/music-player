@@ -230,6 +230,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_seek_fraction(move |fraction| {
             let mut app = a.borrow_mut();
+            app.seek_wheel_timer.stop();
+            app.seek_preview_ms = None;
             app.cancel_crossfade();
             let duration = app.engine.duration_ms();
             let target = (duration as f64 * fraction as f64).max(0.0) as u64;
@@ -240,8 +242,63 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>()
+            .on_preview_seek_fraction(move |fraction| {
+                let mut app = a.borrow_mut();
+                app.seek_wheel_timer.stop();
+                let duration = app.engine.duration_ms();
+                if duration == 0 || app.current.is_none() {
+                    return;
+                }
+                let target = (duration as f64 * fraction.clamp(0.0, 1.0) as f64) as u64;
+                app.seek_preview_ms = Some(target);
+                let state = app.ui.global::<State>();
+                state.set_progress((target as f32 / duration as f32).clamp(0.0, 1.0));
+                state.set_current_time(ss(fmt_time(target)));
+                drop(state);
+            });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_seek_wheel(move |delta_seconds| {
+            let mut app = a.borrow_mut();
+            let duration = app.engine.duration_ms();
+            if duration == 0 || app.current.is_none() {
+                return;
+            }
+            let current = app
+                .seek_preview_ms
+                .unwrap_or_else(|| app.engine.position_ms());
+            let target = ((current as i64) + i64::from(delta_seconds) * 1000)
+                .clamp(0, duration as i64) as u64;
+            app.seek_preview_ms = Some(target);
+            let state = app.ui.global::<State>();
+            state.set_progress((target as f32 / duration as f32).clamp(0.0, 1.0));
+            state.set_current_time(ss(fmt_time(target)));
+            drop(state);
+
+            let callback_app = a.clone();
+            app.seek_wheel_timer.start(
+                TimerMode::SingleShot,
+                Duration::from_millis(100),
+                move || {
+                    let mut app = callback_app.borrow_mut();
+                    let Some(target) = app.seek_preview_ms.take() else {
+                        return;
+                    };
+                    app.cancel_crossfade();
+                    let _ = app.engine.seek(target);
+                    app.publish_playback();
+                },
+            );
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>()
             .on_seek_relative(move |delta_seconds| {
                 let mut app = a.borrow_mut();
+                app.seek_wheel_timer.stop();
+                app.seek_preview_ms = None;
                 app.cancel_crossfade();
                 let duration = app.engine.duration_ms();
                 let current = app.engine.position_ms();
