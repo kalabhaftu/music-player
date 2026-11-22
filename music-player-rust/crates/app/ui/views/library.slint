@@ -268,19 +268,11 @@ export component FoldersView inherits Rectangle {
             if State.folder-roots.length > 0 : GridLayout {
                 width: 100%;
                 spacing: 12px;
-                for c in [0, 1, 2, 3, 4] : Rectangle {
-                    visible: c < State.folder-columns;
-                    col: c;
-                    row: 0;
-                    width: State.folder-card-width;
-                    height: 0px;
-                    horizontal-stretch: 0;
-                }
                 for rootEntry[index] in State.folder-roots : Rectangle {
                     width: State.folder-card-width;
                     height: rootEntry.is-available ? 64px : 80px;
                     col: Math.mod(index, State.folder-columns);
-                    row: 1 + index / State.folder-columns;
+                    row: index / State.folder-columns;
                     border-radius: 8px;
                     background: Palette.raised;
                     HorizontalLayout {
@@ -370,18 +362,10 @@ export component DetailView inherits Rectangle {
                 GridLayout {
                     width: 100%;
                     spacing: State.card-gap;
-                    for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
-                        visible: c < State.card-columns;
-                        col: c;
-                        row: 0;
-                        width: State.card-width;
-                        height: 0px;
-                        horizontal-stretch: 0;
-                    }
                     for album[index] in State.artist-albums : CardTile {
                         item: album;
                         col: Math.mod(index, State.card-columns);
-                        row: 1 + index / State.card-columns;
+                        row: index / State.card-columns;
                         play => { Actions.play-group("album", album.name); }
                         open => { Actions.set-view("Album", "", album.name, ""); }
                     }

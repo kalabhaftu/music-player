@@ -86,6 +86,7 @@ export component IcBtn inherits Rectangle {
     in property <color> rest-background: transparent;
     in property <length> icon-size: 16px;
     in property <bool> active: false;
+    in property <bool> enabled: true;
     out property <bool> hovered: area.has-hover;
     callback clicked();
     callback scrolled(PointerScrollEvent) -> EventResult;
@@ -93,10 +94,12 @@ export component IcBtn inherits Rectangle {
     width: 32px;
     height: 32px;
     border-radius: self.width / 2;
-    background: area.pressed ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : root.rest-background);
+    background: !root.enabled ? transparent : (area.pressed ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : root.rest-background));
+    opacity: root.enabled ? 1.0 : 0.35;
     animate background { duration: 100ms; }
 
     area := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
         scroll-event(event) => { root.scrolled(event) }
     }
@@ -107,7 +110,7 @@ export component IcBtn inherits Rectangle {
         height: root.icon-size;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        colorize: root.active ? State.accent : (area.has-hover ? root.hover-tint : root.tint);
+        colorize: root.active ? State.accent : (area.has-hover && root.enabled ? root.hover-tint : root.tint);
         animate colorize { duration: 100ms; }
     }
 }
@@ -406,11 +409,14 @@ export component HeaderCell inherits TouchArea {
     in property <bool> descending: false;
     in property <bool> right-align: false;
     callback sort();
+    min-width: 0px;
 
     HorizontalLayout {
         alignment: root.right-align ? end : start;
         spacing: 4px;
+        min-width: 0px;
         Text {
+            min-width: 0px;
             text: root.label;
             color: root.active ? State.accent : Palette.muted-2;
             font-size: 10px;
@@ -533,6 +539,7 @@ export component TrackRow inherits Rectangle {
                 min-width: 0px;
 
                 Text {
+                    min-width: 0px;
                     text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
                     color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
                     font-size: 12px;
@@ -541,6 +548,7 @@ export component TrackRow inherits Rectangle {
                     animate color { duration: 150ms; }
                 }
                 if State.show-list-artist : Text {
+                    min-width: 0px;
                     text: root.track.artist;
                     color: Palette.muted;
                     font-size: 10px;
@@ -671,6 +679,7 @@ export component TrackHeader inherits Rectangle {
             active: root.active-sort == root.first-sort;
             descending: root.descending;
             horizontal-stretch: 3;
+            min-width: 0px;
             sort => { root.sort(root.first-sort); }
         }
 
@@ -1045,19 +1054,11 @@ export component GroupGrid inherits Rectangle {
                 GridLayout {
                     width: 100%;
                     spacing: State.card-gap;
-                    for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
-                        visible: c < State.card-columns;
-                        col: c;
-                        row: 0;
-                        width: State.card-width;
-                        height: 0px;
-                        horizontal-stretch: 0;
-                    }
                     for item[index] in root.items : CardTile {
                         item: item;
                         round: root.round || root.kind == "artist" || State.view == "Artists";
                         col: Math.mod(index, State.card-columns);
-                        row: 1 + index / State.card-columns;
+                        row: index / State.card-columns;
                         play => {
                             Actions.play-group(
                                 root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
@@ -1084,19 +1085,11 @@ export component GroupGrid inherits Rectangle {
         if root.items.length > 0 && !root.scrollable : GridLayout {
             width: 100%;
             spacing: State.card-gap;
-            for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
-                visible: c < State.card-columns;
-                col: c;
-                row: 0;
-                width: State.card-width;
-                height: 0px;
-                horizontal-stretch: 0;
-            }
             for item[index] in root.items : CardTile {
                 item: item;
                 round: root.round || root.kind == "artist" || State.view == "Artists";
                 col: Math.mod(index, State.card-columns);
-                row: 1 + index / State.card-columns;
+                row: index / State.card-columns;
                 play => {
                     Actions.play-group(
                         root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
@@ -1199,6 +1192,7 @@ export component HeroDetail inherits Rectangle {
             Rectangle { height: 8px; }
 
             Text {
+                min-width: 0px;
                 text: root.title;
                 color: Palette.text;
                 font-size: clamp(State.window-width * 0.028px, 24px, 38px);
@@ -1210,6 +1204,7 @@ export component HeroDetail inherits Rectangle {
             Rectangle { height: 10px; }
 
             if root.subtitle != "" : Text {
+                min-width: 0px;
                 text: root.subtitle;
                 color: Palette.muted;
                 font-size: 12px;

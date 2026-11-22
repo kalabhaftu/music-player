@@ -7,18 +7,23 @@ import { ScrollView } from "std-widgets.slint";
 component SettingRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
+    min-width: 0px;
     height: 52px;
 
     VerticalLayout {
         alignment: center;
         spacing: 3px;
+        min-width: 0px;
         Text {
+            min-width: 0px;
             text: root.label;
             color: Palette.text-strong;
             font-size: 12px;
             font-weight: 700;
+            overflow: elide;
         }
         if root.description != "" : Text {
+            min-width: 0px;
             text: root.description;
             color: Palette.muted;
             font-size: 10px;
@@ -74,7 +79,7 @@ component SettingComboRow inherits Rectangle {
         VerticalLayout {
             alignment: center;
             CustomSelect {
-                width: 240px;
+                width: clamp(State.content-avail-width * 0.35, 130px, 240px);
                 options: root.options;
                 current-value: root.value;
                 selected(value) => { root.changed(value); }
@@ -93,8 +98,8 @@ component SettingsNavTab inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    horizontal-stretch: 0;
-    height: 38px;
+    min-width: 0px;
+    height: 36px;
     border-radius: 8px;
     background: area.pressed || root.selected || area.has-hover
         ? (State.light-theme && !State.artwork-palette ? Palette.control : #222622)
@@ -102,16 +107,18 @@ component SettingsNavTab inherits Rectangle {
     animate background { duration: 110ms; }
     area := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: 10px;
+        padding-right: 10px;
         alignment: center;
         Text {
+            min-width: 0px;
             text: root.label;
             color: root.selected ? Palette.text : Palette.muted;
             font-size: 11px;
             font-weight: 700;
             horizontal-alignment: center;
             vertical-alignment: center;
+            overflow: elide;
         }
     }
 }
@@ -169,7 +176,7 @@ component SettingRangeRow inherits Rectangle {
             alignment: center;
             horizontal-stretch: 0;
             HorizontalLayout {
-                width: 240px;
+                width: clamp(State.content-avail-width * 0.35, 130px, 240px);
                 spacing: 10px;
                 opacity: root.enabled ? 1.0 : 0.38;
                 slider := PlayerSlider {
@@ -301,21 +308,32 @@ component SettingNavOrderRow inherits Rectangle {
     height: 48px;
     HorizontalLayout {
         spacing: 10px;
-        alignment: start;
         VerticalLayout {
             alignment: center;
-            Text {
-                text: "⋮⋮";
-                color: root.item.always-visible ? Palette.muted-2 : Palette.muted;
-                font-size: 13px;
-                width: 18px;
-                horizontal-alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+                background: grip-area.has-hover && !root.item.always-visible ? Palette.hover : transparent;
+                grip-area := TouchArea {
+                    mouse-cursor: root.item.always-visible ? default : grab;
+                }
+                Image {
+                    source: @image-url("../../assets/icons/grip.svg");
+                    width: 14px;
+                    height: 14px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: root.item.always-visible ? Palette.muted-2 : (grip-area.has-hover ? Palette.text : Palette.muted);
+                }
             }
         }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
+            min-width: 0px;
             Text {
+                min-width: 0px;
                 text: root.item.view;
                 color: Palette.text-strong;
                 font-size: 12px;
@@ -323,38 +341,51 @@ component SettingNavOrderRow inherits Rectangle {
                 overflow: elide;
             }
         }
-        if root.item.always-visible : VerticalLayout {
-            alignment: center;
-            Text {
-                text: "Always shown";
-                color: Palette.muted;
-                font-size: 10px;
-            }
-        }
-        if !root.item.always-visible : HorizontalLayout {
+        HorizontalLayout {
+            alignment: end;
             spacing: 6px;
-            VerticalLayout {
+            if root.item.always-visible : VerticalLayout {
                 alignment: center;
-                TextBtn {
-                    label: "↑";
-                    enabled: root.item.can-move-up;
-                    clicked => { Actions.move-navigation(root.item.view, -1); }
+                Text {
+                    text: "Always shown";
+                    color: Palette.muted;
+                    font-size: 11px;
                 }
             }
-            VerticalLayout {
-                alignment: center;
-                TextBtn {
-                    label: "↓";
-                    enabled: root.item.can-move-down;
-                    clicked => { Actions.move-navigation(root.item.view, 1); }
+            if !root.item.always-visible : HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        width: 28px;
+                        height: 28px;
+                        icon-size: 14px;
+                        icon: @image-url("../../assets/icons/chevron-up.svg");
+                        enabled: root.item.can-move-up;
+                        rest-background: Palette.panel-2;
+                        clicked => { Actions.move-navigation(root.item.view, -1); }
+                    }
                 }
-            }
-            Rectangle { width: 4px; }
-            VerticalLayout {
-                alignment: center;
-                CustomToggle {
-                    checked: !root.item.hidden;
-                    toggled(v) => { Actions.toggle-navigation(root.item.view); }
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        width: 28px;
+                        height: 28px;
+                        icon-size: 14px;
+                        icon: @image-url("../../assets/icons/chevron-down.svg");
+                        enabled: root.item.can-move-down;
+                        rest-background: Palette.panel-2;
+                        clicked => { Actions.move-navigation(root.item.view, 1); }
+                    }
+                }
+                Rectangle { width: 4px; }
+                VerticalLayout {
+                    alignment: center;
+                    CustomToggle {
+                        checked: !root.item.hidden;
+                        toggled(v) => { Actions.toggle-navigation(root.item.view); }
+                    }
                 }
             }
         }
@@ -378,7 +409,22 @@ export component SettingsView inherits Rectangle {
         Rectangle { height: 10px; }
 
         // Settings navigation menu (matches original .settings-menu: Appearance, Library, Playback, Equalizer, Advanced, About)
-        Rectangle {
+        if State.content-width <= 600 : Rectangle {
+            height: 126px;
+            border-radius: 8px;
+            background: Palette.raised;
+            GridLayout {
+                padding: 6px;
+                spacing: 4px;
+                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
+                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
+                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
+                SettingsNavTab { col: 1; row: 1; label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
+                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
+            }
+        }
+        if State.content-width > 600 : Rectangle {
             height: 52px;
             border-radius: 8px;
             background: Palette.raised;

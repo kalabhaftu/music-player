@@ -43,6 +43,9 @@ export component HomeQuickTrackTile inherits Rectangle {
     in property <TrackItem> item;
     callback play();
 
+    min-width: 0px;
+    max-width: (State.content-avail-width - 10px) / 2;
+    horizontal-stretch: 1;
     height: 58px;
     border-radius: 6px;
     background: area.has-hover ? Palette.hover : Palette.raised;
@@ -133,24 +136,10 @@ export component HomeQuickGrid inherits Rectangle {
     GridLayout {
         width: 100%;
         spacing: 10px;
-        Rectangle {
-            col: 0;
-            row: 0;
-            width: (State.content-avail-width - 10px) / 2;
-            height: 0px;
-            horizontal-stretch: 0;
-        }
-        Rectangle {
-            col: 1;
-            row: 0;
-            width: (State.content-avail-width - 10px) / 2;
-            height: 0px;
-            horizontal-stretch: 0;
-        }
         for item[index] in root.items : HomeQuickTrackTile {
             item: item;
             col: Math.mod(index, 2);
-            row: 1 + index / 2;
+            row: index / 2;
             play => { Actions.play-track(item.id); }
         }
     }
@@ -178,18 +167,10 @@ export component HomeCardGrid inherits Rectangle {
     GridLayout {
         width: 100%;
         spacing: State.card-gap;
-        for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
-            visible: c < State.card-columns;
-            col: c;
-            row: 0;
-            width: State.card-width;
-            height: 0px;
-            horizontal-stretch: 0;
-        }
         for item[index] in root.items : HomeLibraryTile {
             item: item;
             col: Math.mod(index, State.card-columns);
-            row: 1 + index / State.card-columns;
+            row: index / State.card-columns;
         }
     }
 }
