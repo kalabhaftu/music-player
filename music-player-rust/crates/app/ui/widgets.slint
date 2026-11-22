@@ -703,11 +703,12 @@ export component CardTile inherits Rectangle {
     callback open();
 
     vertical-stretch: 0;
-    border-radius: 18px;
+    border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
     area := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.open(); }
     }
 
@@ -719,7 +720,7 @@ export component CardTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: root.round ? self.width / 2 : 12px;
+            border-radius: root.round ? self.width / 2 : 6px;
             clip: true;
             drop-shadow-offset-x: 0px;
             drop-shadow-offset-y: 14px;
@@ -756,9 +757,14 @@ export component CardTile inherits Rectangle {
                 x: parent.width - self.width - 10px;
                 y: parent.height - self.height - 10px;
                 border-radius: 19px;
-                background: State.accent;
-                opacity: area.has-hover ? 1.0 : 0.0;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-blur: 20px;
+                drop-shadow-color: #00000061;
+                background: fab-area.has-hover ? State.accent.brighter(0.12) : State.accent;
+                opacity: area.has-hover || fab-area.has-hover ? 1.0 : 0.0;
                 animate opacity { duration: 150ms; }
+                animate background { duration: 150ms; }
 
                 Image {
                     source: @image-url("../assets/icons/play.svg");
@@ -769,7 +775,8 @@ export component CardTile inherits Rectangle {
                     colorize: Palette.accent-ink;
                 }
 
-                TouchArea {
+                fab-area := TouchArea {
+                    mouse-cursor: pointer;
                     clicked => { root.play(); }
                 }
             }
@@ -804,10 +811,11 @@ export component HomeCardTile inherits Rectangle {
     callback play();
 
     vertical-stretch: 0;
-    border-radius: 18px;
+    border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
     area := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.open(); }
     }
 
@@ -819,7 +827,7 @@ export component HomeCardTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 12px;
+            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 6px;
             clip: true;
             drop-shadow-offset-x: 0px;
             drop-shadow-offset-y: 14px;
@@ -852,9 +860,14 @@ export component HomeCardTile inherits Rectangle {
                 x: parent.width - self.width - 10px;
                 y: parent.height - self.height - 10px;
                 border-radius: 19px;
-                background: State.accent;
-                opacity: area.has-hover ? 1.0 : 0.0;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-blur: 20px;
+                drop-shadow-color: #00000061;
+                background: fab-area.has-hover ? State.accent.brighter(0.12) : State.accent;
+                opacity: area.has-hover || fab-area.has-hover ? 1.0 : 0.0;
                 animate opacity { duration: 150ms; }
+                animate background { duration: 150ms; }
                 Image {
                     source: @image-url("../assets/icons/play.svg");
                     width: 16px;
@@ -863,7 +876,10 @@ export component HomeCardTile inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
-                TouchArea { clicked => { root.play(); } }
+                fab-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.play(); }
+                }
             }
         }
 

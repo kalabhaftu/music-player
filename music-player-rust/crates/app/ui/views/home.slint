@@ -9,28 +9,32 @@ export component HomeSectionHeader inherits Rectangle {
     in property <string> action-label: "See all";
     height: 26px;
     HorizontalLayout {
+        alignment: space-between;
+        spacing: 10px;
         Text {
             text: root.title;
             color: Palette.text;
             font-size: 19px;
             font-weight: 700;
             letter-spacing: -0.65px;
-            horizontal-stretch: 1;
-            vertical-alignment: center;
+            vertical-alignment: bottom;
         }
-        Rectangle {
-            width: 56px;
+        if root.view != "" : Rectangle {
+            width: btn-text.preferred-width + 8px;
             height: 26px;
-            Text {
+            btn-text := Text {
                 text: root.action-label;
                 color: see-all-area.has-hover ? Palette.text : Palette.muted;
                 font-size: 11px;
                 font-weight: 700;
                 horizontal-alignment: right;
-                vertical-alignment: center;
+                vertical-alignment: bottom;
                 animate color { duration: 100ms; }
             }
-            see-all-area := TouchArea { clicked => { Actions.set-view(root.view, "", "", ""); } }
+            see-all-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Actions.set-view(root.view, "", "", ""); }
+            }
         }
     }
 }
@@ -43,7 +47,10 @@ export component HomeQuickTrackTile inherits Rectangle {
     border-radius: 6px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 120ms; }
-    area := TouchArea { clicked => { root.play(); } }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.play(); }
+    }
 
     HorizontalLayout {
         padding: 6px;
@@ -54,6 +61,7 @@ export component HomeQuickTrackTile inherits Rectangle {
             height: 48px;
             border-radius: 5px;
             clip: true;
+            opacity: root.item.unavailable ? 0.72 : 1.0;
             background: root.item.badge-bg;
             if root.item.has-cover : Image {
                 source: root.item.cover;
@@ -79,27 +87,42 @@ export component HomeQuickTrackTile inherits Rectangle {
             Text {
                 min-width: 0px;
                 text: root.item.title;
-                color: Palette.text;
+                color: root.item.unavailable ? Palette.muted : Palette.text;
                 font-size: 12px;
                 font-weight: 700;
                 overflow: elide;
             }
-            if root.item.artist != "" : Text {
+            Text {
                 min-width: 0px;
-                text: root.item.artist;
+                text: root.item.unavailable ? "File unavailable" : root.item.artist;
                 color: Palette.muted;
                 font-size: 10px;
                 overflow: elide;
             }
         }
 
-        IcBtn {
-            icon: @image-url("../../assets/icons/play.svg");
-            icon-size: 16px;
-            tint: Palette.icon-muted;
-            width: 30px;
-            height: 30px;
-            clicked => { root.play(); }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: play-btn-area.has-hover ? #ffffff0f : transparent;
+                animate background { duration: 100ms; }
+                play-btn-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.play(); }
+                }
+                Image {
+                    source: @image-url("../../assets/icons/play.svg");
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    colorize: play-btn-area.has-hover ? #ffffff : #939a93;
+                    animate colorize { duration: 100ms; }
+                }
+            }
         }
     }
 }
@@ -110,6 +133,12 @@ export component HomeQuickGrid inherits Rectangle {
     GridLayout {
         width: 100%;
         spacing: 10px;
+        Rectangle {
+            col: 1;
+            row: 0;
+            width: 0px;
+            height: 0px;
+        }
         for item[index] in root.items : HomeQuickTrackTile {
             item: item;
             col: Math.mod(index, 2);
@@ -123,12 +152,15 @@ export component HomeLibraryTile inherits HomeCardTile {
     open => {
         if (root.item.kind == "track") { Actions.play-track(root.item.id); }
         else if (root.item.kind == "playlist") { Actions.set-view("Playlist", "", "", root.item.id); }
+        else if (root.item.kind == "artist") { Actions.set-view("Artist", "", root.item.title, ""); }
+        else if (root.item.kind == "folder") { Actions.set-view("Folder", "", root.item.title, ""); }
+        else if (root.item.kind == "genre") { Actions.set-view("Genre", "", root.item.title, ""); }
         else { Actions.set-view("Album", "", root.item.title, ""); }
     }
     play => {
         if (root.item.kind == "track") { Actions.play-track(root.item.id); }
         else if (root.item.kind == "playlist") { Actions.play-playlist(root.item.id); }
-        else { Actions.play-group("album", root.item.title); }
+        else { Actions.play-group(root.item.kind != "" ? root.item.kind : "album", root.item.title); }
     }
 }
 
@@ -138,6 +170,12 @@ export component HomeCardGrid inherits Rectangle {
     GridLayout {
         width: 100%;
         spacing: Palette.card-gap(State.browse-width);
+        if root.items.length > 0 : Rectangle {
+            col: State.card-columns - 1;
+            row: 0;
+            width: 0px;
+            height: 0px;
+        }
         for item[index] in root.items : HomeLibraryTile {
             item: item;
             col: Math.mod(index, State.card-columns);
@@ -149,7 +187,11 @@ export component HomeCardGrid inherits Rectangle {
 export component HomeEmptyState inherits Rectangle {
     VerticalLayout {
         alignment: center;
-        spacing: 8px;
+        padding-top: 70px;
+        padding-bottom: 70px;
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 6px;
         Text {
             text: State.has-roots ? (State.scan-active ? "Scanning your music folders" : "No indexed tracks yet") : "No music folders added";
             color: Palette.text;
@@ -165,14 +207,17 @@ export component HomeEmptyState inherits Rectangle {
             font-size: 11px;
             horizontal-alignment: center;
         }
-        if !State.scan-active : HorizontalLayout {
-            alignment: center;
-            ActionBtn {
-                label: State.has-roots ? "Scan folders" : "Add music folder";
-                primary: true;
-                clicked => {
-                    if (State.has-roots) { Actions.scan-library(); }
-                    else { Actions.open-modal("folders"); }
+        if !State.scan-active : VerticalLayout {
+            padding-top: 8px;
+            HorizontalLayout {
+                alignment: center;
+                ActionBtn {
+                    label: State.has-roots ? "Scan folders" : "Add music folder";
+                    primary: true;
+                    clicked => {
+                        if (State.has-roots) { Actions.scan-library(); }
+                        else { Actions.open-modal("folders"); }
+                    }
                 }
             }
         }
@@ -180,9 +225,7 @@ export component HomeEmptyState inherits Rectangle {
 }
 
 export component HomeView inherits Rectangle {
-    if State.library-empty : HomeEmptyState {
-    }
-    if !State.library-empty : ScrollView {
+    ScrollView {
         VerticalLayout {
             padding-left: 24px;
             padding-right: 24px;
@@ -190,28 +233,50 @@ export component HomeView inherits Rectangle {
             padding-bottom: 32px;
             spacing: 24px;
 
+            // Page Header (.home-head)
             VerticalLayout {
                 spacing: 5px;
-                Text { text: State.home-greeting; color: Palette.text; font-size: 28px; font-weight: 700; letter-spacing: -0.65px; }
-                Text { text: State.home-subtitle; color: Palette.muted; font-size: 12px; }
+                Text {
+                    text: State.home-greeting != "" ? State.home-greeting : "Good afternoon";
+                    color: Palette.text;
+                    font-size: 28px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: State.home-subtitle != "" ? State.home-subtitle : "Your music library";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
             }
 
-            if State.home-quick-tracks.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: "Quick access"; view: "Songs"; }
-                HomeQuickGrid { items: State.home-quick-tracks; }
+            if State.library-empty : HomeEmptyState {
             }
 
-            if State.home-recent-albums.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
-                HomeCardGrid { items: State.home-recent-albums; }
-            }
+            if !State.library-empty : VerticalLayout {
+                spacing: 24px;
 
-            if State.home-library-cards.length > 0 : VerticalLayout {
-                spacing: 13px;
-                HomeSectionHeader { title: State.home-library-title; view: State.home-library-view; action-label: "View all"; }
-                HomeCardGrid { items: State.home-library-cards; }
+                if State.home-quick-tracks.length > 0 : VerticalLayout {
+                    spacing: 13px;
+                    HomeSectionHeader { title: "Quick access"; view: "Songs"; }
+                    HomeQuickGrid { items: State.home-quick-tracks; }
+                }
+
+                if State.home-recent-albums.length > 0 : VerticalLayout {
+                    spacing: 13px;
+                    HomeSectionHeader { title: "Recently played"; view: "Recently Played"; }
+                    HomeCardGrid { items: State.home-recent-albums; }
+                }
+
+                if State.home-library-cards.length > 0 : VerticalLayout {
+                    spacing: 13px;
+                    HomeSectionHeader {
+                        title: State.home-library-title;
+                        view: State.home-library-view;
+                        action-label: State.home-library-title == "Recently played" ? "See all" : "View all";
+                    }
+                    HomeCardGrid { items: State.home-library-cards; }
+                }
             }
         }
     }
