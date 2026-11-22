@@ -218,87 +218,334 @@ pub fn open_folder(path: &Path) {
     let _ = std::process::Command::new("explorer").arg(path).spawn();
 }
 
-struct ArtworkCache(std::sync::Mutex<HashMap<PathBuf, slint::Image>>);
+struct ArtworkCache {
+    entries: HashMap<PathBuf, (slint::Image, usize)>,
+    order: std::collections::VecDeque<PathBuf>,
+    bytes: usize,
+}
+
+// `slint::Image` is a UI-thread value; the cache is only touched from the UI
+// thread, and the mutex keeps the static type-checkable.
 unsafe impl Send for ArtworkCache {}
 unsafe impl Sync for ArtworkCache {}
 
 impl ArtworkCache {
-    fn lock(
-        &self,
-    ) -> Result<
-        std::sync::MutexGuard<'_, HashMap<PathBuf, slint::Image>>,
-        std::sync::PoisonError<std::sync::MutexGuard<'_, HashMap<PathBuf, slint::Image>>>,
-    > {
-        self.0.lock()
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: std::collections::VecDeque::new(),
+            bytes: 0,
+        }
+    }
+
+    fn get(&mut self, path: &Path) -> Option<slint::Image> {
+        let (image, _size) = self.entries.get(path)?.clone();
+        // Move the hit to the back of the eviction queue.
+        if let Some(index) = self.order.iter().position(|key| key == path) {
+            self.order.remove(index);
+        }
+        self.order.push_back(path.to_path_buf());
+        Some(image)
+    }
+
+    fn insert(&mut self, path: PathBuf, image: slint::Image, size: usize) {
+        const BUDGET: usize = 32 * 1024 * 1024;
+        if let Some((old, old_size)) = self.entries.remove(&path) {
+            let _ = old;
+            self.bytes = self.bytes.saturating_sub(old_size);
+            if let Some(index) = self.order.iter().position(|key| key == &path) {
+                self.order.remove(index);
+            }
+        }
+        self.bytes += size;
+        self.entries.insert(path.clone(), (image, size));
+        self.order.push_back(path);
+        while self.bytes > BUDGET {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if let Some((_image, removed)) = self.entries.remove(&oldest) {
+                self.bytes = self.bytes.saturating_sub(removed);
+            }
+        }
     }
 }
 
-static ARTWORK_CACHE: std::sync::OnceLock<ArtworkCache> = std::sync::OnceLock::new();
+static ARTWORK_CACHE: std::sync::OnceLock<std::sync::Mutex<ArtworkCache>> = std::sync::OnceLock::new();
 
-/// Safely decodes any image format (JPEG, PNG, JFIF, BMP, WebP) directly from
-/// memory bytes or file paths, caching in memory to avoid UI thread lag.
+fn artwork_cache() -> &'static std::sync::Mutex<ArtworkCache> {
+    ARTWORK_CACHE.get_or_init(|| std::sync::Mutex::new(ArtworkCache::new()))
+}
+
+/// Larger decode for the now-playing cover and the single detail hero. Kept
+/// separate from the thumbnail cache so a small preview never gets upscaled
+/// into a hero, and a hero never bloats the list cache.
+struct DetailCache {
+    entries: HashMap<PathBuf, slint::Image>,
+    order: std::collections::VecDeque<PathBuf>,
+}
+
+// UI-thread-only values behind a mutex; see ArtworkCache above.
+unsafe impl Send for DetailCache {}
+unsafe impl Sync for DetailCache {}
+
+static DETAIL_CACHE: std::sync::OnceLock<std::sync::Mutex<DetailCache>> = std::sync::OnceLock::new();
+
+fn detail_cache() -> &'static std::sync::Mutex<DetailCache> {
+    DETAIL_CACHE.get_or_init(|| {
+        std::sync::Mutex::new(DetailCache {
+            entries: HashMap::new(),
+            order: std::collections::VecDeque::new(),
+        })
+    })
+}
+
+struct DecodedArtwork {
+    path: PathBuf,
+    image: Option<(Vec<u8>, u32, u32)>,
+}
+
+struct ArtworkLoader {
+    tx: std::sync::mpsc::Sender<PathBuf>,
+    rx: std::sync::Mutex<std::sync::mpsc::Receiver<DecodedArtwork>>,
+    pending: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
+    failed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
+    /// Prevents a rebuild from immediately re-queuing a cover the LRU just
+    /// evicted, which would otherwise decode forever on very long lists.
+    requested: std::sync::Mutex<HashMap<PathBuf, std::time::Instant>>,
+}
+
+static ARTWORK_LOADER: std::sync::OnceLock<ArtworkLoader> = std::sync::OnceLock::new();
+
+/// Thumbnail size for list rows and cards. 192 px covers a 140-190 px card
+/// sharply while keeping 200 rows under ~30 MB of pixel data.
+const PREVIEW_MAX_SIDE: u32 = 192;
+/// Detect and hero artwork is decoded once and cached in its own small map.
+const DETAIL_MAX_SIDE: u32 = 512;
+
+/// Decodes to RGBA on a worker thread; the UI thread only creates the Slint
+/// image, so scrolling a 200-row list never blocks on JPEG decoding.
+fn decode_artwork_rgba(bytes: &[u8], max_side: u32) -> Option<(Vec<u8>, u32, u32)> {
+    let decoded = image::load_from_memory(bytes).ok()?;
+    let rgba = decoded.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let scaled = if width > max_side || height > max_side {
+        let factor = (max_side as f32 / width.max(height) as f32).clamp(0.0, 1.0);
+        let target_width = ((width as f32 * factor).round() as u32).max(1);
+        let target_height = ((height as f32 * factor).round() as u32).max(1);
+        image::imageops::resize(
+            &rgba,
+            target_width,
+            target_height,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        rgba
+    };
+    let (width, height) = scaled.dimensions();
+    Some((scaled.into_raw(), width, height))
+}
+
+fn artwork_loader() -> &'static ArtworkLoader {
+    ARTWORK_LOADER.get_or_init(|| {
+        let (tx, request_rx) = std::sync::mpsc::channel::<PathBuf>();
+        let (result_tx, result_rx) = std::sync::mpsc::channel::<DecodedArtwork>();
+        std::thread::Builder::new()
+            .name("music-player-artwork".into())
+            .spawn(move || {
+                while let Ok(path) = request_rx.recv() {
+                    let image = std::fs::read(&path)
+                        .ok()
+                        .and_then(|bytes| decode_artwork_rgba(&bytes, PREVIEW_MAX_SIDE));
+                    if result_tx
+                        .send(DecodedArtwork {
+                            path,
+                            image,
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .ok();
+        ArtworkLoader {
+            tx,
+            rx: std::sync::Mutex::new(result_rx),
+            pending: std::sync::Mutex::new(std::collections::HashSet::new()),
+            failed: std::sync::Mutex::new(std::collections::HashSet::new()),
+            requested: std::sync::Mutex::new(HashMap::new()),
+        }
+    })
+}
+
+/// Returns cached artwork or queues a background decode. Use this for list
+/// rows/cards; the view is refreshed when decoded images arrive.
+pub fn artwork_preview(path: &Path) -> Option<slint::Image> {
+    if !path.is_file() {
+        return None;
+    }
+    {
+        let cache = artwork_cache();
+        if let Ok(mut guard) = cache.lock() {
+            if let Some(cached) = guard.get(path) {
+                return Some(cached);
+            }
+        }
+    }
+    let loader = artwork_loader();
+    if let Ok(failed) = loader.failed.lock() {
+        if failed.contains(path) {
+            return None;
+        }
+    }
+    let now = std::time::Instant::now();
+    {
+        let mut pending = match loader.pending.lock() {
+            Ok(pending) => pending,
+            Err(_) => return None,
+        };
+        if pending.contains(path) {
+            return None;
+        }
+        if let Ok(requested) = loader.requested.lock() {
+            if let Some(previous) = requested.get(path) {
+                if now.duration_since(*previous) < std::time::Duration::from_secs(30) {
+                    return None;
+                }
+            }
+        }
+        pending.insert(path.to_path_buf());
+    }
+    if let Ok(mut requested) = loader.requested.lock() {
+        if requested.len() > 8192 {
+            requested.retain(|_, at| now.duration_since(*at) < std::time::Duration::from_secs(30));
+        }
+        requested.insert(path.to_path_buf(), now);
+    }
+    let _ = loader.tx.send(path.to_path_buf());
+    None
+}
+
+/// Moves decoded artwork into the UI-thread cache. Returns the paths that
+/// became available so callers can refresh only the models that need it.
+pub fn poll_artwork_images() -> Vec<PathBuf> {
+    let loader = artwork_loader();
+    let mut decoded = Vec::new();
+    if let Ok(rx) = loader.rx.lock() {
+        while let Ok(item) = rx.try_recv() {
+            decoded.push(item);
+        }
+    }
+    if decoded.is_empty() {
+        return Vec::new();
+    }
+    let mut available = Vec::new();
+    for item in decoded {
+        if let Ok(mut pending) = loader.pending.lock() {
+            pending.remove(&item.path);
+        }
+        let Some((rgba, width, height)) = item.image else {
+            if let Ok(mut failed) = loader.failed.lock() {
+                failed.insert(item.path);
+            }
+            continue;
+        };
+        let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+        for (dest, src) in buffer.make_mut_slice().iter_mut().zip(rgba.chunks_exact(4)) {
+            dest.r = src[0];
+            dest.g = src[1];
+            dest.b = src[2];
+            dest.a = src[3];
+        }
+        let image = slint::Image::from_rgba8(buffer);
+        let size = (width as usize)
+            .saturating_mul(height as usize)
+            .saturating_mul(4);
+        if let Ok(mut cache) = artwork_cache().lock() {
+            cache.insert(item.path.clone(), image, size);
+        }
+        available.push(item.path);
+    }
+    available
+}
+
+fn rgba_to_image(rgba: Vec<u8>, width: u32, height: u32) -> slint::Image {
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+    for (dest, src) in buffer.make_mut_slice().iter_mut().zip(rgba.chunks_exact(4)) {
+        dest.r = src[0];
+        dest.g = src[1];
+        dest.b = src[2];
+        dest.a = src[3];
+    }
+    slint::Image::from_rgba8(buffer)
+}
+
+/// Synchronously decodes and caches artwork at detail resolution. Reserved for
+/// the current track and the single detail hero, where a missing first frame
+/// is noticeable.
 pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     if !path.is_file() {
         return None;
     }
-
-    let cache = ARTWORK_CACHE.get_or_init(|| ArtworkCache(std::sync::Mutex::new(HashMap::new())));
-    if let Ok(guard) = cache.lock() {
-        if let Some(cached) = guard.get(path) {
-            return Some(cached.clone());
+    {
+        let cache = detail_cache();
+        if let Ok(mut guard) = cache.lock() {
+            if let Some(index) = guard.order.iter().position(|key| key == path) {
+                guard.order.remove(index);
+            }
+            if let Some(image) = guard.entries.get(path).cloned() {
+                guard.order.push_back(path.to_path_buf());
+                return Some(image);
+            }
         }
     }
 
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_ascii_lowercase());
-    let is_standard_ext = matches!(ext.as_deref(), Some("jpg") | Some("jpeg") | Some("png"));
-
-    let loaded = if is_standard_ext {
-        slint::Image::load_from_path(path).ok()
-    } else {
-        None
-    };
-
-    let image = match loaded {
-        Some(img) => img,
-        None => {
-            let bytes = std::fs::read(path).ok()?;
-            let dyn_img = image::load_from_memory(&bytes).ok()?;
-            let dyn_img = dyn_img.resize(384, 384, image::imageops::FilterType::Triangle);
-            let rgba = dyn_img.to_rgba8();
-            let (width, height) = rgba.dimensions();
-            if width == 0 || height == 0 {
-                return None;
-            }
-            let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
-            for (dest, src) in buffer.make_mut_slice().iter_mut().zip(rgba.chunks_exact(4)) {
-                dest.r = src[0];
-                dest.g = src[1];
-                dest.b = src[2];
-                dest.a = src[3];
-            }
-            slint::Image::from_rgba8(buffer)
+    let bytes = std::fs::read(path).ok()?;
+    let (rgba, width, height) = decode_artwork_rgba(&bytes, DETAIL_MAX_SIDE)?;
+    let image = rgba_to_image(rgba, width, height);
+    if let Ok(mut guard) = detail_cache().lock() {
+        while guard.order.len() >= 8 {
+            let Some(oldest) = guard.order.pop_front() else {
+                break;
+            };
+            guard.entries.remove(&oldest);
         }
-    };
-
-    if let Ok(mut guard) = cache.lock() {
-        guard.insert(path.to_path_buf(), image.clone());
+        guard.entries.insert(path.to_path_buf(), image.clone());
+        guard.order.push_back(path.to_path_buf());
     }
-
     Some(image)
 }
 
 pub use music_player_core::ArtworkPalette;
 
-/// Extracts an artwork color palette for the given image path using the core palette extractor.
+static PALETTE_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, ArtworkPalette>>> =
+    std::sync::OnceLock::new();
+
+/// Extracts an artwork color palette for the given image path. Results are
+/// cached because the title bar/sidebar palette is recomputed on every track
+/// change and view refresh.
 pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
-    if path.is_file() {
-        Some(music_player_core::extract_palette(path))
-    } else {
-        None
+    if !path.is_file() {
+        return None;
     }
+    let cache = PALETTE_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(palette) = guard.get(path) {
+            return Some(palette.clone());
+        }
+    }
+    let palette = music_player_core::extract_palette(path);
+    if let Ok(mut guard) = cache.lock() {
+        if guard.len() >= 128 {
+            guard.clear();
+        }
+        guard.insert(path.to_path_buf(), palette.clone());
+    }
+    Some(palette)
 }
 
 #[cfg(test)]

@@ -94,8 +94,13 @@ fn path_key(path: &str) -> String {
 }
 
 /// Deletes artwork cache files that no track references any more
-/// (mirrors `LibraryStore.PruneUnreferencedArtwork`).
+/// (mirrors `LibraryStore.PruneUnreferencedArtwork`). Files younger than the
+/// grace period are skipped: the startup artwork repair writes cache files on a
+/// worker thread and only then commits their database references, so a scan
+/// completing in between must not delete them.
 pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db::LibraryStore) -> usize {
+    const GRACE: std::time::Duration = std::time::Duration::from_secs(120);
+    let now = std::time::SystemTime::now();
     let refs = store.artwork_refs().unwrap_or_default();
     let referenced: std::collections::HashSet<String> = refs
         .iter()
@@ -132,6 +137,18 @@ pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db
             } else {
                 name.to_string()
             };
+            let recently_written = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .map(|modified| {
+                    now.duration_since(modified)
+                        .map(|age| age < GRACE)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            if recently_written {
+                continue;
+            }
             if !referenced.contains(&path_key(&full))
                 && !referenced_names.contains(&name_key)
                 && fs::remove_file(&path).is_ok()

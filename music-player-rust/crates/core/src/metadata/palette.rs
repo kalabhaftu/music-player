@@ -65,6 +65,9 @@ pub fn extract_palette(image_path: &Path) -> ArtworkPalette {
         Ok(i) => i.to_rgba8(),
         Err(_) => return ArtworkPalette::default_dark(),
     };
+    // The C# shell decodes artwork at 32x32 before building the palette; doing
+    // the same keeps track changes cheap and produces the same dominant hues.
+    let img = image::imageops::resize(&img, 32, 32, image::imageops::FilterType::Triangle);
 
     let pixels = img.as_raw();
     let mut bins = [(0.0f64, 0.0f64, 0.0f64, 0.0f64); 19];

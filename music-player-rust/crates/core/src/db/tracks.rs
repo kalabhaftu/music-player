@@ -941,3 +941,38 @@ pub fn set_track_artwork(conn: &Connection, path: &str, artwork: Option<&str>) -
         rusqlite::params![artwork, path],
     )
 }
+
+/// Indexed track paths whose artwork reference is missing. Older builds could
+/// persist rows without artwork (or lose the cache file); the startup repair
+/// re-reads these files and restores the cached artwork.
+pub fn tracks_missing_artwork(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT path FROM tracks \
+         WHERE artwork_path IS NULL OR artwork_path = '' \
+         ORDER BY path COLLATE NOCASE, path",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut paths = Vec::new();
+    while let Some(row) = rows.next()? {
+        paths.push(row.get(0)?);
+    }
+    Ok(paths)
+}
+
+/// Updates many artwork references in one transaction. The startup repair
+/// writes batches so the UI's reader connection is never starved.
+pub fn set_track_artworks(conn: &Connection, updates: &[(String, String)]) -> Result<usize> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+    let mut count = 0;
+    let tx = conn.unchecked_transaction()?;
+    {
+        let mut stmt = tx.prepare("UPDATE tracks SET artwork_path = ?1 WHERE path = ?2")?;
+        for (path, artwork) in updates {
+            count += stmt.execute(rusqlite::params![artwork, path])?;
+        }
+    }
+    tx.commit()?;
+    Ok(count)
+}

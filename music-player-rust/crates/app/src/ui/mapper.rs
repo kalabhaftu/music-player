@@ -146,7 +146,7 @@ pub fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
         )
     };
     let (has_cover, cover) = if let Some(art) = &group.artwork_path {
-        if let Some(img) = native_io::load_artwork_image(Path::new(art)) {
+        if let Some(img) = native_io::artwork_preview(Path::new(art)) {
             (true, img)
         } else {
             (false, Image::default())

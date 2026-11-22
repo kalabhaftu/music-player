@@ -352,6 +352,16 @@ impl LibraryStore {
         tracks::tracks_with_artwork_refs(&conn, refs)
     }
 
+    pub fn tracks_missing_artwork(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::tracks_missing_artwork(&conn)
+    }
+
+    pub fn set_track_artworks(&self, updates: &[(String, String)]) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        tracks::set_track_artworks(&conn, updates)
+    }
+
     pub fn set_track_artwork(&self, path: &str, artwork: Option<&str>) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
         tracks::set_track_artwork(&conn, path, artwork)

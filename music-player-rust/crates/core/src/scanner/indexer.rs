@@ -514,10 +514,17 @@ impl<'a> LibraryIndexer<'a> {
                         if ignored_directories.iter().any(|ign| is_within_root(&track.path, ign)) {
                             continue;
                         }
-                        let artwork_missing = match &track.artwork_path {
-                            None => true,
-                            Some(path) => !Path::new(path).exists(),
-                        };
+                        // 1:1 with LibraryIndexer.RefreshIndexedFilesAsync:
+                        // only non-empty references whose cache file vanished are
+                        // re-read here. Rows with no artwork are left alone (the
+                        // startup migration handles legacy NULL rows).
+                        let artwork_missing = track
+                            .artwork_path
+                            .as_deref()
+                            .map(|path| {
+                                !path.trim().is_empty() && !Path::new(path).exists()
+                            })
+                            .unwrap_or(false);
                         if !artwork_missing || !Path::new(&track.path).exists() {
                             continue;
                         }

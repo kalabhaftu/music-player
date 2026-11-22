@@ -175,6 +175,7 @@ pub(crate) struct App {
     pub(crate) scan_outcome_time: Option<Instant>,
     pub(crate) track_cache: HashMap<String, Track>,
     pub(crate) startup_scan_deferred: bool,
+    pub(crate) started: bool,
 }
 
 impl App {
@@ -269,6 +270,7 @@ impl App {
             scan_outcome_time: None,
             track_cache: HashMap::new(),
             startup_scan_deferred: true,
+            started: false,
         }
     }
 }
@@ -307,8 +309,8 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     ui.show()?;
     drop(startup);
 
-    // Startup and the 250 ms engine-room clock.
-    app.borrow_mut().startup();
+    // Startup runs on the first 250 ms clock tick (after the first frame), and
+    // the engine-room clock drives playback from there.
     let clock = Timer::default();
     {
         let a = app.clone();

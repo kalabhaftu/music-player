@@ -18,9 +18,12 @@ impl App {
         self.publish_about();
     }
 
-    /// Drops artwork references whose cache file disappeared, then re-extracts
-    /// embedded artwork on a worker thread. Without this, every startup render
-    /// logs an image-load failure for each stale reference.
+    /// Drops artwork references whose cache file disappeared, then restores
+    /// artwork for every indexed track that has no reference yet. Older builds
+    /// could persist a whole library without artwork while the files still
+    /// contain embedded covers, and a missing cache file made those albums fall
+    /// back to gradients forever (the scan's unchanged check treats `NULL`
+    /// artwork as fresh, mirroring the C# indexer).
     pub(crate) fn clear_stale_artwork(&mut self) {
         let refs = match self.store.artwork_refs() {
             Ok(refs) => refs,
@@ -30,52 +33,68 @@ impl App {
             .into_iter()
             .filter(|path| !Path::new(path).is_file())
             .collect();
-        if missing.is_empty() {
-            return;
-        }
-        let affected = self
-            .store
-            .tracks_with_artwork_refs(&missing)
-            .unwrap_or_default();
-        match self.store.clear_missing_artwork_refs(&missing) {
-            Ok(cleared) => LocalAppLog::shared().info(
-                "artwork-cache",
-                &format!(
-                    "Cleared {} missing artwork reference{} across {} track{}",
-                    cleared,
-                    if cleared == 1 { "" } else { "s" },
-                    affected.len(),
-                    if affected.len() == 1 { "" } else { "s" }
-                ),
-            ),
-            Err(error) => {
-                LocalAppLog::shared().warning(
+        let mut repair_paths = Vec::new();
+        if !missing.is_empty() {
+            let affected = self
+                .store
+                .tracks_with_artwork_refs(&missing)
+                .unwrap_or_default();
+            match self.store.clear_missing_artwork_refs(&missing) {
+                Ok(cleared) => LocalAppLog::shared().info(
                     "artwork-cache",
-                    &format!("Could not clear missing artwork references: {error}"),
-                );
-                return;
+                    &format!(
+                        "Cleared {} missing artwork reference{} across {} track{}",
+                        cleared,
+                        if cleared == 1 { "" } else { "s" },
+                        affected.len(),
+                        if affected.len() == 1 { "" } else { "s" }
+                    ),
+                ),
+                Err(error) => {
+                    LocalAppLog::shared().warning(
+                        "artwork-cache",
+                        &format!("Could not clear missing artwork references: {error}"),
+                    );
+                    return;
+                }
             }
+            repair_paths.extend(affected);
         }
-        if affected.is_empty() {
+        if let Ok(paths) = self.store.tracks_missing_artwork() {
+            repair_paths.extend(paths);
+        }
+        if repair_paths.is_empty() {
             return;
         }
 
+        let mut seen = HashSet::new();
+        repair_paths.retain(|path| seen.insert(path.to_lowercase()));
         let store = self.store.clone();
         let cache = artwork_cache_dir();
         let (tx, rx) = mpsc::channel();
         self.artwork_repair_rx = Some(rx);
         std::thread::spawn(move || {
             let mut repaired = 0usize;
-            for path in affected {
+            let mut batch: Vec<(String, String)> = Vec::with_capacity(64);
+            for path in repair_paths {
                 if !Path::new(&path).is_file() {
                     continue;
                 }
                 let tags =
                     music_player_core::metadata::read_tags_in_cache(Path::new(&path), &cache);
                 if let Some(artwork) = tags.artwork_path {
-                    if store.set_track_artwork(&path, Some(&artwork)).is_ok() {
-                        repaired += 1;
+                    batch.push((path, artwork));
+                    if batch.len() >= 64 {
+                        if let Ok(count) = store.set_track_artworks(&batch) {
+                            repaired += count;
+                        }
+                        batch.clear();
                     }
+                }
+            }
+            if !batch.is_empty() {
+                if let Ok(count) = store.set_track_artworks(&batch) {
+                    repaired += count;
                 }
             }
             let _ = tx.send(repaired);
@@ -106,6 +125,32 @@ impl App {
                     self.update_current_track(&track);
                 }
             }
+        }
+        // Cached Track rows still carry the old (missing) artwork paths; drop
+        // them so the queue and every future view resolve the repaired rows.
+        self.track_cache.clear();
+        self.refresh_view();
+        self.publish_queue(false);
+    }
+
+    /// Applies background-decoded artwork. Only the currently visible view is
+    /// rebuilt, and only when at least one new image landed.
+    pub(crate) fn poll_artwork_images(&mut self) {
+        let available = native_io::poll_artwork_images();
+        if available.is_empty() {
+            return;
+        }
+        let queue_changed = {
+            let entries = self.coordinator.queue().entries();
+            available.iter().any(|path| {
+                let path = path.to_string_lossy();
+                entries
+                    .iter()
+                    .any(|entry| path.eq_ignore_ascii_case(entry))
+            })
+        };
+        if queue_changed {
+            self.publish_queue(false);
         }
         self.refresh_view();
     }
@@ -159,6 +204,13 @@ impl App {
     // ---- The 250 ms clock (port of MainWindow.Playback.Clock_Tick) ---------
 
     pub(crate) fn tick(&mut self) {
+        // Startup runs from the first clock tick, after the window has painted.
+        // Doing it before `ui.run()` blocked the first frame behind artwork
+        // decoding and library queries.
+        if !self.started {
+            self.started = true;
+            self.startup();
+        }
         self.attach_os();
 
         // Search debouncing (150 ms).
@@ -338,6 +390,7 @@ impl App {
         self.poll_lyrics_search();
         self.poll_update_check();
         self.poll_artwork_repair();
+        self.poll_artwork_images();
         self.poll_duplicate_load();
         self.poll_os_commands();
         if self.startup_scan_deferred {

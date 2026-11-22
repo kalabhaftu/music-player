@@ -335,7 +335,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>()
-            .on_ui_ready(move || a.borrow_mut().startup());
+            .on_ui_ready(move || a.borrow().ui.global::<State>().set_page_loading(true));
     }
     {
         let a = app.clone();

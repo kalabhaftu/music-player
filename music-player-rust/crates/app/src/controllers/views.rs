@@ -284,7 +284,7 @@ impl App {
         let (has_cover, cover) = track
             .artwork_path
             .as_deref()
-            .and_then(|path| native_io::load_artwork_image(Path::new(path)))
+            .and_then(|path| native_io::artwork_preview(Path::new(path)))
             .map(|image| (true, image))
             .unwrap_or((false, Image::default()));
         TrackItem {
@@ -348,7 +348,7 @@ impl App {
         let (has_cover, cover) = track
             .artwork_path
             .as_deref()
-            .and_then(|path| native_io::load_artwork_image(Path::new(path)))
+            .and_then(|path| native_io::artwork_preview(Path::new(path)))
             .map(|image| (true, image))
             .unwrap_or((false, Image::default()));
         QueueItem {
@@ -947,6 +947,48 @@ impl App {
             self.ui
                 .global::<State>()
                 .set_has_roots(!self.settings.library_roots().is_empty());
+            return;
+        }
+        // Only list views own `State.tracks`. Grid, chrome and immersive views
+        // used to pay for a 200-row query (and its artwork decodes) on every
+        // tab switch even though they never render the result.
+        let track_view = matches!(
+            view.as_str(),
+            "Songs"
+                | "Favorites"
+                | "Most Played"
+                | "Recently Played"
+                | "Recently Added"
+                | "With Lyrics"
+                | "Videos"
+                | "Search"
+                | "Album"
+                | "Artist"
+                | "Genre"
+                | "Folder"
+        );
+        if !track_view {
+            let total_tracks = if view == "Home" {
+                self.store
+                    .get_library_stats()
+                    .map(|stats| stats.total_tracks)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            if view == "Home" {
+                self.publish_home(&playing);
+            }
+            if matches!(view.as_str(), "Albums" | "Artists" | "Genres" | "Folders") {
+                self.publish_groups(&view, &search);
+            }
+            if view == "Duplicates" && !self.duplicate_fingerprints_ready {
+                self.start_duplicate_load();
+            }
+            let state = self.ui.global::<State>();
+            state.set_has_roots(!self.settings.library_roots().is_empty());
+            state.set_library_empty(view == "Home" && total_tracks == 0);
+            state.set_page_loading(false);
             return;
         }
         let hide_dupes = self
