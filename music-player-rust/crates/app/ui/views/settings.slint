@@ -9,6 +9,7 @@ component CustomSelect inherits Rectangle {
     in property <[string]> options;
     in-out property <string> current-value;
     in property <bool> enabled: true;
+    property <bool> is-open: false;
     callback selected(string);
 
     min-width: 130px;
@@ -31,18 +32,26 @@ component CustomSelect inherits Rectangle {
             horizontal-stretch: 1;
             overflow: elide;
         }
-        Text {
-            text: "▾";
-            color: Palette.muted;
-            font-size: 10px;
-            vertical-alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.is-open
+                    ? @image-url("../../assets/icons/chevron-up.svg")
+                    : @image-url("../../assets/icons/chevron-down.svg");
+                width: 10px;
+                height: 10px;
+                colorize: Palette.muted;
+            }
         }
     }
 
     TouchArea {
         enabled: root.enabled;
         clicked => {
-            popup.show();
+            root.is-open = !root.is-open;
+            if root.is-open {
+                popup.show();
+            }
         }
     }
 
@@ -65,6 +74,7 @@ component CustomSelect inherits Rectangle {
                     item-area := TouchArea {
                         clicked => {
                             root.current-value = opt;
+                            root.is-open = false;
                             root.selected(opt);
                         }
                     }
@@ -156,6 +166,7 @@ component SettingComboRow inherits Rectangle {
         VerticalLayout {
             alignment: center;
             CustomSelect {
+                width: 240px;
                 options: root.options;
                 current-value: root.value;
                 selected(value) => { root.changed(value); }
@@ -175,7 +186,6 @@ component SettingsNavTab inherits Rectangle {
     callback clicked();
 
     horizontal-stretch: 0;
-    min-width: 0px;
     height: 38px;
     border-radius: 8px;
     background: area.pressed || root.selected || area.has-hover
@@ -184,16 +194,16 @@ component SettingsNavTab inherits Rectangle {
     animate background { duration: 110ms; }
     area := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 11px;
-        padding-right: 11px;
+        padding-left: 14px;
+        padding-right: 14px;
+        alignment: center;
         Text {
             text: root.label;
             color: root.selected ? Palette.text : Palette.muted;
             font-size: 11px;
             font-weight: 700;
-            horizontal-alignment: left;
+            horizontal-alignment: center;
             vertical-alignment: center;
-            overflow: elide;
         }
     }
 }
@@ -247,31 +257,34 @@ component SettingRangeRow inherits Rectangle {
     HorizontalLayout {
         spacing: 18px;
         SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
-        HorizontalLayout {
+        VerticalLayout {
             alignment: center;
-            spacing: 12px;
-            opacity: root.enabled ? 1.0 : 0.38;
-            slider := PlayerSlider {
-                width: 180px;
-                minimum: root.minimum;
-                maximum: root.maximum;
-                value: root.value;
-                fill-color: slider.hovered ? State.accent : #e2e6e1;
-                track-color: #2e332f;
-                changed(v) => {
-                    if root.enabled {
-                        root.value = round(v);
-                        Actions.set-setting(root.setting, "\{round(v)}");
+            HorizontalLayout {
+                width: 260px;
+                spacing: 12px;
+                opacity: root.enabled ? 1.0 : 0.38;
+                slider := PlayerSlider {
+                    width: 210px;
+                    minimum: root.minimum;
+                    maximum: root.maximum;
+                    value: root.value;
+                    fill-color: slider.hovered ? State.accent : #e2e6e1;
+                    track-color: #2e332f;
+                    changed(v) => {
+                        if root.enabled {
+                            root.value = round(v);
+                            Actions.set-setting(root.setting, "\{round(v)}");
+                        }
                     }
                 }
-            }
-            Text {
-                width: 38px;
-                text: "\{root.value}%";
-                color: Palette.muted;
-                font-size: 11px;
-                horizontal-alignment: right;
-                vertical-alignment: center;
+                Text {
+                    width: 38px;
+                    text: "\{root.value}%";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
             }
         }
     }
@@ -308,24 +321,27 @@ component SettingNumberRow inherits Rectangle {
                     alignment: center;
 
                     // Minus button
-                    Rectangle {
-                        width: 22px;
-                        height: 22px;
-                        border-radius: 4px;
-                        background: minus-area.has-hover ? #222622 : transparent;
-                        minus-area := TouchArea {
-                            clicked => {
-                                root.value = max(root.minimum, root.value - root.step);
-                                Actions.set-setting(root.setting, "\{root.value}");
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            background: minus-area.has-hover ? #222622 : transparent;
+                            minus-area := TouchArea {
+                                clicked => {
+                                    root.value = max(root.minimum, root.value - root.step);
+                                    Actions.set-setting(root.setting, "\{root.value}");
+                                }
                             }
-                        }
-                        Text {
-                            text: "−";
-                            color: Palette.muted;
-                            font-size: 12px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                            Text {
+                                text: "-";
+                                color: Palette.muted;
+                                font-size: 13px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
                         }
                     }
 
@@ -341,24 +357,27 @@ component SettingNumberRow inherits Rectangle {
                     }
 
                     // Plus button
-                    Rectangle {
-                        width: 22px;
-                        height: 22px;
-                        border-radius: 4px;
-                        background: plus-area.has-hover ? #222622 : transparent;
-                        plus-area := TouchArea {
-                            clicked => {
-                                root.value = min(root.maximum, root.value + root.step);
-                                Actions.set-setting(root.setting, "\{root.value}");
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            background: plus-area.has-hover ? #222622 : transparent;
+                            plus-area := TouchArea {
+                                clicked => {
+                                    root.value = min(root.maximum, root.value + root.step);
+                                    Actions.set-setting(root.setting, "\{root.value}");
+                                }
                             }
-                        }
-                        Text {
-                            text: "+";
-                            color: Palette.muted;
-                            font-size: 12px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                            Text {
+                                text: "+";
+                                color: Palette.muted;
+                                font-size: 13px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
                         }
                     }
                 }
@@ -442,6 +461,7 @@ export component SettingsView inherits Rectangle {
             HorizontalLayout {
                 padding: 7px;
                 spacing: 4px;
+                alignment: start;
                 SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
                 SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
                 SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
@@ -542,17 +562,20 @@ export component SettingsView inherits Rectangle {
                             height: 52px;
                             spacing: 18px;
                             SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
-                            HorizontalLayout {
-                                spacing: 9px;
+                            VerticalLayout {
                                 alignment: center;
-                                for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
-                                    width: 24px;
-                                    height: 24px;
-                                    border-radius: 12px;
-                                    border-width: State.accent-preset-name == preset ? 2px : 0px;
-                                    border-color: #ffffff;
-                                    background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
-                                    TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                                HorizontalLayout {
+                                    spacing: 9px;
+                                    alignment: end;
+                                    for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 12px;
+                                        border-width: State.accent-preset-name == preset ? 2px : 0px;
+                                        border-color: #ffffff;
+                                        background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
+                                        TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                                    }
                                 }
                             }
                         }
@@ -560,6 +583,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 10px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
                         }
                     }
@@ -595,6 +619,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 10px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
                             ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
                             ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
@@ -603,6 +628,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 6px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Rebuild index and reconcile missing files"; clicked => { Actions.rebuild-library-index(); } }
                         }
                         Rectangle { height: 8px; }
@@ -649,6 +675,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 10px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
                         }
                     }
@@ -686,6 +713,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 8px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
                             ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
                             ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
@@ -714,12 +742,22 @@ export component SettingsView inherits Rectangle {
                             Text { text: "Music Player"; color: Palette.text; font-size: 18px; font-weight: 700; vertical-alignment: center; }
                             Text { text: State.about-rows.length > 0 ? "Version " + State.about-rows[0].value : "Version unavailable"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
                             Rectangle { horizontal-stretch: 1; }
-                            ActionBtn { label: "View repository"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); } }
+                            VerticalLayout {
+                                alignment: center;
+                                ActionBtn {
+                                    icon: @image-url("../../assets/icons/github.svg");
+                                    label: "View repository";
+                                    clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); }
+                                }
+                            }
                         }
                         HorizontalLayout {
                             height: 56px;
                             SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · updates are never installed automatically."; horizontal-stretch: 1; }
-                            ActionBtn { label: State.update-tag == "" ? "Release history" : "View release"; clicked => { Actions.open-release(); } }
+                            VerticalLayout {
+                                alignment: center;
+                                ActionBtn { label: State.update-tag == "" ? "Release history" : "View release"; clicked => { Actions.open-release(); } }
+                            }
                         }
                         Rectangle { height: 1px; background: Palette.border; }
                         SettingSwitchRow {
@@ -731,6 +769,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 6px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn {
                                 label: State.update-checking ? "Checking…" : "Check for updates";
                                 enabled: !State.update-checking;
@@ -757,6 +796,7 @@ export component SettingsView inherits Rectangle {
                         Rectangle { height: 4px; }
                         HorizontalLayout {
                             spacing: 8px;
+                            alignment: start;
                             ActionBtn { label: "Open MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
                             ActionBtn { label: "Open third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
                             ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }

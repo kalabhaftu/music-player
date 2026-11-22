@@ -231,11 +231,13 @@ export component TextBtn inherits Rectangle {
 
 export component ActionBtn inherits Rectangle {
     in property <string> label;
+    in property <image> icon;
     in property <bool> primary: false;
     in property <bool> danger: false;
     in property <bool> enabled: true;
     callback clicked();
 
+    horizontal-stretch: 0;
     height: 34px;
     border-radius: 999px;
     background: !root.enabled
@@ -254,7 +256,17 @@ export component ActionBtn inherits Rectangle {
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 14px;
+        spacing: 8px;
         alignment: center;
+        if root.icon.width > 0 : VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+                colorize: !root.enabled ? Palette.muted : (root.primary ? #0a0b0a : (root.danger ? #ff5b74 : #ffffff));
+            }
+        }
         Text {
             text: root.label;
             color: !root.enabled ? Palette.muted : (root.primary ? #0a0b0a : (root.danger ? #ff5b74 : #ffffff));

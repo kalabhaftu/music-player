@@ -1,6 +1,78 @@
 import { State, Actions } from "../state.slint";
-import { Palette, TextBtn, Chip } from "../widgets.slint";
-import { ComboBox, CheckBox } from "std-widgets.slint";
+import { Palette, TextBtn, ActionBtn, Chip } from "../widgets.slint";
+import { ComboBox } from "std-widgets.slint";
+
+component CustomCheckBox inherits Rectangle {
+    in property <bool> checked: false;
+    callback toggled(bool);
+
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.checked ? State.accent : Palette.border;
+    background: root.checked ? State.accent : transparent;
+    animate background { duration: 100ms; }
+
+    TouchArea {
+        clicked => { root.toggled(!root.checked); }
+    }
+
+    if root.checked : Text {
+        text: "✓";
+        color: #0a0b0a;
+        font-size: 11px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ResetChoiceRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in-out property <bool> checked: true;
+
+    height: 48px;
+
+    TouchArea {
+        clicked => { root.checked = !root.checked; }
+    }
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 11px;
+        alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+            CustomCheckBox {
+                checked: root.checked;
+                toggled(v) => { root.checked = v; }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: Palette.text;
+                font-size: 11px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.description;
+                color: Palette.muted;
+                font-size: 10px;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
 
 export component ConfirmModal inherits Rectangle {
     VerticalLayout {
@@ -85,27 +157,43 @@ export component ResetModal inherits Rectangle {
     VerticalLayout {
         padding-left: 18px;
         padding-right: 18px;
-        spacing: 10px;
+        spacing: 12px;
 
-        CheckBox {
-            text: "Reset view and appearance settings";
+        Text {
+            text: "Choose which interface preferences to restore. Every group is selected by default.";
+            color: Palette.muted;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+
+        ResetChoiceRow {
+            title: "Colors and appearance";
+            description: "Theme, artwork palette, selection color, transparency, and motion";
             checked <=> State.reset-appearance;
         }
-        CheckBox {
-            text: "Reset panels and navigation settings";
+        ResetChoiceRow {
+            title: "Panels and navigation";
+            description: "Sidebar and Now Playing widths, collapse state, navigation order, and browse spacing";
             checked <=> State.reset-playback;
         }
-        CheckBox {
-            text: "Reset library display settings";
+        ResetChoiceRow {
+            title: "Library display";
+            description: "Visible song columns, resized column widths, and duplicate handling";
             checked <=> State.reset-library;
         }
+
+        Rectangle { height: 4px; }
 
         HorizontalLayout {
             spacing: 10px;
             alignment: end;
-            TextBtn {
-                label: "Reset";
-                danger: true;
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
+                primary: true;
+                label: "Reset selected settings";
                 clicked => {
                     Actions.reset-settings(
                         (State.reset-appearance ? "appearance," : "")
