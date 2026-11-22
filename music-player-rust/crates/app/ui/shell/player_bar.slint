@@ -24,8 +24,9 @@ export component PlayerBar inherits Rectangle {
             : (State.window-width <= 900 ? 10px : 16px));
 
         VerticalLayout {
-            horizontal-stretch: State.window-width <= 650 && State.window-width > 480 ? 0.85 : 1;
+            horizontal-stretch: 1;
             min-width: 0px;
+            max-width: clamp(State.window-width * 0.32 * 1px, 180px, 320px);
             alignment: center;
 
             HorizontalLayout {
@@ -97,11 +98,7 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
-            horizontal-stretch: State.window-width <= 480 ? 1.1
-                : (State.window-width <= 900 ? 1.2 : 1.25);
-            min-width: State.window-width <= 480 ? 124px
-                : (State.window-width <= 650 ? 140px
-                : (State.window-width <= 900 ? 190px : 260px));
+            horizontal-stretch: 0;
             alignment: center;
             spacing: 7px;
 
@@ -271,7 +268,9 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
+            horizontal-stretch: 1;
             min-width: 0px;
+            max-width: clamp(State.window-width * 0.32 * 1px, 180px, 320px);
             alignment: center;
 
             HorizontalLayout {

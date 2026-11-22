@@ -2,7 +2,7 @@
 // The Actions callbacks mirror the WebUiCommandRouter command allowlist and the
 // State properties mirror the native -> JS event catalog payloads.
 
-import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem } from "models.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem, AboutComponentItem, ReleaseItem } from "models.slint";
 
 export global State {
     // ---- Routing ----
@@ -256,12 +256,14 @@ export global State {
         - (State.navigation-collapsed ? 0 : State.navigation-width)
         - (State.right-panel-open ? State.right-panel-width : 0);
     out property <length> card-gap: clamp(State.browse-width * 0.05px, 10px, 20px);
-    out property <length> content-avail-width: max(260px, (State.content-width * 1px) - (State.window-width <= 650 ? 24px : 48px));
+    out property <length> content-avail-width: max(260px, (State.content-width * 1px) - (State.window-width <= 650 ? 24px : 48px) - 20px);
     out property <int> card-columns: max(1, Math.floor((State.content-avail-width + State.card-gap) / (130px + State.card-gap)));
     out property <length> card-width: (State.content-avail-width - (State.card-columns - 1) * State.card-gap) / max(1, State.card-columns);
     out property <int> folder-columns: max(1, Math.floor((State.content-avail-width + 12px) / (310px + 12px)));
     out property <length> folder-card-width: (State.content-avail-width - (State.folder-columns - 1) * 12px) / max(1, State.folder-columns);
     in property <[DetailRowItem]> about-rows;
+    in property <[AboutComponentItem]> about-components;
+    in property <[ReleaseItem]> release-history;
 
     // ---- Context menu ----
     in property <[ContextMenuItem]> context-items;

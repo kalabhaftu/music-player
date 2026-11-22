@@ -899,9 +899,95 @@ impl App {
                 value: ss(stats.total_tracks.to_string()),
             },
         ];
-        self.ui
-            .global::<State>()
-            .set_about_rows(ui_model(rows).into());
+        let components = vec![
+            AboutComponentItem {
+                name: ss("Microsoft Edge WebView2 SDK"),
+                description: ss("Embedded WebView interface"),
+                version: ss("1.0.3179.45"),
+                license: ss("[BSD-3-Clause](third-party-licenses/WebView2.txt)"),
+                source: ss("WebView2"),
+            },
+            AboutComponentItem {
+                name: ss("LibVLC"),
+                description: ss("Local media playback engine and codecs included by the Windows package"),
+                version: ss("3.0.24"),
+                license: ss("LGPL-2.1-or-later; bundled modules and plugins may carry additional notices"),
+                source: ss("VideoLAN VLC"),
+            },
+            AboutComponentItem {
+                name: ss("LibVLCSharp"),
+                description: ss(".NET binding for LibVLC"),
+                version: ss("3.10.1"),
+                license: ss("LGPL-2.1-or-later"),
+                source: ss("LibVLCSharp"),
+            },
+            AboutComponentItem {
+                name: ss("TagLib#"),
+                description: ss("Audio metadata reading and writing"),
+                version: ss("2.3.0"),
+                license: ss("LGPL-2.1-or-later"),
+                source: ss("TagLib#"),
+            },
+            AboutComponentItem {
+                name: ss("Microsoft.Data.Sqlite"),
+                description: ss("Local SQLite access"),
+                version: ss("10.0.12"),
+                license: ss("MIT"),
+                source: ss("Microsoft.Data.Sqlite"),
+            },
+            AboutComponentItem {
+                name: ss("SQLitePCLRaw"),
+                description: ss("Native SQLite provider and platform binding"),
+                version: ss("2.1.12 (transitive)"),
+                license: ss("Apache-2.0"),
+                source: ss("SQLitePCLRaw"),
+            },
+            AboutComponentItem {
+                name: ss("SQLite"),
+                description: ss("Database engine used by SQLitePCLRaw"),
+                version: ss("Bundled with SQLitePCLRaw 2.1.12"),
+                license: ss("Public domain"),
+                source: ss("SQLite"),
+            },
+            AboutComponentItem {
+                name: ss("Windows App SDK WinUI and dependencies"),
+                description: ss("Native WinUI 3 application framework"),
+                version: ss("1.8.260803003 (WinUI)"),
+                license: ss("Microsoft Software License Terms"),
+                source: ss("Windows App SDK"),
+            },
+        ];
+        let releases = vec![
+            ReleaseItem {
+                tag: ss("v1.0.4"),
+                prerelease: false,
+                url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.4"),
+            },
+            ReleaseItem {
+                tag: ss("v1.0.3"),
+                prerelease: false,
+                url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.3"),
+            },
+            ReleaseItem {
+                tag: ss("v1.0.2"),
+                prerelease: false,
+                url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.2"),
+            },
+            ReleaseItem {
+                tag: ss("v1.0.1"),
+                prerelease: false,
+                url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.1"),
+            },
+            ReleaseItem {
+                tag: ss("v1.0.0"),
+                prerelease: false,
+                url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.0"),
+            },
+        ];
+        let state = self.ui.global::<State>();
+        state.set_about_rows(ui_model(rows).into());
+        state.set_about_components(ui_model(components).into());
+        state.set_release_history(ui_model(releases).into());
     }
 
     // ---- View data (port of MainWindow.WebUi.Data.cs query layer) -----------

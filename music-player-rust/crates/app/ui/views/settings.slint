@@ -167,12 +167,13 @@ component SettingRangeRow inherits Rectangle {
         SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
         VerticalLayout {
             alignment: center;
+            horizontal-stretch: 0;
             HorizontalLayout {
-                width: 260px;
-                spacing: 12px;
+                width: 240px;
+                spacing: 10px;
                 opacity: root.enabled ? 1.0 : 0.38;
                 slider := PlayerSlider {
-                    width: 210px;
+                    horizontal-stretch: 1;
                     minimum: root.minimum;
                     maximum: root.maximum;
                     value: root.value;
@@ -186,7 +187,7 @@ component SettingRangeRow inherits Rectangle {
                     }
                 }
                 Text {
-                    width: 38px;
+                    width: 34px;
                     text: "\{root.value}%";
                     color: Palette.muted;
                     font-size: 11px;
@@ -300,46 +301,61 @@ component SettingNavOrderRow inherits Rectangle {
     height: 48px;
     HorizontalLayout {
         spacing: 10px;
-        Text {
-            text: "⋮⋮";
-            color: root.item.always-visible ? Palette.muted-2 : Palette.muted;
-            font-size: 13px;
-            width: 18px;
-            vertical-alignment: center;
-            horizontal-alignment: center;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: "⋮⋮";
+                color: root.item.always-visible ? Palette.muted-2 : Palette.muted;
+                font-size: 13px;
+                width: 18px;
+                horizontal-alignment: center;
+            }
         }
-        Text {
-            text: root.item.view;
-            color: Palette.text-strong;
-            font-size: 12px;
-            font-weight: 700;
+        VerticalLayout {
+            alignment: center;
             horizontal-stretch: 1;
-            vertical-alignment: center;
-            overflow: elide;
+            Text {
+                text: root.item.view;
+                color: Palette.text-strong;
+                font-size: 12px;
+                font-weight: 700;
+                overflow: elide;
+            }
         }
-        if root.item.always-visible : Text {
-            text: "Always shown";
-            color: Palette.muted;
-            font-size: 10px;
-            vertical-alignment: center;
+        if root.item.always-visible : VerticalLayout {
+            alignment: center;
+            Text {
+                text: "Always shown";
+                color: Palette.muted;
+                font-size: 10px;
+            }
         }
         if !root.item.always-visible : HorizontalLayout {
             spacing: 6px;
-            alignment: center;
-            TextBtn {
-                label: "↑";
-                enabled: root.item.can-move-up;
-                clicked => { Actions.move-navigation(root.item.view, -1); }
+            VerticalLayout {
+                alignment: center;
+                TextBtn {
+                    label: "↑";
+                    enabled: root.item.can-move-up;
+                    clicked => { Actions.move-navigation(root.item.view, -1); }
+                }
             }
-            TextBtn {
-                label: "↓";
-                enabled: root.item.can-move-down;
-                clicked => { Actions.move-navigation(root.item.view, 1); }
+            VerticalLayout {
+                alignment: center;
+                TextBtn {
+                    label: "↓";
+                    enabled: root.item.can-move-down;
+                    clicked => { Actions.move-navigation(root.item.view, 1); }
+                }
             }
             Rectangle { width: 4px; }
-            CustomToggle {
-                checked: !root.item.hidden;
-                toggled(v) => { Actions.toggle-navigation(root.item.view); }
+            VerticalLayout {
+                alignment: center;
+                CustomToggle {
+                    checked: !root.item.hidden;
+                    toggled(v) => { Actions.toggle-navigation(root.item.view); }
+                }
             }
         }
     }
@@ -472,7 +488,9 @@ export component SettingsView inherits Rectangle {
                             SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
                             VerticalLayout {
                                 alignment: center;
+                                horizontal-stretch: 0;
                                 HorizontalLayout {
+                                    width: 240px;
                                     spacing: 9px;
                                     alignment: end;
                                     for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
@@ -687,11 +705,46 @@ export component SettingsView inherits Rectangle {
                         }
                         Rectangle { height: 8px; }
                         SectionTitle { text: "Version history"; font-size: 12px; letter-spacing: 0px; }
-                        Text {
+                        if State.release-history.length == 0 : Text {
                             text: "Release history is unavailable offline. Use “View all releases” when connected.";
                             color: Palette.muted;
                             font-size: 10px;
                             wrap: word-wrap;
+                        }
+                        if State.release-history.length > 0 : GridLayout {
+                            width: 100%;
+                            spacing: 8px;
+                            for rel[idx] in State.release-history : Rectangle {
+                                col: Math.mod(idx, 4);
+                                row: idx / 4;
+                                height: 50px;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: Palette.border;
+                                background: rel-area.has-hover ? Palette.hover : Palette.panel-2;
+                                animate background { duration: 100ms; }
+                                rel-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Actions.open-url(rel.url); }
+                                }
+                                VerticalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: rel.tag;
+                                        color: Palette.text;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: rel.prerelease ? "Preview release" : "Stable release";
+                                        color: Palette.muted;
+                                        font-size: 10px;
+                                    }
+                                }
+                            }
                         }
                         Rectangle { height: 8px; }
                         SectionTitle { text: "Open-source software"; font-size: 12px; letter-spacing: 0px; }
@@ -700,6 +753,67 @@ export component SettingsView inherits Rectangle {
                             color: Palette.muted;
                             font-size: 10px;
                             wrap: word-wrap;
+                        }
+                        Rectangle { height: 6px; }
+                        if State.about-components.length > 0 : Rectangle {
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            background: Palette.panel;
+                            clip: true;
+                            VerticalLayout {
+                                // Table Header
+                                Rectangle {
+                                    height: 34px;
+                                    background: Palette.surface;
+                                    HorizontalLayout {
+                                        padding-left: 12px;
+                                        padding-right: 12px;
+                                        spacing: 12px;
+                                        Text { text: "COMPONENT"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 3; vertical-alignment: center; }
+                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 120px; vertical-alignment: center; }
+                                        Text { text: "LICENSE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 2; vertical-alignment: center; }
+                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 130px; vertical-alignment: center; }
+                                    }
+                                }
+                                Rectangle { height: 1px; background: Palette.border; }
+                                // Table Rows
+                                for comp in State.about-components : VerticalLayout {
+                                    Rectangle {
+                                        min-height: 48px;
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            padding-top: 8px;
+                                            padding-bottom: 8px;
+                                            spacing: 12px;
+                                            VerticalLayout {
+                                                horizontal-stretch: 3;
+                                                spacing: 2px;
+                                                alignment: center;
+                                                Text { text: comp.name; color: Palette.text-strong; font-size: 11px; font-weight: 700; overflow: elide; }
+                                                if comp.description != "" : Text { text: comp.description; color: Palette.muted; font-size: 9px; overflow: elide; }
+                                            }
+                                            VerticalLayout {
+                                                width: 120px;
+                                                alignment: center;
+                                                Text { text: comp.version; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                            }
+                                            VerticalLayout {
+                                                horizontal-stretch: 2;
+                                                alignment: center;
+                                                Text { text: comp.license; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                            }
+                                            VerticalLayout {
+                                                width: 130px;
+                                                alignment: center;
+                                                Text { text: comp.source; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                            }
+                                        }
+                                    }
+                                    Rectangle { height: 1px; background: Palette.border-soft; }
+                                }
+                            }
                         }
                         Rectangle { height: 4px; }
                         HorizontalLayout {

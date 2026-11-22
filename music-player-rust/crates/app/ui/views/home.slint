@@ -134,15 +134,23 @@ export component HomeQuickGrid inherits Rectangle {
         width: 100%;
         spacing: 10px;
         Rectangle {
+            col: 0;
+            row: 0;
+            width: (State.content-avail-width - 10px) / 2;
+            height: 0px;
+            horizontal-stretch: 0;
+        }
+        Rectangle {
             col: 1;
             row: 0;
-            width: 0px;
+            width: (State.content-avail-width - 10px) / 2;
             height: 0px;
+            horizontal-stretch: 0;
         }
         for item[index] in root.items : HomeQuickTrackTile {
             item: item;
             col: Math.mod(index, 2);
-            row: index / 2;
+            row: 1 + index / 2;
             play => { Actions.play-track(item.id); }
         }
     }

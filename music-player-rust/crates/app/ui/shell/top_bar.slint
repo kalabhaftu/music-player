@@ -163,19 +163,19 @@ export component TopBar inherits Rectangle {
         // Spacer to push right actions to the edge
         Rectangle { horizontal-stretch: 1; visible: State.window-width > 900; }
 
-        if State.scan-active || State.scan-outcome != "" : VerticalLayout {
+        if State.scan-active || State.scan-paused : VerticalLayout {
             alignment: center;
             Rectangle {
                 width: State.window-width <= 650 ? 28px : 32px;
                 height: State.window-width <= 650 ? 28px : 32px;
                 border-radius: self.width / 2;
                 background: scan-area.has-hover ? Palette.overlay : transparent;
-                border-width: 2px;
+                border-width: 2.5px;
                 border-color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
                 Text {
                     text: State.scan-paused ? "Ⅱ" : (State.scan-cancelling ? "×" : "•");
                     color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
-                    font-size: State.scan-paused ? 10px : 16px;
+                    font-size: State.scan-paused ? 10px : 14px;
                     vertical-alignment: center;
                     horizontal-alignment: center;
                 }
@@ -211,8 +211,8 @@ export component TopBar inherits Rectangle {
     }
 
     if State.scan-details-open : Rectangle {
-        x: parent.width - 320px;
-        y: 64px;
+        x: max(10px, parent.width - 320px);
+        y: 60px;
         width: 300px;
         height: 128px;
         border-radius: 8px;
@@ -295,8 +295,8 @@ export component ToolsMenuOverlay inherits Rectangle {
     background: #00000000;
     TouchArea { clicked => { State.tools-menu-open = false; } }
     Rectangle {
-        x: parent.width - 204px;
-        y: 64px;
+        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 200px);
+        y: 60px;
         width: 190px;
         height: 86px;
         border-radius: 8px;

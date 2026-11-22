@@ -234,7 +234,6 @@ export component CustomSelect inherits Rectangle {
     in-out property <string> current-value;
     in-out property <int> current-index: -1;
     in property <bool> enabled: true;
-    property <bool> is-open: false;
     callback selected(string);
 
     min-width: 120px;
@@ -260,7 +259,7 @@ export component CustomSelect inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Image {
-                source: root.is-open
+                source: popup.is-open
                     ? @image-url("../assets/icons/chevron-up.svg")
                     : @image-url("../assets/icons/chevron-down.svg");
                 width: 10px;
@@ -274,8 +273,9 @@ export component CustomSelect inherits Rectangle {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => {
-            root.is-open = !root.is-open;
-            if root.is-open {
+            if popup.is-open {
+                popup.close();
+            } else {
                 popup.show();
             }
         }
@@ -302,7 +302,7 @@ export component CustomSelect inherits Rectangle {
                         clicked => {
                             root.current-value = opt;
                             root.current-index = idx;
-                            root.is-open = false;
+                            popup.close();
                             root.selected(opt);
                         }
                     }
@@ -407,14 +407,26 @@ export component HeaderCell inherits TouchArea {
     in property <bool> right-align: false;
     callback sort();
 
-    Text {
-        text: root.active ? (root.descending ? "\{root.label} \u{25BE}" : "\{root.label} \u{25B4}") : root.label;
-        color: root.active ? State.accent : Palette.muted-2;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.8px;
-        vertical-alignment: center;
-        horizontal-alignment: root.right-align ? right : left;
+    HorizontalLayout {
+        alignment: root.right-align ? end : start;
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: root.active ? State.accent : Palette.muted-2;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            vertical-alignment: center;
+        }
+        if root.active : VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.descending ? @image-url("../assets/icons/chevron-down.svg") : @image-url("../assets/icons/chevron-up.svg");
+                width: 9px;
+                height: 9px;
+                colorize: State.accent;
+            }
+        }
     }
     clicked => { root.sort(); }
 }
