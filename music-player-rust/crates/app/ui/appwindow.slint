@@ -28,13 +28,20 @@ export {
 
 export component AppWindow inherits Window {
     title: State.current-title == "" ? "Music Player" : "\{State.current-title} — \{State.current-artist} | Music Player";
-    min-width: 980px;
-    min-height: 640px;
-    preferred-width: 1280px;
-    preferred-height: 800px;
+    min-width: 540px;
+    min-height: 400px;
+    preferred-width: 1024px;
+    preferred-height: 640px;
     background: Palette.canvas;
 
-    changed width => { State.window-width = round(self.width / 1px); }
+    changed width => {
+        State.window-width = round(self.width / 1px);
+        Actions.window-resized(round(self.width / 1px), round(self.height / 1px));
+    }
+    changed height => {
+        State.window-height = round(self.height / 1px);
+        Actions.window-resized(round(self.width / 1px), round(self.height / 1px));
+    }
 
     init => { Actions.ui-ready(); }
 
@@ -160,20 +167,18 @@ export component AppWindow inherits Window {
             vertical-stretch: 1;
             NavRail { }
             VerticalLayout {
+                horizontal-stretch: 1;
                 vertical-stretch: 1;
                 topbar := TopBar { }
-                HorizontalLayout {
+                Rectangle {
+                    horizontal-stretch: 1;
                     vertical-stretch: 1;
-                    Rectangle {
-                        horizontal-stretch: 1;
-                        vertical-stretch: 1;
-                        clip: true;
-                        background: Palette.surface;
-                        ContentArea { width: 100%; height: 100%; }
-                    }
-                    RightPanel { }
+                    clip: true;
+                    background: Palette.surface;
+                    ContentArea { width: 100%; height: 100%; }
                 }
             }
+            RightPanel { }
         }
         PlayerBar { }
     }

@@ -305,6 +305,26 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     // Register all Slint action callbacks.
     ui::callbacks::register_all(&ui, app.clone());
 
+    // Restore window dimensions from database settings, or default to middle size 1024x640.
+    {
+        let store = &app.borrow().store;
+        let w = store
+            .get_setting("window-width")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(1024)
+            .clamp(540, 3840);
+        let h = store
+            .get_setting("window-height")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(640)
+            .clamp(400, 2160);
+        ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
+    }
+
     // Show UI and dismiss splash immediately for instantaneous launch
     ui.show()?;
     drop(startup);

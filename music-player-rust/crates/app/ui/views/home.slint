@@ -169,17 +169,19 @@ export component HomeCardGrid inherits Rectangle {
 
     GridLayout {
         width: 100%;
-        spacing: Palette.card-gap(State.browse-width);
-        if root.items.length > 0 : Rectangle {
-            col: State.card-columns - 1;
+        spacing: State.card-gap;
+        for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
+            visible: c < State.card-columns;
+            col: c;
             row: 0;
-            width: 0px;
+            width: State.card-width;
             height: 0px;
+            horizontal-stretch: 0;
         }
         for item[index] in root.items : HomeLibraryTile {
             item: item;
             col: Math.mod(index, State.card-columns);
-            row: index / State.card-columns;
+            row: 1 + index / State.card-columns;
         }
     }
 }

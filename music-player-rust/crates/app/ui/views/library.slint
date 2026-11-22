@@ -1,8 +1,8 @@
 import { State, Actions } from "../state.slint";
 import { GroupItem } from "../models.slint";
-import { ListView, ComboBox, ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import {
-    Palette, ActionBtn, TrackTable, GroupGrid, HeroDetail, CardTile, EmptyState, SectionTitle,
+    Palette, ActionBtn, TrackTable, GroupGrid, HeroDetail, CardTile, EmptyState, SectionTitle, CustomSelect,
 } from "../widgets.slint";
 
 // ---- Songs-like table views ------------------------------------------------
@@ -39,9 +39,9 @@ export component SongsView inherits Rectangle {
             spacing: 8px;
             Rectangle { horizontal-stretch: 1; }
             Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
-            ComboBox {
+            CustomSelect {
                 width: 150px;
-                model: State.view == "Videos"
+                options: State.view == "Videos"
                     ? ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating", "Type"]
                     : ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
                 current-value: State.view-sort;
@@ -436,11 +436,19 @@ export component DetailView inherits Rectangle {
                 Rectangle { height: 13px; }
                 GridLayout {
                     width: 100%;
-                    spacing: Palette.card-gap(State.browse-width);
+                    spacing: State.card-gap;
+                    for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : Rectangle {
+                        visible: c < State.card-columns;
+                        col: c;
+                        row: 0;
+                        width: State.card-width;
+                        height: 0px;
+                        horizontal-stretch: 0;
+                    }
                     for album[index] in State.artist-albums : CardTile {
                         item: album;
                         col: Math.mod(index, State.card-columns);
-                        row: index / State.card-columns;
+                        row: 1 + index / State.card-columns;
                         play => { Actions.play-group("album", album.name); }
                         open => { Actions.set-view("Album", "", album.name, ""); }
                     }

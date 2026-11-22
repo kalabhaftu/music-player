@@ -140,18 +140,7 @@ impl App {
         if available.is_empty() {
             return;
         }
-        let queue_changed = {
-            let entries = self.coordinator.queue().entries();
-            available.iter().any(|path| {
-                let path = path.to_string_lossy();
-                entries
-                    .iter()
-                    .any(|entry| path.eq_ignore_ascii_case(entry))
-            })
-        };
-        if queue_changed {
-            self.publish_queue(false);
-        }
+        self.publish_queue(false);
         self.refresh_view();
     }
 

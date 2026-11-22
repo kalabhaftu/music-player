@@ -1,6 +1,6 @@
 import { State, Actions } from "../state.slint";
-import { Palette, IcBtn, TextBtn, SectionTitle } from "../widgets.slint";
-import { LineEdit, ComboBox, Switch, ScrollView } from "std-widgets.slint";
+import { Palette, IcBtn, TextBtn, SectionTitle, CustomSelect } from "../widgets.slint";
+import { LineEdit, Switch, ScrollView } from "std-widgets.slint";
 
 export component FoldersModal inherits Rectangle {
     VerticalLayout {
@@ -120,9 +120,9 @@ export component ExclusionsModal inherits Rectangle {
                 placeholder-text: ".mkv";
                 text <=> State.exclusion-new-extension;
             }
-            ComboBox {
+            CustomSelect {
                 width: 110px;
-                model: ["Audio", "Video"];
+                options: ["Audio", "Video"];
                 current-value: State.exclusion-new-kind;
                 selected(value) => { State.exclusion-new-kind = value; }
             }

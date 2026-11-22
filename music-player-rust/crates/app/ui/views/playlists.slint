@@ -9,7 +9,9 @@ component SmartPlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
     vertical-stretch: 0;
-    border-radius: 18px;
+    horizontal-stretch: 0;
+    width: State.card-width;
+    border-radius: 8px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -25,7 +27,8 @@ component SmartPlaylistTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 12px;
+            horizontal-stretch: 0;
+            border-radius: 6px;
             clip: true;
             drop-shadow-offset-x: 0px;
             drop-shadow-offset-y: 14px;
@@ -101,7 +104,9 @@ component PlaylistTile inherits Rectangle {
     in property <PlaylistCardItem> card;
 
     vertical-stretch: 0;
-    border-radius: 18px;
+    horizontal-stretch: 0;
+    width: State.card-width;
+    border-radius: 8px;
     background: tile-area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -120,7 +125,8 @@ component PlaylistTile inherits Rectangle {
             width: 100%;
             height: self.width;
             vertical-stretch: 0;
-            border-radius: 12px;
+            horizontal-stretch: 0;
+            border-radius: 6px;
             clip: true;
             drop-shadow-offset-x: 0px;
             drop-shadow-offset-y: 14px;

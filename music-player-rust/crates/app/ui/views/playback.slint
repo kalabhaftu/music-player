@@ -1,7 +1,7 @@
 import { State, Actions } from "../state.slint";
 import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
-import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState, HeroDetail } from "../widgets.slint";
-import { ScrollView, ListView, Slider, ComboBox } from "std-widgets.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect } from "../widgets.slint";
+import { ScrollView, ListView, Slider } from "std-widgets.slint";
 
 // ---- Queue ------------------------------------------------------------------
 component QueueRow inherits Rectangle {
@@ -432,9 +432,9 @@ export component AudioView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
-                    if State.output-devices.length > 0 : ComboBox {
+                    if State.output-devices.length > 0 : CustomSelect {
                         horizontal-stretch: 1;
-                        model: State.output-devices;
+                        options: State.output-devices;
                         current-value: State.output-device;
                         selected(value) => { Actions.set-output-device(value); }
                     }
@@ -458,9 +458,9 @@ export component AudioView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
-                    ComboBox {
+                    CustomSelect {
                         width: 180px;
-                        model: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                        options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
                         current-value: State.crossfade-label;
                         selected(value) => { Actions.set-crossfade-label(value); }
                     }
@@ -474,9 +474,9 @@ export component AudioView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
-                    ComboBox {
+                    CustomSelect {
                         width: 220px;
-                        model: State.eq-presets;
+                        options: State.eq-presets;
                         current-value: State.eq-preset;
                         selected(value) => { Actions.set-eq-preset(value); }
                     }

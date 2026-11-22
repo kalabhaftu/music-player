@@ -28,6 +28,16 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     }
     {
         let a = app.clone();
+        ui.global::<Actions>().on_window_resized(move |w, h| {
+            if w >= 500 && h >= 400 {
+                let app = a.borrow();
+                let _ = app.store.set_setting("window-width", &w.to_string());
+                let _ = app.store.set_setting("window-height", &h.to_string());
+            }
+        });
+    }
+    {
+        let a = app.clone();
         ui.global::<Actions>()
             .on_begin_search(move || a.borrow_mut().begin_search());
     }

@@ -1,6 +1,5 @@
 import { State, Actions } from "../state.slint";
-import { Palette, TextBtn, ActionBtn, Chip } from "../widgets.slint";
-import { ComboBox } from "std-widgets.slint";
+import { Palette, TextBtn, ActionBtn, Chip, CustomSelect } from "../widgets.slint";
 
 component CustomCheckBox inherits Rectangle {
     in property <bool> checked: false;
@@ -87,9 +86,9 @@ export component ConfirmModal inherits Rectangle {
             wrap: word-wrap;
         }
 
-        if State.confirm-has-choices : ComboBox {
+        if State.confirm-has-choices : CustomSelect {
             width: 100%;
-            model: State.confirm-choices;
+            options: State.confirm-choices;
             current-value: State.confirm-choice;
             selected(value) => { State.confirm-choice = value; }
         }

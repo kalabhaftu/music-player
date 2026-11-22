@@ -304,14 +304,40 @@ export component RightPanel inherits Rectangle {
                     }
                 }
             }
-            Rectangle {
+            if State.queue-count > 0 : ScrollView {
                 vertical-stretch: 1;
-                ListView {
+                VerticalLayout {
+                    alignment: start;
                     for row[index] in State.panel-queue-items : QueueRow {
                         item: row;
                         index: index;
                         play => { Actions.play-queue-entry(row.queue-index); }
                         remove => { Actions.queue-remove(row.queue-index); }
+                    }
+                    if State.queue-panel-more-count > 0 : Rectangle {
+                        height: 32px;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: more-text.preferred-width + 12px;
+                                height: 20px;
+                                border-radius: 4px;
+                                background: more-area.has-hover ? #ffffff14 : transparent;
+                                animate background { duration: 120ms; }
+                                more-text := Text {
+                                    text: "\{State.queue-panel-more-count} more in Queue";
+                                    color: more-area.has-hover ? #ffffff : Palette.muted;
+                                    font-size: 10px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                                more-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Actions.set-view("Queue", "", "", ""); }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -323,13 +349,6 @@ export component RightPanel inherits Rectangle {
                     font-size: 11px;
                     horizontal-alignment: center;
                     y: 24px;
-                }
-            }
-            if State.queue-panel-more-count > 0 : Rectangle {
-                height: 30px;
-                TextBtn {
-                    label: "\{State.queue-panel-more-count} more in Queue";
-                    clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
             }
         }

@@ -1,6 +1,6 @@
 import { State, Actions } from "../state.slint";
-import { ScrollView, ComboBox } from "std-widgets.slint";
-import { Palette, ActionBtn, EmptyState } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Palette, ActionBtn, EmptyState, CustomSelect } from "../widgets.slint";
 
 component DuplicateTable inherits Rectangle {
     VerticalLayout {
@@ -62,9 +62,10 @@ export component DuplicatesView inherits Rectangle {
                 spacing: 7px;
                 Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
                 Rectangle { horizontal-stretch: 1; }
-                ComboBox {
+                CustomSelect {
+                    width: 150px;
                     enabled: !State.duplicate-loading;
-                    model: ["Title", "Artist", "Album", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
+                    options: ["Title", "Artist", "Album", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
                     current-value: State.duplicates-sort;
                     selected(value) => { Actions.load-duplicates(value, State.duplicates-descending, 0); }
                 }

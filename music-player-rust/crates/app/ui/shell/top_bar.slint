@@ -24,114 +24,138 @@ export component TopBar inherits Rectangle {
         padding-right: State.window-width <= 700 ? 8px : 16px;
         spacing: State.window-width <= 700 ? 5px : 9px;
 
-        IcBtn {
-            width: State.window-width <= 650 ? 28px : 32px;
-            height: State.window-width <= 650 ? 28px : 32px;
-            icon: @image-url("../../assets/icons/panel-left.svg");
-            icon-size: 16px;
-            tint: Palette.muted;
-            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
-            clicked => { Actions.toggle-sidebar(); }
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/panel-left.svg");
+                icon-size: 16px;
+                tint: Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                clicked => { Actions.toggle-sidebar(); }
+            }
         }
-        IcBtn {
-            width: State.window-width <= 650 ? 28px : 32px;
-            height: State.window-width <= 650 ? 28px : 32px;
-            icon: @image-url("../../assets/icons/chevron-left.svg");
-            icon-size: 16px;
-            tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
-            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
-            clicked => { if (State.can-go-back) { Actions.go-back(); } }
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/chevron-left.svg");
+                icon-size: 16px;
+                tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                clicked => { if (State.can-go-back) { Actions.go-back(); } }
+            }
         }
-        IcBtn {
+        VerticalLayout {
             visible: State.window-width > 480;
-            width: State.window-width <= 650 ? 28px : 32px;
-            height: State.window-width <= 650 ? 28px : 32px;
-            icon: @image-url("../../assets/icons/chevron-right.svg");
-            icon-size: 16px;
-            tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
-            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
-            clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/chevron-right.svg");
+                icon-size: 16px;
+                tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
+            }
         }
 
         // Pill Search Box
-        Rectangle {
-            // `.search-box { flex:1; max-width:520px }` shares the free space
-            // with `.top-spacer { flex:1 }`. Giving this a larger stretch made
-            // the Slint field consume the toolbar and visibly exceed its CSS size.
+        VerticalLayout {
+            alignment: center;
             horizontal-stretch: 1;
             min-width: 0px;
             max-width: 520px;
-            height: 38px;
-            border-radius: 19px;
-            background: search-input.has-focus ? Palette.hover : Palette.control;
-            animate background { duration: 100ms; }
-            clip: true;
 
-            HorizontalLayout {
-                padding-left: State.window-width <= 900 ? 10px : 13px;
-                padding-right: State.window-width <= 900 ? 10px : 13px;
-                spacing: 9px;
-                alignment: center;
+            Rectangle {
+                width: 100%;
+                height: 38px;
+                border-radius: 19px;
+                background: search-input.has-focus ? Palette.hover : Palette.control;
+                animate background { duration: 100ms; }
+                clip: true;
 
-                Image {
-                    source: @image-url("../../assets/icons/search.svg");
-                    width: 16px;
-                    height: 16px;
-                    colorize: Palette.muted;
+                search-box-area := TouchArea {
+                    mouse-cursor: text;
+                    clicked => { search-input.focus(); }
                 }
 
-                Rectangle {
-                    horizontal-stretch: 1;
-                    min-width: 0px;
-                    height: 38px;
-                    clip: true;
+                HorizontalLayout {
+                    padding-left: State.window-width <= 900 ? 10px : 13px;
+                    padding-right: State.window-width <= 900 ? 10px : 13px;
+                    spacing: 9px;
 
-                    if State.view-search == "" : Text {
-                        x: 0px;
-                        y: 0px;
-                        width: 100%;
-                        height: parent.height;
-                        text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
-                        color: Palette.muted-2;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                        overflow: elide;
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../../assets/icons/search.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: Palette.muted;
+                        }
                     }
 
-                    search-input := TextInput {
-                        x: 0px;
-                        y: 0px;
-                        width: 100%;
-                        height: parent.height;
-                        text <=> State.view-search;
-                        color: Palette.text;
-                        font-size: 13px;
-                        single-line: true;
-                        vertical-alignment: center;
-                        edited => { Actions.search-input(self.text); }
-                        accepted => { if (State.view != "Settings") { Actions.save-recent-search(self.text); } }
-                    }
-                }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        height: 38px;
+                        clip: true;
 
-                if State.window-width > 900 : Rectangle {
-                    width: 31px;
-                    height: 18px;
-                    Text {
-                        text: "Ctrl K";
-                        color: Palette.muted-2;
-                        font-size: 9px;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                    }
-                }
+                        if State.view-search == "" : Text {
+                            x: 0px;
+                            y: 0px;
+                            width: 100%;
+                            height: parent.height;
+                            text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
+                            color: Palette.muted-2;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
 
-                if State.view-search != "" && search-input.has-focus : IcBtn {
-                    icon: @image-url("../../assets/icons/close.svg");
-                    icon-size: 12px;
-                    tint: Palette.muted-2;
-                    width: 22px;
-                    height: 22px;
-                    clicked => { Actions.search-input(""); }
+                        search-input := TextInput {
+                            x: 0px;
+                            y: 0px;
+                            width: 100%;
+                            height: parent.height;
+                            text <=> State.view-search;
+                            color: Palette.text;
+                            font-size: 13px;
+                            single-line: true;
+                            vertical-alignment: center;
+                            edited => { Actions.search-input(self.text); }
+                            accepted => { if (State.view != "Settings") { Actions.save-recent-search(self.text); } }
+                        }
+                    }
+
+                    if State.window-width > 900 : VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 31px;
+                            height: 18px;
+                            Text {
+                                text: "Ctrl K";
+                                color: Palette.muted-2;
+                                font-size: 9px;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    if State.view-search != "" && search-input.has-focus : VerticalLayout {
+                        alignment: center;
+                        IcBtn {
+                            icon: @image-url("../../assets/icons/close.svg");
+                            icon-size: 12px;
+                            tint: Palette.muted-2;
+                            width: 22px;
+                            height: 22px;
+                            clicked => { Actions.search-input(""); }
+                        }
+                    }
                 }
             }
         }
@@ -139,7 +163,8 @@ export component TopBar inherits Rectangle {
         // Spacer to push right actions to the edge
         Rectangle { horizontal-stretch: 1; visible: State.window-width > 900; }
 
-        if State.scan-active || State.scan-outcome != "" : HorizontalLayout {
+        if State.scan-active || State.scan-outcome != "" : VerticalLayout {
+            alignment: center;
             Rectangle {
                 width: State.window-width <= 650 ? 28px : 32px;
                 height: State.window-width <= 650 ? 28px : 32px;
@@ -158,26 +183,30 @@ export component TopBar inherits Rectangle {
             }
         }
 
-        IcBtn {
-            width: State.window-width <= 650 ? 28px : 32px;
-            height: State.window-width <= 650 ? 28px : 32px;
-            // `.panel-toggle` is hidden while the desktop right panel is open;
-            // it remains available on the compact layouts where CSS exposes it.
+        VerticalLayout {
             visible: State.window-width <= 1180 || !State.right-panel-open;
-            icon: @image-url("../../assets/icons/queue.svg");
-            icon-size: 16px;
-            tint: State.right-panel-open ? State.accent : Palette.muted;
-            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
-            clicked => { Actions.toggle-right-panel(); }
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/queue.svg");
+                icon-size: 16px;
+                tint: State.right-panel-open ? State.accent : Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                clicked => { Actions.toggle-right-panel(); }
+            }
         }
-        IcBtn {
-            width: State.window-width <= 650 ? 28px : 32px;
-            height: State.window-width <= 650 ? 28px : 32px;
-            icon: @image-url("../../assets/icons/more.svg");
-            icon-size: 16px;
-            tint: State.tools-menu-open ? Palette.text : Palette.muted;
-            rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
-            clicked => { Actions.toggle-tools-menu(); }
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/more.svg");
+                icon-size: 16px;
+                tint: State.tools-menu-open ? Palette.text : Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                clicked => { Actions.toggle-tools-menu(); }
+            }
         }
     }
 
