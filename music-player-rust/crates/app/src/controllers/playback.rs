@@ -343,6 +343,11 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
+        let size = self.ui.window().size();
+        if size.width >= 500 && size.height >= 400 {
+            let _ = self.store.set_setting("window-width", &size.width.to_string());
+            let _ = self.store.set_setting("window-height", &size.height.to_string());
+        }
         let session = PlaybackSession {
             track_path: self.current.as_ref().map(|t| t.path.clone()),
             position_ms: self.engine.position_ms(),
@@ -461,10 +466,10 @@ impl App {
             .filter(|p| Path::new(p).exists())
             .and_then(|p| self.store.get_track(p).ok().flatten());
         if let Some(track) = current {
+            self.update_current_track(&track);
             if self.engine.play_track(&track.path).is_ok() {
                 let _ = self.engine.pause();
                 let _ = self.engine.seek(session.position_ms);
-                self.update_current_track(&track);
                 self.listening.restore_paused(session.position_ms as i64);
             }
         } else if let Some(ref path) = saved_current_path {

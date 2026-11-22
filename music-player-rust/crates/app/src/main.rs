@@ -48,7 +48,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 slint::include_modules!();
 
-const TRACK_PAGE_SIZE: usize = 200;
+const TRACK_PAGE_SIZE: usize = 100;
 
 #[link(name = "dwmapi")]
 extern "system" {
@@ -139,6 +139,7 @@ pub(crate) struct App {
     pub(crate) last_session_save: Instant,
     pub(crate) last_wal: Instant,
     pub(crate) last_vol_debounce: Instant,
+    pub(crate) last_artwork_refresh: Instant,
     pub(crate) eq_bands: [f32; 10],
     pub(crate) eq_preamp: f32,
     pub(crate) eq_dirty: bool,
@@ -236,6 +237,7 @@ impl App {
             last_session_save: now,
             last_wal: now,
             last_vol_debounce: now,
+            last_artwork_refresh: now,
             eq_bands,
             eq_preamp,
             eq_dirty: false,

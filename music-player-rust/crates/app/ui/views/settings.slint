@@ -102,7 +102,7 @@ component SettingsNavTab inherits Rectangle {
     height: 36px;
     border-radius: 8px;
     background: area.pressed || root.selected || area.has-hover
-        ? (State.light-theme && !State.artwork-palette ? Palette.control : #222622)
+        ? (State.artwork-palette ? (root.selected ? Palette.raised : Palette.hover) : (State.light-theme ? Palette.control : (root.selected ? #282d28 : #1a1e1b)))
         : transparent;
     animate background { duration: 110ms; }
     area := TouchArea { clicked => { root.clicked(); } }
@@ -243,7 +243,7 @@ component SettingNumberRow inherits Rectangle {
                             width: 22px;
                             height: 22px;
                             border-radius: 4px;
-                            background: minus-area.has-hover ? #222622 : transparent;
+                            background: minus-area.has-hover ? Palette.hover : transparent;
                             minus-area := TouchArea {
                                 clicked => {
                                     root.value = max(root.minimum, root.value - root.step);
@@ -279,7 +279,7 @@ component SettingNumberRow inherits Rectangle {
                             width: 22px;
                             height: 22px;
                             border-radius: 4px;
-                            background: plus-area.has-hover ? #222622 : transparent;
+                            background: plus-area.has-hover ? Palette.hover : transparent;
                             plus-area := TouchArea {
                                 clicked => {
                                     root.value = min(root.maximum, root.value + root.step);
@@ -536,7 +536,6 @@ export component SettingsView inherits Rectangle {
                                 alignment: center;
                                 horizontal-stretch: 0;
                                 HorizontalLayout {
-                                    width: 240px;
                                     spacing: 9px;
                                     alignment: end;
                                     for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
@@ -589,7 +588,20 @@ export component SettingsView inherits Rectangle {
                         SettingSwitchRow { label: "Favorite button"; description: "Show this column when the window is wide enough."; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
 
                         Rectangle { height: 10px; }
-                        HorizontalLayout {
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
+                                ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
+                                ActionBtn { label: "Scan library"; clicked => { Actions.scan-library(); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
                             spacing: 8px;
                             alignment: start;
                             ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
@@ -683,7 +695,16 @@ export component SettingsView inherits Rectangle {
                             setting: "browse-width";
                         }
                         Rectangle { height: 8px; }
-                        HorizontalLayout {
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
+                                ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
                             spacing: 8px;
                             alignment: start;
                             ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
@@ -761,8 +782,8 @@ export component SettingsView inherits Rectangle {
                             width: 100%;
                             spacing: 8px;
                             for rel[idx] in State.release-history : Rectangle {
-                                col: Math.mod(idx, 4);
-                                row: idx / 4;
+                                col: Math.mod(idx, State.content-width <= 600 ? 2 : 4);
+                                row: idx / (State.content-width <= 600 ? 2 : 4);
                                 height: 50px;
                                 border-radius: 6px;
                                 border-width: 1px;
@@ -817,9 +838,9 @@ export component SettingsView inherits Rectangle {
                                         padding-right: 12px;
                                         spacing: 12px;
                                         Text { text: "COMPONENT"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 3; vertical-alignment: center; }
-                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 120px; vertical-alignment: center; }
+                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: max(50px, State.content-avail-width * 0.16); vertical-alignment: center; }
                                         Text { text: "LICENSE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 2; vertical-alignment: center; }
-                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 130px; vertical-alignment: center; }
+                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: max(60px, State.content-avail-width * 0.20); vertical-alignment: center; }
                                     }
                                 }
                                 Rectangle { height: 1px; background: Palette.border; }
@@ -841,7 +862,7 @@ export component SettingsView inherits Rectangle {
                                                 if comp.description != "" : Text { text: comp.description; color: Palette.muted; font-size: 9px; overflow: elide; }
                                             }
                                             VerticalLayout {
-                                                width: 120px;
+                                                width: max(50px, State.content-avail-width * 0.16);
                                                 alignment: center;
                                                 Text { text: comp.version; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
                                             }
@@ -851,7 +872,7 @@ export component SettingsView inherits Rectangle {
                                                 Text { text: comp.license; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
                                             }
                                             VerticalLayout {
-                                                width: 130px;
+                                                width: max(60px, State.content-avail-width * 0.20);
                                                 alignment: center;
                                                 Text { text: comp.source; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
                                             }
@@ -862,7 +883,16 @@ export component SettingsView inherits Rectangle {
                             }
                         }
                         Rectangle { height: 4px; }
-                        HorizontalLayout {
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Open MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Open third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
+                                ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
                             spacing: 8px;
                             alignment: start;
                             ActionBtn { label: "Open MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }

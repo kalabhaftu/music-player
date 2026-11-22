@@ -11,7 +11,7 @@ component ContextMenuItemRow inherits Rectangle {
 
     height: 34px;
     border-radius: 5px;
-    background: area.has-hover && !root.separator ? #202420 : transparent;
+    background: area.has-hover && !root.separator ? Palette.hover : transparent;
 
     area := TouchArea {
         enabled: !root.separator && root.enabled;
@@ -49,7 +49,7 @@ export component ContextMenuOverlay inherits Rectangle {
         width: 220px;
         height: State.context-items.length * 34px + 14px;
         border-radius: 7px;
-        background: #181b19;
+        background: Palette.panel-3;
         border-width: 1px;
         border-color: Palette.border;
         clip: true;

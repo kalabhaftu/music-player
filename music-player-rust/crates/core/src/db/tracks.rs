@@ -950,6 +950,53 @@ pub fn set_track_artwork(conn: &Connection, path: &str, artwork: Option<&str>) -
     )
 }
 
+/// Finds an existing valid cached artwork path for any track in the given album.
+pub fn find_album_artwork(conn: &Connection, album: &str) -> Result<Option<String>> {
+    let trimmed = album.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT artwork_path FROM tracks WHERE album = ?1 COLLATE NOCASE AND artwork_path IS NOT NULL AND artwork_path != '' LIMIT 1",
+    )?;
+    let mut rows = stmt.query(rusqlite::params![trimmed])?;
+    if let Some(row) = rows.next()? {
+        let path: String = row.get(0)?;
+        if Path::new(&path).exists() {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+/// Finds an artwork path for a track by checking other tracks in the same parent folder,
+/// or looking for common cover image files on disk.
+pub fn find_folder_artwork(conn: &Connection, track_path: &str) -> Result<Option<String>> {
+    let p = Path::new(track_path);
+    let Some(dir) = p.parent() else {
+        return Ok(None);
+    };
+    let dir_str = dir.to_string_lossy();
+    let prefix = format!("{}\\", dir_str.trim_end_matches('\\'));
+    let mut stmt = conn.prepare(
+        "SELECT artwork_path FROM tracks WHERE path LIKE (?1 || '%') AND artwork_path IS NOT NULL AND artwork_path != '' LIMIT 1",
+    )?;
+    let mut rows = stmt.query(rusqlite::params![prefix])?;
+    if let Some(row) = rows.next()? {
+        let path: String = row.get(0)?;
+        if Path::new(&path).exists() {
+            return Ok(Some(path));
+        }
+    }
+    for name in &["cover.jpg", "folder.jpg", "cover.png", "folder.png", "front.jpg", "albumart.jpg"] {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Ok(Some(candidate.to_string_lossy().to_string()));
+        }
+    }
+    Ok(None)
+}
+
 /// Indexed track paths whose artwork reference is missing. Older builds could
 /// persist rows without artwork (or lose the cache file); the startup repair
 /// re-reads these files and restores the cached artwork.

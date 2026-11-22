@@ -173,6 +173,24 @@ impl App {
     pub(crate) fn update_current_track(&mut self, track: &Track) {
         self.seek_wheel_timer.stop();
         self.seek_preview_ms = None;
+        let mut track = track.clone();
+
+        // Ensure artwork is resolved if missing or pointing to nonexistent file
+        if track.artwork_path.as_deref().map(|p| !Path::new(p).exists()).unwrap_or(true) {
+            let found = if let Ok(Some(art)) = self.store.find_album_artwork(&track.album) {
+                Some(art)
+            } else if let Ok(Some(art)) = self.store.find_folder_artwork(&track.path) {
+                Some(art)
+            } else {
+                let tags = music_player_core::read_tags(Path::new(&track.path));
+                tags.artwork_path
+            };
+            if let Some(art) = found {
+                let _ = self.store.set_track_artwork(&track.path, Some(&art));
+                track.artwork_path = Some(art);
+            }
+        }
+
         self.current = Some(track.clone());
         self.id_to_path.insert(track.id(), track.path.clone());
         let state = self.ui.global::<State>();
@@ -199,8 +217,8 @@ impl App {
         state.set_current_badge_bg(badge_color(slot));
         drop(state);
         self.publish_appearance();
-        self.publish_info(track);
-        self.load_lyrics(track);
+        self.publish_info(&track);
+        self.load_lyrics(&track);
     }
 
     pub(crate) fn publish_info(&mut self, track: &Track) {

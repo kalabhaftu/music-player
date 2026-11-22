@@ -37,10 +37,10 @@ export component SongsView inherits Rectangle {
         HorizontalLayout {
             height: 34px;
             spacing: 8px;
-            Rectangle { horizontal-stretch: 1; }
+            alignment: end;
             Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
             CustomSelect {
-                width: 150px;
+                width: 95px;
                 options: State.view == "Videos"
                     ? ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating", "Type"]
                     : ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];

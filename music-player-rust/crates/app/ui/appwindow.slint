@@ -30,6 +30,7 @@ export {
 
 export component AppWindow inherits Window {
     title: State.current-title == "" ? "Music Player" : "\{State.current-title} — \{State.current-artist} | Music Player";
+    icon: @image-url("../assets/MusicPlayer-dark.png");
     min-width: 540px;
     min-height: 400px;
     preferred-width: 1024px;

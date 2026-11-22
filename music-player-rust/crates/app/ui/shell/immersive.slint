@@ -193,9 +193,11 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     vertical-stretch: 1;
                     clip: true;
                     Flickable {
-                        content-y: min(0px, - State.lyrics-active-line * 44px + parent.height * 0.38);
+                        content-y: min(0px, - State.lyrics-active-line * 44px + 100px);
                         animate content-y { duration: 250ms; easing: ease-out; }
                         VerticalLayout {
+                            padding-top: 120px;
+                            padding-bottom: 200px;
                             for line[index] in State.lyrics-lines : TouchArea {
                                 height: 44px;
                                 clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
@@ -223,15 +225,17 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         }
 
         VerticalLayout {
-            spacing: 10px;
+            spacing: 12px;
             alignment: center;
 
-            HorizontalLayout {
-                width: min(parent.width, 920px);
-                spacing: 12px;
-                Text { text: State.current-time; color: #d0d2ce; width: 44px; font-size: 12px; vertical-alignment: center; }
+            VerticalLayout {
+                width: min(parent.width - 56px, 860px);
+                spacing: 6px;
+                HorizontalLayout {
+                    Text { text: State.current-time; color: #ffffffb0; font-size: 12px; horizontal-stretch: 1; }
+                    Text { text: State.total-time; color: #ffffffb0; font-size: 12px; horizontal-alignment: right; }
+                }
                 PlayerSlider {
-                    horizontal-stretch: 1;
                     commit-on-release: true;
                     minimum: 0.0;
                     maximum: 1.0;
@@ -248,7 +252,6 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                         reject
                     }
                 }
-                Text { text: State.total-time; color: #d0d2ce; width: 44px; font-size: 12px; horizontal-alignment: right; vertical-alignment: center; }
             }
 
             HorizontalLayout {

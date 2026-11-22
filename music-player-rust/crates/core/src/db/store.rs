@@ -372,6 +372,16 @@ impl LibraryStore {
         tracks::set_track_artwork(&conn, path, artwork)
     }
 
+    pub fn find_album_artwork(&self, album: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::find_album_artwork(&conn, album)
+    }
+
+    pub fn find_folder_artwork(&self, track_path: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        tracks::find_folder_artwork(&conn, track_path)
+    }
+
     /// Weighted recommendation query for autoplay (GetSmartAutoplayTracks).
     pub fn smart_autoplay_tracks(
         &self,

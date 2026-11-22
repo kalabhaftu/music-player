@@ -134,12 +134,16 @@ impl App {
     }
 
     /// Applies background-decoded artwork. Only the currently visible view is
-    /// rebuilt, and only when at least one new image landed.
+    /// rebuilt, and only when at least one new image landed, throttled to prevent UI stutter.
     pub(crate) fn poll_artwork_images(&mut self) {
         let available = native_io::poll_artwork_images();
         if available.is_empty() {
             return;
         }
+        if self.last_artwork_refresh.elapsed() < Duration::from_millis(800) {
+            return;
+        }
+        self.last_artwork_refresh = Instant::now();
         self.publish_queue(false);
         self.refresh_view();
     }
