@@ -523,7 +523,16 @@ impl App {
     }
 
     pub(crate) fn open_find_lyrics(&mut self, id: &str) {
-        let Some(track) = self.track_by_id(id) else {
+        let track = if !id.is_empty() {
+            self.track_by_id(id)
+        } else if let Some(path) = &self.lyrics_target {
+            self.track_by_id(path)
+        } else if let Some(current) = &self.current {
+            Some(current.clone())
+        } else {
+            None
+        };
+        let Some(track) = track else {
             return;
         };
         self.lyrics_target = Some(track.path.clone());
@@ -533,6 +542,7 @@ impl App {
         state.set_lyrics_results(ui_model(Vec::<LyricResultItem>::new()).into());
         state.set_lyrics_search_status(ss(""));
         self.open_modal("find-lyrics");
+        self.find_lyrics();
     }
 
     pub(crate) fn find_lyrics(&mut self) {
@@ -595,6 +605,7 @@ impl App {
                 },
             );
         }
+        let _ = self.store.update_track_lyrics_status(&path, true);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }
@@ -666,6 +677,8 @@ impl App {
             );
             return;
         }
+        let has_lyrics = !text.trim().is_empty();
+        let _ = self.store.update_track_lyrics_status(&path, has_lyrics);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }
@@ -689,6 +702,7 @@ impl App {
                 ..TagEdit::default()
             },
         );
+        let _ = self.store.update_track_lyrics_status(&path, false);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }

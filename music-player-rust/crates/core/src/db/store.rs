@@ -122,6 +122,11 @@ impl LibraryStore {
         tracks::update_favorite(&conn, path, favorite)
     }
 
+    pub fn update_track_lyrics_status(&self, path: &str, has_lyrics: bool) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        tracks::update_track_lyrics_status(&conn, path, has_lyrics)
+    }
+
     pub fn set_rating(&self, path: &str, rating: u8) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         tracks::update_rating(&conn, path, rating)

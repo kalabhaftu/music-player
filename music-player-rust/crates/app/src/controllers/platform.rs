@@ -556,6 +556,11 @@ impl App {
         if name == "check-updates" {
             self.check_updates_if_enabled();
         }
+        if name == "auto-load-lyrics" && value == "true" {
+            if let Some(track) = self.current.clone() {
+                self.load_lyrics(&track);
+            }
+        }
         self.refresh_view();
     }
 

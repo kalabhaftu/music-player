@@ -166,6 +166,14 @@ pub fn update_favorite(conn: &Connection, path: &str, favorite: bool) -> Result<
     Ok(())
 }
 
+pub fn update_track_lyrics_status(conn: &Connection, path: &str, has_lyrics: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE tracks SET has_lyrics = ?1 WHERE path = ?2",
+        params![if has_lyrics { 1 } else { 0 }, path],
+    )?;
+    Ok(())
+}
+
 pub fn update_rating(conn: &Connection, path: &str, rating: u8) -> Result<()> {
     conn.execute(
         "UPDATE tracks SET rating = ?1 WHERE path = ?2",

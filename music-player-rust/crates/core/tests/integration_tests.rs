@@ -207,6 +207,50 @@ fn test_lyrics_query_normalization() {
 }
 
 #[test]
+fn test_lyrics_match_scoring() {
+    use music_player_core::lyrics::{select_lyrics_match, lyric_match_score, timing_matches, LyricsSearchResult};
+
+    assert!(timing_matches(200.0, 204.0));
+    assert!(!timing_matches(200.0, 220.0));
+
+    let good_result = LyricsSearchResult {
+        id: 1,
+        track_name: "In The End".to_string(),
+        artist_name: "Linkin Park".to_string(),
+        album_name: Some("Hybrid Theory".to_string()),
+        duration: 216.0,
+        instrumental: false,
+        plain_lyrics: Some("It starts with one thing".to_string()),
+        synced_lyrics: Some("[00:10.50] It starts with one thing\n[00:13.20] I don't know why".to_string()),
+    };
+
+    let bad_result = LyricsSearchResult {
+        id: 2,
+        track_name: "Completely Different Song".to_string(),
+        artist_name: "Other Artist".to_string(),
+        album_name: None,
+        duration: 216.0,
+        instrumental: false,
+        plain_lyrics: Some("different words".to_string()),
+        synced_lyrics: Some("[00:10.00] different words".to_string()),
+    };
+
+    let score_good = lyric_match_score("In The End (Official)", "Linkin Park", 216.0, &good_result);
+    assert!(score_good > 0.8, "Expected high match score, got {}", score_good);
+
+    let score_bad = lyric_match_score("In The End (Official)", "Linkin Park", 216.0, &bad_result);
+    assert!(score_bad < 0.0, "Expected negative match score, got {}", score_bad);
+
+    let results = vec![bad_result, good_result];
+    let selected = select_lyrics_match("In The End", "Linkin Park", 216.0, &results);
+    assert!(selected.is_some());
+    let m = selected.unwrap();
+    assert_eq!(m.result.id, 1);
+    assert!(m.timed);
+    assert!(m.raw.contains("It starts with one thing"));
+}
+
+#[test]
 fn test_tag_editor_backup_history() {
     use music_player_core::metadata::TagEditor;
     use music_player_core::models::TagEdit;

@@ -731,21 +731,11 @@ impl App {
             "Songs" | "Albums" | "Artists" | "Genres" | "Recently Added" => (1, "YOUR LIBRARY"),
             _ => (2, "MANAGE"),
         };
-        let mut group_positions: [Vec<usize>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-        for (index, view) in visible.iter().enumerate() {
-            group_positions[group(view).0].push(index);
-        }
-        let headings: [Option<usize>; 3] = std::array::from_fn(|index| {
-            let positions = &group_positions[index];
-            let (Some(first), Some(last)) = (positions.first(), positions.last()) else {
-                return None;
-            };
-            (last - first + 1 == positions.len()).then_some(*first)
-        });
         let mut nav_items = Vec::new();
-        for (index, view) in visible.iter().enumerate() {
+        let mut seen_groups = HashSet::new();
+        for view in visible.iter() {
             let (group_index, header) = group(view);
-            let section_title = if headings[group_index] == Some(index) {
+            let section_title = if seen_groups.insert(group_index) {
                 header
             } else {
                 ""
@@ -1544,6 +1534,15 @@ impl App {
             "Genre" => "genre",
             _ => "folder",
         };
+        let group_title = if column == "folder" {
+            Path::new(value)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or(value)
+                .to_string()
+        } else {
+            value.to_string()
+        };
         let hide_dupes = self
             .settings
             .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
@@ -1552,17 +1551,28 @@ impl App {
             .query_group_page(column, Some(value), 0, 10, hide_dupes)
         {
             if let Some(g) = groups.iter().find(|g| g.name.eq_ignore_ascii_case(value)) {
-                subtitle = format!(
-                    "{} song{}",
-                    g.track_count,
-                    if g.track_count == 1 { "" } else { "s" }
-                );
+                subtitle = if column == "folder" {
+                    format!(
+                        "{} · {} track{}",
+                        value,
+                        g.track_count,
+                        if g.track_count == 1 { "" } else { "s" }
+                    )
+                } else {
+                    format!(
+                        "{} song{}",
+                        g.track_count,
+                        if g.track_count == 1 { "" } else { "s" }
+                    )
+                };
                 if let Some(art) = &g.artwork_path {
                     if let Some(image) = native_io::load_artwork_image(Path::new(art)) {
                         cover = image;
                         has_cover = true;
                     }
                 }
+            } else if column == "folder" {
+                subtitle = value.to_string();
             }
         }
         let mut albums = Vec::new();
@@ -1578,6 +1588,7 @@ impl App {
         }
         self.artist_album_items = albums.clone();
         let state = self.ui.global::<State>();
+        state.set_view_group_title(ss(&group_title));
         state.set_hero_subtitle(ss(subtitle));
         state.set_hero_cover(cover);
         state.set_hero_has_cover(has_cover);
@@ -1614,6 +1625,8 @@ impl App {
         self.lyrics_doc = None;
         self.lyrics_timed = false;
         self.lyrics_active = -1;
+        self.auto_lyrics_rx = None;
+
         let (text, source) = if let Some(sidecar) = read_sidecar(&track.path) {
             (Some(sidecar), "sidecar")
         } else if let Some(embedded) = read_tags(&track.path).lyrics {
@@ -1623,8 +1636,8 @@ impl App {
         };
         let mut lines = Vec::new();
         let has_text = text.is_some();
-        if let Some(text) = text {
-            let doc = parse_lrc(&text);
+        if let Some(ref text_val) = text {
+            let doc = parse_lrc(text_val);
             self.lyrics_timed = !doc.lines.is_empty();
             for line in &doc.lines {
                 lines.push(LyricLineItem {
@@ -1635,7 +1648,7 @@ impl App {
                 });
             }
             if !self.lyrics_timed {
-                for plain in text.lines().filter(|l| !l.trim().is_empty()) {
+                for plain in text_val.lines().filter(|l| !l.trim().is_empty()) {
                     lines.push(LyricLineItem {
                         text: ss(plain),
                         is_active: false,
@@ -1648,17 +1661,98 @@ impl App {
         }
         let state = self.ui.global::<State>();
         state.set_lyrics_lines(ui_model(lines).into());
-        state.set_has_lyrics(
-            !self
-                .lyrics_doc
-                .as_ref()
-                .map(|d| d.lines.is_empty())
-                .unwrap_or(true)
-                || has_text,
-        );
+        let has_local_lyrics = !self
+            .lyrics_doc
+            .as_ref()
+            .map(|d| d.lines.is_empty())
+            .unwrap_or(true)
+            || has_text;
+        state.set_has_lyrics(has_local_lyrics);
         state.set_lyrics_source(ss(source));
         state.set_lyrics_timed(self.lyrics_timed);
         state.set_lyrics_active_line(-1);
+
+        // If local lyrics are already timed, no need to query online.
+        if self.lyrics_timed {
+            state.set_lyrics_searching(false);
+            return;
+        }
+
+        // Check if auto-load is enabled
+        use music_player_core::settings::keys as k;
+        if !self.settings.bool_or(k::AUTO_LOAD_LYRICS, true) {
+            state.set_lyrics_searching(false);
+            return;
+        }
+
+        // Check in-memory cache
+        let now = Instant::now();
+        if let Some((cached_at, cached_match)) = self.lyrics_cache.get(&track.path) {
+            let duration = if cached_match.as_ref().map(|m| m.timed).unwrap_or(false) {
+                std::time::Duration::from_secs(30 * 60)
+            } else {
+                std::time::Duration::from_secs(5 * 60)
+            };
+            if now.duration_since(*cached_at) < duration {
+                if let Some(matched) = cached_match {
+                    if !has_local_lyrics || matched.timed {
+                        let doc = parse_lrc(&matched.raw);
+                        self.lyrics_timed = matched.timed;
+                        let mut l_lines = Vec::new();
+                        for line in &doc.lines {
+                            l_lines.push(LyricLineItem {
+                                text: ss(&line.text),
+                                is_active: false,
+                                is_past: false,
+                                is_upcoming: true,
+                            });
+                        }
+                        if !self.lyrics_timed {
+                            for plain in matched.raw.lines().filter(|l| !l.trim().is_empty()) {
+                                l_lines.push(LyricLineItem {
+                                    text: ss(plain),
+                                    is_active: false,
+                                    is_past: false,
+                                    is_upcoming: true,
+                                });
+                            }
+                        }
+                        self.lyrics_doc = Some(doc);
+                        state.set_lyrics_lines(ui_model(l_lines).into());
+                        state.set_has_lyrics(true);
+                        state.set_lyrics_source(ss("lrclib"));
+                        state.set_lyrics_timed(matched.timed);
+                        state.set_lyrics_searching(false);
+                        return;
+                    }
+                } else if !has_local_lyrics {
+                    state.set_lyrics_searching(false);
+                    return;
+                }
+            }
+        }
+
+        // Spawning background fetch for LRCLIB lyrics
+        state.set_lyrics_searching(true);
+        let track_path = track.path.clone();
+        let track_title = track.title.clone();
+        let track_artist = track.artist.clone();
+        let track_duration = (track.duration_ms as f64) / 1000.0;
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.auto_lyrics_rx = Some(rx);
+
+        std::thread::spawn(move || {
+            let mut client = music_player_core::lyrics::LrclibSearchClient::new();
+            let result = client.search(&track_title, &track_artist).map(|results| {
+                music_player_core::lyrics::select_lyrics_match(
+                    &track_title,
+                    &track_artist,
+                    track_duration,
+                    &results,
+                )
+            });
+            let _ = tx.send((track_path, result));
+        });
     }
 
     pub(crate) fn update_lyrics_position(&mut self, position_ms: u64) {
@@ -1697,37 +1791,96 @@ impl App {
     }
 
     pub(crate) fn poll_lyrics_search(&mut self) {
-        let Some(rx) = &self.lyrics_rx else { return };
-        let Ok(result) = rx.try_recv() else { return };
-        self.lyrics_rx = None;
-        let state = self.ui.global::<State>();
-        state.set_lyrics_searching(false);
-        match result {
-            Ok(results) => {
-                state.set_lyrics_search_status(ss(if results.is_empty() {
-                    "No matching lyrics were found."
-                } else {
-                    ""
-                }));
-                let items: Vec<LyricResultItem> = results
-                    .iter()
-                    .map(|r| LyricResultItem {
-                        title: ss(&r.track_name),
-                        artist: ss(&r.artist_name),
-                        badge: ss(if r.synced_lyrics.is_some() {
-                            "Timed"
+        if let Some(rx) = &self.lyrics_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.lyrics_rx = None;
+                let state = self.ui.global::<State>();
+                state.set_lyrics_searching(false);
+                match result {
+                    Ok(results) => {
+                        state.set_lyrics_search_status(ss(if results.is_empty() {
+                            "No matching lyrics were found."
                         } else {
-                            "Plain"
-                        }),
-                        timed: r.synced_lyrics.is_some(),
-                        synced_id: ss(r.id.to_string()),
-                        plain_id: ss(r.id.to_string()),
-                    })
-                    .collect();
-                state.set_lyrics_results(ui_model(items).into());
-                self.lyrics_results = results;
+                            ""
+                        }));
+                        let items: Vec<LyricResultItem> = results
+                            .iter()
+                            .map(|r| LyricResultItem {
+                                title: ss(&r.track_name),
+                                artist: ss(&r.artist_name),
+                                badge: ss(if r.synced_lyrics.is_some() {
+                                    "Timed"
+                                } else {
+                                    "Plain"
+                                }),
+                                timed: r.synced_lyrics.is_some(),
+                                synced_id: ss(r.id.to_string()),
+                                plain_id: ss(r.id.to_string()),
+                            })
+                            .collect();
+                        state.set_lyrics_results(ui_model(items).into());
+                        self.lyrics_results = results;
+                    }
+                    Err(message) => state.set_lyrics_search_status(ss(message)),
+                }
             }
-            Err(message) => state.set_lyrics_search_status(ss(message)),
+        }
+
+        if let Some(rx) = &self.auto_lyrics_rx {
+            if let Ok((path, result)) = rx.try_recv() {
+                self.auto_lyrics_rx = None;
+                let matched_opt = result.as_ref().ok().cloned().flatten();
+                self.lyrics_cache
+                    .insert(path.clone(), (Instant::now(), matched_opt.clone()));
+
+                // Only apply if the track being viewed / played is still this track
+                if self.lyrics_target.as_deref() == Some(&path) {
+                    let state = self.ui.global::<State>();
+                    state.set_lyrics_searching(false);
+
+                    if let Some(matched) = matched_opt {
+                        // If we already have timed local lyrics, do not overwrite
+                        if !self.lyrics_timed {
+                            let doc = parse_lrc(&matched.raw);
+                            self.lyrics_timed = matched.timed;
+                            let mut lines = Vec::new();
+                            for line in &doc.lines {
+                                lines.push(LyricLineItem {
+                                    text: ss(&line.text),
+                                    is_active: false,
+                                    is_past: false,
+                                    is_upcoming: true,
+                                });
+                            }
+                            if !self.lyrics_timed {
+                                for plain in matched.raw.lines().filter(|l| !l.trim().is_empty()) {
+                                    lines.push(LyricLineItem {
+                                        text: ss(plain),
+                                        is_active: false,
+                                        is_past: false,
+                                        is_upcoming: true,
+                                    });
+                                }
+                            }
+                            self.lyrics_doc = Some(doc);
+                            state.set_lyrics_lines(ui_model(lines).into());
+                            state.set_has_lyrics(true);
+                            state.set_lyrics_source(ss("lrclib"));
+                            state.set_lyrics_timed(matched.timed);
+                            state.set_lyrics_active_line(-1);
+
+                            // Sync position if audio is currently playing this track
+                            let position_ms = self.engine.position_ms();
+                            if position_ms > 0 {
+                                self.update_lyrics_position(position_ms);
+                            }
+                        }
+                    } else if !state.get_has_lyrics() {
+                        state.set_has_lyrics(false);
+                        state.set_lyrics_source(ss("none"));
+                    }
+                }
+            }
         }
     }
 

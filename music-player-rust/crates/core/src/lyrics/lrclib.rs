@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,14 @@ pub struct LyricsSearchResult {
     pub instrumental: bool,
     pub plain_lyrics: Option<String>,
     pub synced_lyrics: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricsMatch {
+    pub raw: String,
+    pub timed: bool,
+    pub score: f64,
+    pub result: LyricsSearchResult,
 }
 
 /// Normalizes song titles and artist names for accurate lyrics matching.
@@ -64,6 +73,150 @@ pub fn normalize_query(title: &str, artist: &str) -> (String, String) {
     let final_title = normalized.trim_matches(|c| c == ' ' || c == '-' || c == '–' || c == '—' || c == '|' || c == '+').to_string();
 
     (final_title, clean_artist)
+}
+
+pub fn timing_matches(track_duration_secs: f64, candidate_duration_secs: f64) -> bool {
+    if track_duration_secs > 0.0 && candidate_duration_secs > 0.0 {
+        let diff = (track_duration_secs - candidate_duration_secs).abs();
+        let tolerance = 8.0f64.max(track_duration_secs * 0.05);
+        diff <= tolerance
+    } else {
+        true
+    }
+}
+
+pub fn normalized_words(value: &str) -> Vec<String> {
+    let lower = value.to_lowercase().replace('&', " and ");
+    let mut words = Vec::new();
+    let mut current = String::new();
+    for ch in lower.chars() {
+        if ch.is_alphanumeric() {
+            current.push(ch);
+        } else if !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+pub fn lyric_match_score(
+    track_title: &str,
+    track_artist: &str,
+    track_duration_secs: f64,
+    result: &LyricsSearchResult,
+) -> f64 {
+    let (identity_title, identity_artist) = normalize_query(track_title, track_artist);
+    let (other_title, other_artist) = normalize_query(&result.track_name, &result.artist_name);
+
+    let title_words: HashSet<String> = normalized_words(&identity_title).into_iter().collect();
+    let candidate_words: HashSet<String> = normalized_words(&other_title).into_iter().collect();
+
+    if title_words.is_empty() || candidate_words.is_empty() {
+        return -1.0;
+    }
+
+    let common = title_words.intersection(&candidate_words).count() as f64;
+    let coverage = common / title_words.len() as f64;
+    let precision = common / candidate_words.len() as f64;
+
+    // Do not automatically borrow lyrics from a longer/different song title.
+    if coverage < 0.9 || precision < 0.8 {
+        return -1.0;
+    }
+
+    let artist_words: HashSet<String> = normalized_words(&identity_artist).into_iter().collect();
+    let other_artist_words: HashSet<String> =
+        normalized_words(&other_artist).into_iter().collect();
+
+    let artist_common = artist_words.intersection(&other_artist_words).count() as f64;
+    if !artist_words.is_empty() {
+        if other_artist_words.is_empty() {
+            return -1.0;
+        }
+        let artist_cov = artist_common / artist_words.len() as f64;
+        let artist_prec = artist_common / other_artist_words.len() as f64;
+        if artist_cov < 0.45 || (artist_cov < 0.9 && artist_prec < 0.8) {
+            return -1.0;
+        }
+    }
+
+    let is_remix = {
+        let title_lower = track_title.to_lowercase();
+        title_lower.contains("remix")
+            || title_lower.contains("slowed")
+            || title_lower.contains("reverb")
+            || title_lower.contains("sped up")
+            || title_lower.contains("speed up")
+            || title_lower.contains("nightcore")
+    };
+
+    if !timing_matches(track_duration_secs, result.duration) && !is_remix {
+        return -1.0;
+    }
+
+    let artist_score = if !artist_words.is_empty() {
+        (artist_common / artist_words.len() as f64) * 0.22
+    } else {
+        0.22
+    };
+
+    (coverage * 0.78 + precision * 0.22) * 0.78 + artist_score
+}
+
+pub fn select_lyrics_match(
+    track_title: &str,
+    track_artist: &str,
+    track_duration_secs: f64,
+    results: &[LyricsSearchResult],
+) -> Option<LyricsMatch> {
+    let mut candidates: Vec<LyricsMatch> = results
+        .iter()
+        .filter_map(|result| {
+            let synced = result.synced_lyrics.as_deref().unwrap_or("").trim();
+            let plain = result.plain_lyrics.as_deref().unwrap_or("").trim();
+            let parsed = crate::lyrics::parser::parse_lrc(synced);
+            let timed =
+                !parsed.lines.is_empty() && timing_matches(track_duration_secs, result.duration);
+            let raw = if timed {
+                synced.to_string()
+            } else if !plain.is_empty() {
+                plain.to_string()
+            } else if !parsed.lines.is_empty() {
+                crate::lyrics::parser::plain_text(synced)
+            } else {
+                String::new()
+            };
+
+            if raw.is_empty() {
+                return None;
+            }
+
+            let score = lyric_match_score(track_title, track_artist, track_duration_secs, result);
+            if score < 0.0 {
+                return None;
+            }
+
+            Some(LyricsMatch {
+                raw,
+                timed,
+                score,
+                result: result.clone(),
+            })
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        b.timed.cmp(&a.timed).then_with(|| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    });
+
+    candidates.into_iter().next()
 }
 
 /// Client for searching timed and plain lyrics from lrclib.net with rate limiting.
@@ -116,19 +269,15 @@ impl LrclibSearchClient {
 
     /// Builds the target search URL.
     pub fn build_search_url(&self, title: &str, artist: &str) -> String {
-        let (norm_title, norm_artist) = normalize_query(title, artist);
         format!(
             "https://lrclib.net/api/search?track_name={}&artist_name={}",
-            urlencoding(&norm_title),
-            urlencoding(&norm_artist)
+            urlencoding(title),
+            urlencoding(artist)
         )
     }
 
-    /// Performs the search and parses results using native JSON deserialization.
-    /// Mirrors `LrclibSearchClient.SearchAsync`: a 100 second overall deadline,
-    /// 1.3 second request spacing, one transient retry, and a 15 second
-    /// cooldown after a real HTTP 429.
-    pub fn search(&mut self, title: &str, artist: &str) -> Result<Vec<LyricsSearchResult>, String> {
+    /// Executes raw LRCLIB query.
+    pub fn search_raw(&mut self, title: &str, artist: &str) -> Result<Vec<LyricsSearchResult>, String> {
         const RATE_LIMITED: &str = "LRCLIB is limiting requests. Please try again shortly.";
 
         let started = Instant::now();
@@ -156,7 +305,7 @@ impl LrclibSearchClient {
 
             let response = match crate::lyrics::http::get(
                 &url,
-                "MusicPlayer/0.1.0",
+                "MusicPlayer/1.0 (+https://github.com/kalabhaftu/music-player)",
                 Duration::from_secs(15),
             ) {
                 Ok(response) => response,
@@ -188,6 +337,17 @@ impl LrclibSearchClient {
                 }
             }
         }
+    }
+
+    /// Performs search with normalized title/artist first, falling back to raw inputs if needed.
+    pub fn search(&mut self, title: &str, artist: &str) -> Result<Vec<LyricsSearchResult>, String> {
+        let (norm_title, norm_artist) = normalize_query(title, artist);
+        let q_title = if !norm_title.is_empty() { &norm_title } else { title };
+        let results = self.search_raw(q_title, &norm_artist)?;
+        if !results.is_empty() || (q_title == title && norm_artist == artist) {
+            return Ok(results);
+        }
+        self.search_raw(title, artist)
     }
 }
 
