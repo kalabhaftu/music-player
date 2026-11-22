@@ -12,6 +12,7 @@ export global State {
     in-out property <string> view-search: "";
     in-out property <string> view-group-column: "";
     in-out property <string> view-group-value: "";
+    in-out property <string> view-group-title: "";
     in-out property <string> view-playlist-id: "";
     in-out property <string> view-sort: "Title";
     in-out property <bool> view-descending: false;
@@ -256,13 +257,10 @@ export global State {
         - (State.right-panel-open ? State.right-panel-width : 0);
     out property <length> card-gap: clamp(State.browse-width * 0.05px, 10px, 20px);
     out property <length> content-avail-width: max(260px, (State.content-width * 1px) - (State.window-width <= 650 ? 24px : 48px));
-    out property <int> card-columns: State.window-width <= 540 ? 2
-        : (State.window-width <= 1180 ? 4
-        : max(1, Math.floor((State.content-avail-width + State.card-gap) / (130px + State.card-gap))));
-    out property <length> card-width: max(130px, (State.content-avail-width - (State.card-columns - 1) * State.card-gap) / max(1, State.card-columns));
-    out property <int> folder-columns: State.window-width <= 700 ? 1
-        : (State.window-width <= 900 ? 2
-        : max(1, Math.floor((max(0, State.content-width - (State.window-width <= 1180 ? 42 : 48)) + 12) / 322)));
+    out property <int> card-columns: max(1, Math.floor((State.content-avail-width + State.card-gap) / (130px + State.card-gap)));
+    out property <length> card-width: (State.content-avail-width - (State.card-columns - 1) * State.card-gap) / max(1, State.card-columns);
+    out property <int> folder-columns: max(1, Math.floor((State.content-avail-width + 12px) / (310px + 12px)));
+    out property <length> folder-card-width: (State.content-avail-width - (State.folder-columns - 1) * 12px) / max(1, State.folder-columns);
     in property <[DetailRowItem]> about-rows;
 
     // ---- Context menu ----

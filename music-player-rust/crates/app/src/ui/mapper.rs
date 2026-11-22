@@ -123,7 +123,22 @@ pub fn detail_sort_for_column(column: &str) -> (String, bool) {
 }
 
 pub fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
-    let slot = gradient_slot(&group.name);
+    let is_folder = group.name.contains('\\') || group.name.contains('/');
+    let display_name = if is_folder {
+        Path::new(&group.name)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or(&group.name)
+            .to_string()
+    } else {
+        group.name.clone()
+    };
+    let monogram_name = if is_folder {
+        &display_name
+    } else {
+        &group.name
+    };
+    let slot = gradient_slot(monogram_name);
     let subtitle = if let Some(artist) = &group.artist {
         format!(
             "{} · {} song{}",
@@ -156,8 +171,9 @@ pub fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
     };
     GroupItem {
         name: ss(&group.name),
+        display_name: ss(&display_name),
         subtitle: ss(subtitle),
-        initials: ss(initials(&group.name)),
+        initials: ss(initials(monogram_name)),
         gradient: slot,
         track_count: group.track_count as i32,
         has_cover,
@@ -178,6 +194,7 @@ pub fn chunk_groups(groups: Vec<GroupItem>) -> Vec<GroupRowItem> {
         }
         let empty = GroupItem {
             name: ss(""),
+            display_name: ss(""),
             subtitle: ss(""),
             initials: ss(""),
             gradient: 1,

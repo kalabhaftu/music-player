@@ -48,6 +48,15 @@ impl App {
             },
         ));
         state.set_view_group_value(ss(resolved_group));
+        let group_title = if view == "Folder" {
+            std::path::Path::new(resolved_group)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or(resolved_group)
+        } else {
+            resolved_group
+        };
+        state.set_view_group_title(ss(group_title));
         state.set_view_playlist_id(ss(playlist_id));
         let (sort, desc) = if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
             detail_sort_for_column(match view {

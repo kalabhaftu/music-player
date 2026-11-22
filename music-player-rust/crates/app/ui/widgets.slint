@@ -509,84 +509,39 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        VerticalLayout {
-            alignment: center;
-            spacing: 3px;
+        HorizontalLayout {
             horizontal-stretch: 3;
+            spacing: 6px;
+            min-width: 0px;
 
-            Text {
-                text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
-                color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
-                font-size: 12px;
-                font-weight: 650;
-                overflow: elide;
-                animate color { duration: 150ms; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                horizontal-stretch: 1;
+                min-width: 0px;
+
+                Text {
+                    text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
+                    color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
+                    font-size: 12px;
+                    font-weight: 650;
+                    overflow: elide;
+                    animate color { duration: 150ms; }
+                }
+                if State.show-list-artist : Text {
+                    text: root.track.artist;
+                    color: Palette.muted;
+                    font-size: 10px;
+                    overflow: elide;
+                }
             }
-            if State.show-list-artist : Text {
-                text: root.track.artist;
-                color: Palette.muted;
-                font-size: 10px;
-                overflow: elide;
-            }
-        }
 
-        if root.show-album && State.show-list-album : Rectangle {
-            width: 25%;
-            album-area := TouchArea {
-                clicked => { Actions.set-view("Album", "", root.track.album, ""); }
-            }
-            Text {
-                width: 100%;
-                text: root.track.album;
-                color: album-area.has-hover ? Palette.text : Palette.text-subtle;
-                font-size: 11px;
-                overflow: elide;
-                vertical-alignment: center;
-                animate color { duration: 100ms; }
-            }
-        }
-
-        if State.show-list-added && root.show-added : Text {
-            text: root.track.added;
-            color: Palette.text-subtle;
-            font-size: 11px;
-            overflow: elide;
-            width: 100px;
-            vertical-alignment: center;
-        }
-
-        if State.show-list-year && root.show-year : Text {
-            text: root.track.year;
-            color: Palette.text-subtle;
-            font-size: 11px;
-            width: 70px;
-            vertical-alignment: center;
-        }
-
-        if root.show-plays : Text {
-            text: "\{root.track.play-count}";
-            color: Palette.text-subtle;
-            font-size: 11px;
-            width: 60px;
-            vertical-alignment: center;
-        }
-
-        if State.show-list-duration : Text {
-            text: root.track.duration;
-            color: Palette.muted;
-            font-size: 11px;
-            width: 64px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
-        }
-
-        Rectangle {
-            width: 76px;
-            actions-hover := TouchArea { }
             HorizontalLayout {
                 opacity: (area.has-hover || actions-hover.has-hover || root.track.is-favorite) ? 1.0 : 0.0;
                 spacing: 2px;
                 alignment: center;
+
+                actions-hover := TouchArea { }
 
                 if State.show-list-favorite : IcBtn {
                     icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
@@ -611,7 +566,59 @@ export component TrackRow inherits Rectangle {
                 }
             }
         }
+
+        if root.show-album && State.show-list-album : Rectangle {
+            horizontal-stretch: 2;
+            min-width: 0px;
+            album-area := TouchArea {
+                clicked => { Actions.set-view("Album", "", root.track.album, ""); }
+            }
+            Text {
+                width: 100%;
+                text: root.track.album;
+                color: album-area.has-hover ? Palette.text : Palette.text-subtle;
+                font-size: 11px;
+                overflow: elide;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                animate color { duration: 100ms; }
+            }
         }
+
+        if State.show-list-added && root.show-added && State.content-avail-width > 550px : Text {
+            text: root.track.added;
+            color: Palette.text-subtle;
+            font-size: 11px;
+            overflow: elide;
+            width: 90px;
+            vertical-alignment: center;
+        }
+
+        if State.show-list-year && root.show-year && State.content-avail-width > 620px : Text {
+            text: root.track.year;
+            color: Palette.text-subtle;
+            font-size: 11px;
+            width: 60px;
+            vertical-alignment: center;
+        }
+
+        if root.show-plays : Text {
+            text: "\{root.track.play-count}";
+            color: Palette.text-subtle;
+            font-size: 11px;
+            width: 50px;
+            vertical-alignment: center;
+        }
+
+        if State.show-list-duration : Text {
+            text: root.track.duration;
+            color: Palette.muted;
+            font-size: 11px;
+            width: 50px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
     }
 
 // Sortable table header.
@@ -657,23 +664,24 @@ export component TrackHeader inherits Rectangle {
 
         if root.show-album && State.show-list-album : HeaderCell {
             label: "ALBUM";
-            width: 25%;
+            horizontal-stretch: 2;
+            min-width: 0px;
             active: root.active-sort == "Album";
             descending: root.descending;
             sort => { root.sort("Album"); }
         }
 
-        if State.show-list-added && root.show-added : HeaderCell {
+        if State.show-list-added && root.show-added && State.content-avail-width > 550px : HeaderCell {
             label: "ADDED";
-            width: 100px;
+            width: 90px;
             active: root.active-sort == "Added";
             descending: root.descending;
             sort => { root.sort("Added"); }
         }
 
-        if State.show-list-year && root.show-year : HeaderCell {
+        if State.show-list-year && root.show-year && State.content-avail-width > 620px : HeaderCell {
             label: "YEAR";
-            width: 70px;
+            width: 60px;
             active: root.active-sort == "Year";
             descending: root.descending;
             sort => { root.sort("Year"); }
@@ -681,7 +689,7 @@ export component TrackHeader inherits Rectangle {
 
         if root.show-plays : HeaderCell {
             label: "PLAYS";
-            width: 60px;
+            width: 50px;
             active: root.active-sort == "PlayCount";
             descending: root.descending;
             sort => { root.sort("PlayCount"); }
@@ -689,12 +697,10 @@ export component TrackHeader inherits Rectangle {
 
         if State.show-list-duration : HeaderCell {
             label: "TIME";
-            width: 64px;
+            width: 50px;
             right-align: true;
             sort => { root.sort("Duration"); }
         }
-
-        Rectangle { width: 76px; }
     }
 }
 
@@ -886,7 +892,7 @@ export component CardTile inherits Rectangle {
             min-width: 0px;
             Text {
                 min-width: 0px;
-                text: root.item.name;
+                text: root.item.display-name != "" ? root.item.display-name : root.item.name;
                 color: Palette.text;
                 font-size: 13px;
                 font-weight: 750;
@@ -1115,7 +1121,7 @@ export component HeroDetail inherits Rectangle {
     callback show-location();
     callback details();
 
-    height: 230px;
+    min-height: 230px;
     border-radius: 8px;
     background: State.light-theme ? Palette.panel : #0e100e;
 
@@ -1183,9 +1189,9 @@ export component HeroDetail inherits Rectangle {
             Text {
                 text: root.title;
                 color: Palette.text;
-                font-size: 42px;
+                font-size: clamp(State.window-width * 0.028px, 24px, 38px);
                 font-weight: 700;
-                letter-spacing: -1.8px;
+                letter-spacing: -1.2px;
                 wrap: word-wrap;
             }
 

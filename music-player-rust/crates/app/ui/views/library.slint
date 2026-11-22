@@ -8,7 +8,7 @@ import {
 // ---- Songs-like table views ------------------------------------------------
 export component SongsView inherits Rectangle {
     ScrollView {
-      VerticalLayout {
+        VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
@@ -71,7 +71,7 @@ export component GridView inherits Rectangle {
     in property <string> empty-text: "Nothing here yet.";
 
     ScrollView {
-      VerticalLayout {
+        VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
@@ -109,78 +109,6 @@ export component ArtistsView inherits GridView {
     title: "Artists";
     round: true;
     empty-text: "No artists indexed yet.";
-}
-
-// ---- Folders ---------------------------------------------------------------
-component FolderTile inherits Rectangle {
-    in property <GroupItem> item;
-
-    vertical-stretch: 0;
-    border-radius: 18px;
-    background: area.has-hover ? Palette.hover : Palette.raised;
-    animate background { duration: 140ms; }
-
-    area := TouchArea {
-        clicked => { Actions.set-view("Folder", "", item.name, ""); }
-    }
-
-    VerticalLayout {
-        padding: 10px;
-        spacing: 10px;
-
-        folder-card := Rectangle {
-            width: 100%;
-            height: self.width;
-            vertical-stretch: 0;
-            border-radius: 12px;
-            clip: true;
-            drop-shadow-offset-x: 0px;
-            drop-shadow-offset-y: 14px;
-            drop-shadow-blur: 28px;
-            drop-shadow-color: #00000040;
-            background: @linear-gradient(150deg, Palette.ga(root.item.gradient) 0%, Palette.badge(root.item.gradient) 58%, Palette.gb(root.item.gradient) 100%);
-
-            if root.item.has-cover : Image {
-                source: root.item.cover;
-                width: parent.width;
-                height: parent.height;
-                image-fit: ImageFit.cover;
-            }
-            if !root.item.has-cover : Text {
-                text: root.item.initials;
-                color: #ffffffe0;
-                font-size: clamp(State.window-width * 0.02px, 16px, 26px);
-                font-weight: 900;
-                letter-spacing: -1px;
-                vertical-alignment: center;
-                horizontal-alignment: center;
-            }
-            Rectangle {
-                width: 100%;
-                height: 100%;
-                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
-            }
-        }
-        VerticalLayout {
-            spacing: 4px;
-            min-width: 0px;
-            Text {
-                min-width: 0px;
-                text: root.item.name;
-                color: Palette.text;
-                font-size: 13px;
-                font-weight: 750;
-                overflow: elide;
-            }
-            if root.item.subtitle != "" : Text {
-                min-width: 0px;
-                text: root.item.subtitle;
-                color: Palette.muted;
-                font-size: 11px;
-                overflow: elide;
-            }
-        }
-    }
 }
 
 export component FoldersView inherits Rectangle {
@@ -301,14 +229,11 @@ export component FoldersView inherits Rectangle {
             if State.groups.length == 0 : EmptyState {
                 text: "Indexed folders will appear here.";
             }
-            if State.groups.length > 0 : GridLayout {
-                width: 100%;
-                spacing: Palette.card-gap(State.browse-width);
-                for item[index] in State.groups : FolderTile {
-                    item: item;
-                    col: Math.mod(index, State.card-columns);
-                    row: index / State.card-columns;
-                }
+            if State.groups.length > 0 : GroupGrid {
+                scrollable: false;
+                kind: "folder";
+                items: State.groups;
+                show-load-more: false;
             }
             if State.groups.length > 0 && State.groups-total > State.groups.length : VerticalLayout {
                 spacing: 0px;
@@ -343,11 +268,19 @@ export component FoldersView inherits Rectangle {
             if State.folder-roots.length > 0 : GridLayout {
                 width: 100%;
                 spacing: 12px;
+                for c in [0, 1, 2, 3, 4] : Rectangle {
+                    visible: c < State.folder-columns;
+                    col: c;
+                    row: 0;
+                    width: State.folder-card-width;
+                    height: 0px;
+                    horizontal-stretch: 0;
+                }
                 for rootEntry[index] in State.folder-roots : Rectangle {
-                    width: 100%;
+                    width: State.folder-card-width;
                     height: rootEntry.is-available ? 64px : 80px;
                     col: Math.mod(index, State.folder-columns);
-                    row: index / State.folder-columns;
+                    row: 1 + index / State.folder-columns;
                     border-radius: 8px;
                     background: Palette.raised;
                     HorizontalLayout {
@@ -421,7 +354,7 @@ export component DetailView inherits Rectangle {
 
             HeroDetail {
                 eyebrow: root.eyebrow;
-                title: State.view-group-value == "" ? State.view-title : State.view-group-value;
+                title: State.view-group-column == "folder" ? (State.view-group-title != "" ? State.view-group-title : State.view-group-value) : (State.view-group-value == "" ? State.view-title : State.view-group-value);
                 subtitle: State.hero-subtitle;
                 cover: State.hero-cover;
                 has-cover: State.hero-has-cover;

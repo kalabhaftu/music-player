@@ -8,14 +8,14 @@ component NavEntryRow inherits Rectangle {
     in property <string> label;
     in property <string> section-title;
 
-    height: root.section-title == "" ? 44px : 79px;
+    height: root.section-title == "" ? 40px : 75px;
 
     VerticalLayout {
         spacing: 0px;
         if root.section-title != "" : HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
-            padding-top: 9px;
+            padding-top: 10px;
             padding-bottom: 7px;
             height: 35px;
             alignment: start;
@@ -29,7 +29,7 @@ component NavEntryRow inherits Rectangle {
             }
         }
         Rectangle {
-            height: 44px;
+            height: 40px;
             border-radius: 6px;
             background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? #ffffff0d : (State.view == root.view ? Palette.raised : transparent));
             animate background { duration: 120ms; }

@@ -26,6 +26,8 @@ export struct TrackItem {
 export struct GroupItem {
     // Group key value (album name, artist name, genre, folder path).
     name: string,
+    // Display name (for folders, the folder name instead of full path).
+    display-name: string,
     // Subtitle line: "artist · 12 songs · 1998" per the original subtitle rules.
     subtitle: string,
     // Monogram initials from the shared initials() algorithm.
