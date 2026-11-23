@@ -78,31 +78,14 @@ impl App {
 
     pub(crate) fn open_context_menu(&mut self, id: &str, x: i32, y: i32) {
         self.context_target = Some(id.to_string());
-        let track = self.track_by_id(id);
-        let is_fav = track.as_ref().map(|t| t.favorite).unwrap_or(false);
-        let fav_label = if is_fav {
-            "Remove from favorites"
-        } else {
-            "Favorite"
-        };
-        let has_album = track
-            .as_ref()
-            .map(|t| !t.album.trim().is_empty())
-            .unwrap_or(false);
-        let has_artist = track
-            .as_ref()
-            .map(|t| !t.artist.trim().is_empty())
-            .unwrap_or(false);
 
         let menu_defs = vec![
             ("Play", false, false, true),
             ("Play next", false, false, true),
             ("Add to queue", false, false, true),
-            ("Add to playlist…", false, false, true),
+            ("Add to playlist", false, false, true),
             ("Create playlist with this song…", false, false, true),
-            ("Go to album", false, false, has_album),
-            ("Go to artist", false, false, has_artist),
-            (fav_label, false, false, true),
+            ("Toggle favorite", false, false, true),
             ("Set rating…", false, false, true),
             ("—", false, true, false),
             ("Lyrics", false, false, true),
@@ -179,33 +162,19 @@ impl App {
                     }
                 }
             }
-            5 => {
-                if let Some(t) = self.track_by_id(&id) {
-                    if !t.album.trim().is_empty() {
-                        self.set_view("Album", "", &t.album, "");
-                    }
-                }
-            }
+            5 => self.toggle_favorite(&id),
             6 => {
-                if let Some(t) = self.track_by_id(&id) {
-                    if !t.artist.trim().is_empty() {
-                        self.set_view("Artist", "", &t.artist, "");
-                    }
-                }
-            }
-            7 => self.toggle_favorite(&id),
-            8 => {
                 self.ui.global::<State>().set_modal(ss("rating"));
                 self.ui.global::<State>().set_rate_value(0);
             }
-            10 => self.set_view("Lyrics", "", "", ""),
-            11 => self.open_find_lyrics(&id),
-            12 => {
+            8 => self.set_view("Lyrics", "", "", ""),
+            9 => self.open_find_lyrics(&id),
+            10 => {
                 self.edit_target = self.track_by_id(&id).map(|t| t.path.clone());
                 self.open_edit_lyrics();
             }
-            13 => self.open_tags(&id),
-            14 => {
+            11 => self.open_tags(&id),
+            12 => {
                 if let Some(t) = self.track_by_id(&id) {
                     self.confirm_action = Some(ConfirmAction::RestoreBackup(String::new()));
                     let backups = TagEditor::new(tag_backups_dir()).list_backups(&t.path);
@@ -226,8 +195,8 @@ impl App {
                     state.set_modal(ss("confirm"));
                 }
             }
-            15 => self.open_details(&id),
-            16 => {
+            13 => self.open_details(&id),
+            14 => {
                 if let Some(t) = self.track_by_id(&id) {
                     open_in_explorer(&t.path);
                 }

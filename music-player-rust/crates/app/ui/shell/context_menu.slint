@@ -9,7 +9,7 @@ component ContextMenuItemRow inherits Rectangle {
     in property <bool> separator: false;
     callback clicked();
 
-    height: 34px;
+    height: root.separator ? 9px : 34px;
     border-radius: 5px;
     background: area.has-hover && !root.separator ? Palette.hover : transparent;
 
@@ -20,7 +20,7 @@ component ContextMenuItemRow inherits Rectangle {
 
     if root.separator : Rectangle {
         height: 1px;
-        y: 16px;
+        y: 4px;
         background: Palette.border;
     }
     if !root.separator : Text {
@@ -44,10 +44,10 @@ export component ContextMenuOverlay inherits Rectangle {
     }
 
     Rectangle {
-        x: min(max(8px, State.context-x), parent.width - 240px);
+        x: min(max(8px, State.context-x), parent.width - 228px);
         y: min(max(8px, State.context-y), parent.height - self.height - 8px);
         width: 220px;
-        height: State.context-items.length * 34px + 14px;
+        height: min(parent.height - 16px, 499px);
         border-radius: 7px;
         background: Palette.panel-3;
         border-width: 1px;
@@ -55,8 +55,8 @@ export component ContextMenuOverlay inherits Rectangle {
         clip: true;
 
         ListView {
-            y: 7px;
-            height: parent.height - 14px;
+            y: 6px;
+            height: parent.height - 12px;
             for item[index] in State.context-items : ContextMenuItemRow {
                 label: item.label;
                 enabled: item.enabled;
