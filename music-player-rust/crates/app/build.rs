@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-changed=assets/MusicPlayer.ico");
+    println!("cargo:rerun-if-changed=assets/MusicPlayer-dark.png");
     #[cfg(windows)]
     {
         let mut res = winres::WindowsResource::new();

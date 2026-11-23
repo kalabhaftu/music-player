@@ -217,6 +217,7 @@ impl App {
         state.set_current_has_cover(has_cover);
         state.set_current_initials(ss(initials(&track.title)));
         state.set_current_badge_bg(badge_color(slot));
+        state.set_immersive_lyrics_open(false);
         drop(state);
         self.publish_appearance();
         self.publish_info(&track);

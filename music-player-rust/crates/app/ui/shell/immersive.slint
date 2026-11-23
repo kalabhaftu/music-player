@@ -2,6 +2,7 @@ import { State, Actions } from "../state.slint";
 import { Palette, IcBtn, TextBtn, PlayerSlider } from "../widgets.slint";
 
 export component ImmersivePlayerOverlay inherits Rectangle {
+    property <bool> show-lyrics: State.immersive-lyrics-open && State.has-lyrics && State.lyrics-lines.length > 0;
     background: #10110f;
     animate background { duration: 400ms; easing: ease-in-out; }
     clip: true;
@@ -116,15 +117,15 @@ export component ImmersivePlayerOverlay inherits Rectangle {
             alignment: center;
             padding-left: 20px;
             padding-right: 20px;
-            spacing: State.immersive-lyrics-open ? 40px : 0px;
+            spacing: root.show-lyrics ? 40px : 0px;
 
             art-column := VerticalLayout {
                 alignment: center;
                 spacing: 16px;
                 horizontal-stretch: 0;
-                width: State.immersive-lyrics-open
+                width: root.show-lyrics
                     ? clamp(State.window-height * 0.38 * 1px, 240px, 420px)
-                    : clamp(State.window-height * 0.44 * 1px, 280px, 480px);
+                    : clamp(State.window-height * 0.48 * 1px, 280px, 540px);
 
                 Rectangle {
                     width: parent.width;
@@ -189,7 +190,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 }
             }
 
-            if State.immersive-lyrics-open : VerticalLayout {
+            if root.show-lyrics : VerticalLayout {
                 horizontal-stretch: 1;
                 min-width: 240px;
                 height: 100%;
@@ -360,8 +361,8 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     icon-size: 20px;
                     width: 44px;
                     height: 44px;
-                    active: State.immersive-lyrics-open;
-                    tint: State.immersive-lyrics-open ? #ffffff : #d0d2ce;
+                    active: root.show-lyrics;
+                    tint: root.show-lyrics ? #ffffff : #d0d2ce;
                     clicked => { Actions.toggle-immersive-lyrics(); }
                 }
                 IcBtn {
