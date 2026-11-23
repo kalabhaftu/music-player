@@ -416,12 +416,12 @@ export component SettingsView inherits Rectangle {
             GridLayout {
                 padding: 6px;
                 spacing: 4px;
-                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
-                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
-                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
+                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; settings-scroll.content-y = 0px; } }
+                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; settings-scroll.content-y = -library-section.y; } }
+                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; settings-scroll.content-y = -playback-section.y; } }
                 SettingsNavTab { col: 1; row: 1; label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
-                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
+                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; settings-scroll.content-y = -advanced-section.y; } }
+                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; settings-scroll.content-y = -about-section.y; } }
             }
         }
         if State.content-width > 600 : Rectangle {
@@ -432,12 +432,12 @@ export component SettingsView inherits Rectangle {
                 padding: 7px;
                 spacing: 4px;
                 alignment: start;
-                SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
-                SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
-                SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
+                SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; settings-scroll.content-y = 0px; } }
+                SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; settings-scroll.content-y = -library-section.y; } }
+                SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; settings-scroll.content-y = -playback-section.y; } }
                 SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
-                SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
+                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; settings-scroll.content-y = -advanced-section.y; } }
+                SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; settings-scroll.content-y = -about-section.y; } }
             }
         }
 
@@ -448,14 +448,9 @@ export component SettingsView inherits Rectangle {
             background: Palette.raised;
             clip: true;
             settings-scroll := ScrollView {
-                content-y: State.settings-section == "Appearance" ? -appearance-section.y
-                    : State.settings-section == "Library" ? -library-section.y
-                    : State.settings-section == "Playback" ? -playback-section.y
-                    : (State.settings-section == "Advanced" || State.settings-section == "General") ? -advanced-section.y
-                    : State.settings-section == "About" ? -about-section.y
-                    : 0px;
-                animate content-y { duration: 200ms; easing: ease-out; }
+                animate content-y { duration: 250ms; easing: ease-out; }
                 VerticalLayout {
+                    width: parent.width;
                     padding: 20px;
                     spacing: 24px;
 
@@ -837,10 +832,10 @@ export component SettingsView inherits Rectangle {
                                         padding-left: 12px;
                                         padding-right: 12px;
                                         spacing: 12px;
-                                        Text { text: "COMPONENT"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 3; vertical-alignment: center; }
-                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: max(50px, State.content-avail-width * 0.16); vertical-alignment: center; }
-                                        Text { text: "LICENSE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 2; vertical-alignment: center; }
-                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: max(60px, State.content-avail-width * 0.20); vertical-alignment: center; }
+                                        Text { text: "COMPONENT"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 1; min-width: 0px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 80px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "LICENSE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 110px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 100px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
                                     }
                                 }
                                 Rectangle { height: 1px; background: Palette.border; }
@@ -855,26 +850,30 @@ export component SettingsView inherits Rectangle {
                                             padding-bottom: 8px;
                                             spacing: 12px;
                                             VerticalLayout {
-                                                horizontal-stretch: 3;
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
                                                 spacing: 2px;
                                                 alignment: center;
-                                                Text { text: comp.name; color: Palette.text-strong; font-size: 11px; font-weight: 700; overflow: elide; }
-                                                if comp.description != "" : Text { text: comp.description; color: Palette.muted; font-size: 9px; overflow: elide; }
+                                                Text { width: 100%; text: comp.name; color: Palette.text-strong; font-size: 11px; font-weight: 700; overflow: elide; min-width: 0px; }
+                                                if comp.description != "" : Text { width: 100%; text: comp.description; color: Palette.muted; font-size: 9px; overflow: elide; min-width: 0px; }
                                             }
                                             VerticalLayout {
-                                                width: max(50px, State.content-avail-width * 0.16);
+                                                width: 80px;
+                                                horizontal-stretch: 0;
                                                 alignment: center;
-                                                Text { text: comp.version; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                                Text { width: 100%; text: comp.version; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
                                             }
                                             VerticalLayout {
-                                                horizontal-stretch: 2;
+                                                width: 110px;
+                                                horizontal-stretch: 0;
                                                 alignment: center;
-                                                Text { text: comp.license; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                                Text { width: 100%; text: comp.license; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
                                             }
                                             VerticalLayout {
-                                                width: max(60px, State.content-avail-width * 0.20);
+                                                width: 100px;
+                                                horizontal-stretch: 0;
                                                 alignment: center;
-                                                Text { text: comp.source; color: Palette.text-subtle; font-size: 10px; overflow: elide; }
+                                                Text { width: 100%; text: comp.source; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
                                             }
                                         }
                                     }

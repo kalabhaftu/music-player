@@ -141,6 +141,7 @@ component PanelTab inherits Rectangle {
 export component RightPanel inherits Rectangle {
     width: State.right-panel-open ? State.right-panel-width * 1px : 0px;
     background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
     clip: true;
 
     // 1px left border matching original CSS

@@ -234,12 +234,13 @@ export component PlaylistsList inherits Rectangle {
 
 export component PlaylistsView inherits Rectangle {
     ScrollView {
-      VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 0px;
+        VerticalLayout {
+            width: parent.width;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -312,12 +313,13 @@ export component PlaylistsView inherits Rectangle {
 // ---- Playlist detail ---------------------------------------------------------
 export component PlaylistView inherits Rectangle {
     ScrollView {
-      VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 0px;
+        VerticalLayout {
+            width: parent.width;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
 
         HorizontalLayout {
             spacing: 12px;
@@ -378,6 +380,7 @@ export component PlaylistView inherits Rectangle {
         }
         if State.tracks.length > 0 || State.page-loading : TrackTable {
             scrollable: false;
+            height: 37px + (State.tracks.length == 0 ? 120px : State.tracks.length * 58px) + (State.can-load-more ? 44px : 0px);
             show-added: false;
             show-year: false;
             first-column: "TITLE";

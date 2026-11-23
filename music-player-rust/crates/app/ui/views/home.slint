@@ -44,7 +44,7 @@ export component HomeQuickTrackTile inherits Rectangle {
     callback play();
 
     min-width: 0px;
-    max-width: (State.content-avail-width - 10px) / 2;
+    max-width: State.content-avail-width <= 480px ? State.content-avail-width : (State.content-avail-width - 10px) / 2;
     horizontal-stretch: 1;
     height: 58px;
     border-radius: 6px;
@@ -138,8 +138,8 @@ export component HomeQuickGrid inherits Rectangle {
         spacing: 10px;
         for item[index] in root.items : HomeQuickTrackTile {
             item: item;
-            col: Math.mod(index, 2);
-            row: index / 2;
+            col: State.content-avail-width <= 480px ? 0 : Math.mod(index, 2);
+            row: State.content-avail-width <= 480px ? index : index / 2;
             play => { Actions.play-track(item.id); }
         }
     }
@@ -218,6 +218,7 @@ export component HomeEmptyState inherits Rectangle {
 export component HomeView inherits Rectangle {
     ScrollView {
         VerticalLayout {
+            width: parent.width;
             padding-left: 24px;
             padding-right: 24px;
             padding-top: 20px;

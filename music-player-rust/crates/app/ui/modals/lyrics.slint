@@ -1,83 +1,122 @@
 import { State, Actions } from "../state.slint";
-import { Palette, TextBtn } from "../widgets.slint";
-import { Switch, TextEdit, ScrollView } from "std-widgets.slint";
+import { Palette, TextBtn, CustomSelect } from "../widgets.slint";
+import { LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
 import { ModalField } from "common.slint";
 
 export component FindLyricsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
-        spacing: 10px;
-
-        ModalField { label: "Title"; text: State.find-lyrics-title; changed(v) => { State.find-lyrics-title = v; } }
-        ModalField { label: "Artist"; text: State.find-lyrics-artist; changed(v) => { State.find-lyrics-artist = v; } }
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 14px;
+        padding-bottom: 16px;
+        spacing: 12px;
 
         HorizontalLayout {
-            spacing: 10px;
-            TextBtn {
-                label: "Search";
-                primary: true;
-                clicked => { Actions.find-lyrics(); }
+            spacing: 12px;
+            ModalField {
+                label: "Title";
+                text: State.find-lyrics-title;
+                changed(v) => { State.find-lyrics-title = v; }
+                horizontal-stretch: 1;
             }
-            if State.lyrics-searching : Text {
-                text: "Searching LRCLIB…";
-                color: Palette.muted;
-                font-size: 11px;
-                vertical-alignment: center;
+            ModalField {
+                label: "Artist";
+                text: State.find-lyrics-artist;
+                changed(v) => { State.find-lyrics-artist = v; }
+                horizontal-stretch: 1;
             }
         }
 
-        if State.lyrics-search-status != "" : Text {
-            text: State.lyrics-search-status;
-            color: State.lyrics-searching ? Palette.muted : #ffb04a;
-            font-size: 11px;
-            overflow: elide;
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: start;
+            TextBtn {
+                label: "Search LRCLIB";
+                primary: true;
+                height: 32px;
+                clicked => { Actions.find-lyrics(); }
+            }
+            if State.lyrics-searching : HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+                Text {
+                    text: "Searching LRCLIB…";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+            if !State.lyrics-searching && State.lyrics-search-status != "" : Text {
+                text: State.lyrics-search-status;
+                color: #ffb04a;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
         }
 
         ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
+                width: parent.width;
                 spacing: 8px;
                 for result in State.lyrics-results : Rectangle {
-                    height: 54px;
-                    border-radius: 6px;
-                    background: result-area.has-hover ? Palette.panel-2 : transparent;
+                    height: 52px;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: result-area.has-hover ? State.accent : Palette.border;
+                    background: result-area.has-hover ? #ffffff1a : #ffffff0d;
+                    animate background { duration: 120ms; }
+                    animate border-color { duration: 120ms; }
                     result-area := TouchArea {
+                        mouse-cursor: pointer;
                         clicked => { Actions.use-lyric-result(result.timed ? result.synced-id : result.plain-id, result.timed); }
                     }
                     HorizontalLayout {
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        spacing: 10px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 12px;
+                        alignment: center;
                         VerticalLayout {
                             alignment: center;
                             spacing: 3px;
                             horizontal-stretch: 1;
+                            min-width: 0px;
                             Text {
                                 text: result.title;
-                                color: Palette.text-strong;
-                                font-size: 12px;
+                                color: Palette.text;
+                                font-size: 13px;
+                                font-weight: 650;
                                 overflow: elide;
+                                min-width: 0px;
                             }
                             Text {
                                 text: result.artist;
                                 color: Palette.muted;
-                                font-size: 10px;
+                                font-size: 11px;
+                                font-weight: 500;
                                 overflow: elide;
+                                min-width: 0px;
                             }
                         }
                         Rectangle {
-                            width: 70px;
                             height: 22px;
-                            border-radius: 11px;
-                            background: result.timed ? Palette.border : Palette.border-soft;
-                            Text {
-                                text: result.badge;
-                                color: result.timed ? State.accent : Palette.muted;
-                                font-size: 9px;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
+                            border-radius: 999px;
+                            border-width: 1px;
+                            border-color: result.timed ? State.accent.with-alpha(0.35) : #ffffff1f;
+                            background: result.timed ? State.accent.with-alpha(0.18) : #ffffff14;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                alignment: center;
+                                Text {
+                                    text: result.badge;
+                                    color: result.timed ? State.accent : Palette.muted;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    letter-spacing: 0.5px;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }
@@ -89,52 +128,82 @@ export component FindLyricsModal inherits Rectangle {
 
 export component EditLyricsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 14px;
+        padding-bottom: 16px;
         spacing: 10px;
+
+        if State.current-title != "" : Text {
+            text: "\{State.current-title} · \{State.current-artist}";
+            color: Palette.text;
+            font-size: 12px;
+            font-weight: 650;
+            overflow: elide;
+        }
 
         Text {
             text: State.edit-lyrics-source-label;
-            color: Palette.muted-2;
-            font-size: 10px;
+            color: Palette.muted;
+            font-size: 11px;
+            overflow: elide;
         }
 
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 12px;
+            alignment: start;
             TextBtn {
-                label: "Stamp position";
+                label: "⏱ Stamp position";
+                height: 32px;
                 clicked => { Actions.stamp-lyric-position(); }
             }
-            ModalField {
-                label: "Offset (ms)";
-                text: State.edit-lyrics-offset;
-                changed(v) => { State.edit-lyrics-offset = v; }
-                field-width: 120px;
-            }
-            VerticalLayout {
+            HorizontalLayout {
+                spacing: 6px;
                 alignment: center;
-                spacing: 2px;
-                Switch {
-                    checked: State.edit-lyrics-sidecar;
-                    toggled => { State.edit-lyrics-sidecar = self.checked; }
-                }
                 Text {
-                    text: "Sidecar file";
-                    color: Palette.muted-2;
-                    font-size: 9px;
+                    text: "Offset (ms):";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                LineEdit {
+                    width: 76px;
+                    height: 32px;
+                    text: State.edit-lyrics-offset;
+                    edited(v) => { State.edit-lyrics-offset = v; }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+                Text {
+                    text: "Save to:";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                CustomSelect {
+                    width: 175px;
+                    options: ["Embed in audio file", "Save beside audio file"];
+                    current-value: State.edit-lyrics-sidecar ? "Save beside audio file" : "Embed in audio file";
+                    selected(v) => { State.edit-lyrics-sidecar = v == "Save beside audio file"; }
                 }
             }
         }
 
         Rectangle {
-            height: 240px;
+            vertical-stretch: 1;
+            min-height: 260px;
             border-radius: 8px;
             border-width: 1px;
             border-color: Palette.border;
             background: Palette.panel-2;
+            clip: true;
             TextEdit {
-                width: parent.width;
-                height: parent.height;
+                width: 100%;
+                height: 100%;
                 text <=> State.edit-lyrics-text;
                 font-size: 12px;
             }
@@ -142,16 +211,24 @@ export component EditLyricsModal inherits Rectangle {
 
         HorizontalLayout {
             spacing: 10px;
-            alignment: start;
+            height: 36px;
+            alignment: center;
             TextBtn {
-                label: "Remove";
+                label: "Remove lyrics";
                 danger: true;
+                height: 32px;
                 clicked => { Actions.remove-lyrics(); }
             }
             Rectangle { horizontal-stretch: 1; }
             TextBtn {
-                label: "Save";
+                label: "Cancel";
+                height: 32px;
+                clicked => { Actions.close-modal(); }
+            }
+            TextBtn {
+                label: "Save lyrics";
                 primary: true;
+                height: 32px;
                 clicked => { Actions.save-lyrics-modal(); }
             }
         }

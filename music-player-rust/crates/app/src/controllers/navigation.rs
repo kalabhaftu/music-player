@@ -49,9 +49,11 @@ impl App {
         ));
         state.set_view_group_value(ss(resolved_group));
         let group_title = if view == "Folder" {
-            std::path::Path::new(resolved_group)
+            let trimmed = resolved_group.trim_end_matches(['\\', '/']);
+            std::path::Path::new(trimmed)
                 .file_name()
                 .and_then(|f| f.to_str())
+                .filter(|s| !s.is_empty())
                 .unwrap_or(resolved_group)
         } else {
             resolved_group

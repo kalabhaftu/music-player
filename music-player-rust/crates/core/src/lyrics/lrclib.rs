@@ -166,6 +166,41 @@ pub fn lyric_match_score(
     (coverage * 0.78 + precision * 0.22) * 0.78 + artist_score
 }
 
+/// Detects if lyrics contain censored profanity (e.g. `f***`, `b****`, `n****`, `s***`, `***`).
+pub fn is_censored_lyrics(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    for word in lower.split_whitespace() {
+        let clean: String = word
+            .chars()
+            .filter(|c| c.is_alphabetic() || *c == '*' || *c == '-' || *c == '#' || *c == '_')
+            .collect();
+        if clean.contains('*') || clean.contains('#') || clean.contains('_') || clean.contains('-') {
+            if clean.starts_with("f*")
+                || clean.starts_with("f-")
+                || clean.starts_with("f#")
+                || clean.starts_with("b*")
+                || clean.starts_with("b-")
+                || clean.starts_with("n*")
+                || clean.starts_with("n-")
+                || clean.starts_with("s*")
+                || clean.starts_with("s-")
+                || clean.starts_with("p*")
+                || clean.starts_with("c*")
+                || clean.starts_with("d*")
+                || clean.starts_with("a**")
+                || clean == "***"
+                || clean == "****"
+                || clean == "*****"
+                || clean.contains("***")
+                || clean.contains("---")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn select_lyrics_match(
     track_title: &str,
     track_artist: &str,
@@ -209,11 +244,16 @@ pub fn select_lyrics_match(
         .collect();
 
     candidates.sort_by(|a, b| {
-        b.timed.cmp(&a.timed).then_with(|| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        let a_censored = is_censored_lyrics(&a.raw);
+        let b_censored = is_censored_lyrics(&b.raw);
+        b.timed
+            .cmp(&a.timed)
+            .then_with(|| a_censored.cmp(&b_censored))
+            .then_with(|| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     });
 
     candidates.into_iter().next()
@@ -363,4 +403,20 @@ fn urlencoding(s: &str) -> String {
         }
     }
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_censored_lyrics_detection() {
+        assert!(is_censored_lyrics("What the f*** is going on"));
+        assert!(is_censored_lyrics("You little b****"));
+        assert!(is_censored_lyrics("They are all **** here"));
+        assert!(is_censored_lyrics("Look at that f---ing car"));
+        assert!(!is_censored_lyrics("What the fuck is going on"));
+        assert!(!is_censored_lyrics("You little bitch"));
+        assert!(!is_censored_lyrics("Clean lyrics without any curses"));
+    }
 }

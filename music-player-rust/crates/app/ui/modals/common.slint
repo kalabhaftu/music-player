@@ -4,21 +4,22 @@ import { LineEdit } from "std-widgets.slint";
 export component ModalField inherits Rectangle {
     in property <string> label;
     in property <string> text;
-    in property <length> field-width: 0px;
     callback changed(string);
     height: 52px;
-    width: root.field-width;
+    min-width: 0px;
+    horizontal-stretch: 1;
 
     VerticalLayout {
         spacing: 4px;
+        min-width: 0px;
         Text {
             text: root.label;
             color: Palette.muted-2;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 700;
         }
         LineEdit {
-            height: 30px;
+            height: 32px;
             text: root.text;
             edited(value) => { root.changed(value); }
         }

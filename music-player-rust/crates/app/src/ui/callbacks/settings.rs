@@ -277,16 +277,18 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_open_immersive_player(move || {
-            let app = a.borrow();
+            let mut app = a.borrow_mut();
             let state = app.ui.global::<State>();
             state.set_immersive_player_open(true);
             state.set_immersive_lyrics_open(false);
+            drop(state);
+            app.publish_appearance();
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive_player(move || {
-            let app = a.borrow();
+            let mut app = a.borrow_mut();
             if app.ui.window().is_fullscreen() {
                 app.ui.window().set_fullscreen(false);
             }
@@ -294,6 +296,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             state.set_immersive_fullscreen(false);
             state.set_immersive_player_open(false);
             state.set_immersive_lyrics_open(false);
+            drop(state);
+            app.publish_appearance();
         });
     }
     {

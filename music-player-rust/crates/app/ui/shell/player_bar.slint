@@ -5,6 +5,7 @@ import { Palette, IcBtn, PlayerSlider } from "../widgets.slint";
 export component PlayerBar inherits Rectangle {
     height: 88px;
     background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
 
     // 1px top border matching original CSS
     Rectangle {
@@ -26,7 +27,7 @@ export component PlayerBar inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             min-width: 0px;
-            max-width: clamp(State.window-width * 0.32 * 1px, 180px, 320px);
+            max-width: clamp(State.window-width * 0.3 * 1px, 160px, 280px);
             alignment: center;
 
             HorizontalLayout {
@@ -98,7 +99,8 @@ export component PlayerBar inherits Rectangle {
         }
 
         VerticalLayout {
-            horizontal-stretch: 0;
+            horizontal-stretch: 2;
+            min-width: 140px;
             alignment: center;
             spacing: 7px;
 
@@ -219,7 +221,9 @@ export component PlayerBar inherits Rectangle {
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: clamp(State.window-width * 0.4 * 1px, 200px, 520px);
+                    max-width: 520px;
+                    min-width: 140px;
+                    horizontal-stretch: 1;
                     height: 16px;
                     HorizontalLayout {
                         width: 100%;
@@ -270,7 +274,7 @@ export component PlayerBar inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             min-width: 0px;
-            max-width: clamp(State.window-width * 0.32 * 1px, 180px, 320px);
+            max-width: clamp(State.window-width * 0.3 * 1px, 160px, 280px);
             alignment: center;
 
             HorizontalLayout {

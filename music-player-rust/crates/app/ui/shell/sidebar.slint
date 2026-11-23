@@ -91,6 +91,7 @@ component NavEntryRow inherits Rectangle {
 export component NavRail inherits Rectangle {
     width: State.navigation-collapsed ? 0px : State.navigation-width * 1px;
     background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
     clip: true;
 
     // 1px right border matching original CSS

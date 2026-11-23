@@ -7,8 +7,7 @@ import {
 
 // ---- Songs-like table views ------------------------------------------------
 export component SongsView inherits Rectangle {
-    ScrollView {
-        VerticalLayout {
+    VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
@@ -55,12 +54,17 @@ export component SongsView inherits Rectangle {
 
         Rectangle { height: 12px; }
 
-        TrackTable {
-            scrollable: false;
-            sort(column) => { Actions.sort-view(column); }
-            empty-text: State.view == "Videos" ? "No videos indexed. Enable video file types in scan exclusions." : "No tracks to show.";
+        Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+            TrackTable {
+                width: 100%;
+                height: 100%;
+                scrollable: true;
+                sort(column) => { Actions.sort-view(column); }
+                empty-text: State.view == "Videos" ? "No videos indexed. Enable video file types in scan exclusions." : "No tracks to show.";
+            }
         }
-      }
     }
 }
 
@@ -72,11 +76,12 @@ export component GridView inherits Rectangle {
 
     ScrollView {
         VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 0px;
+            width: parent.width;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
 
         VerticalLayout {
             spacing: 5px;
@@ -114,13 +119,66 @@ export component ArtistsView inherits GridView {
 export component FoldersView inherits Rectangle {
     ScrollView {
         VerticalLayout {
+            width: parent.width;
             padding-left: 24px;
             padding-right: 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;
 
-            HorizontalLayout {
+            if State.content-width <= 600 : VerticalLayout {
+                spacing: 10px;
+                Text {
+                    text: "Folders";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+                if State.content-width <= 480 : VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ActionBtn {
+                            label: "＋ Add folder";
+                            primary: true;
+                            clicked => { Actions.open-modal("folders"); }
+                        }
+                        ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                        ActionBtn {
+                            label: "Rebuild";
+                            clicked => { Actions.rebuild-library-index(); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                        ActionBtn {
+                            label: "Exclusions";
+                            clicked => { Actions.open-modal("exclusions"); }
+                        }
+                    }
+                }
+                if State.content-width > 480 : HorizontalLayout {
+                    spacing: 6px;
+                    ActionBtn {
+                        label: "＋ Add folder";
+                        primary: true;
+                        clicked => { Actions.open-modal("folders"); }
+                    }
+                    ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                    ActionBtn {
+                        label: "Rebuild";
+                        clicked => { Actions.rebuild-library-index(); }
+                    }
+                    ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                    ActionBtn {
+                        label: "Exclusions";
+                        clicked => { Actions.open-modal("exclusions"); }
+                    }
+                }
+            }
+            if State.content-width > 600 : HorizontalLayout {
                 spacing: 12px;
                 VerticalLayout {
                     spacing: 5px;
@@ -338,11 +396,13 @@ export component DetailView inherits Rectangle {
         vertical-stretch: 1;
 
         VerticalLayout {
+            width: parent.width;
             padding-left: 24px;
             padding-right: 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 24px;
+            alignment: start;
 
             HeroDetail {
                 eyebrow: root.eyebrow;
@@ -357,6 +417,7 @@ export component DetailView inherits Rectangle {
 
             if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
                 spacing: 0px;
+                alignment: start;
                 SectionTitle { text: "Albums"; }
                 Rectangle { height: 13px; }
                 GridLayout {
@@ -386,6 +447,7 @@ export component DetailView inherits Rectangle {
 
             VerticalLayout {
                 spacing: 13px;
+                alignment: start;
 
                 Text {
                     text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
@@ -397,9 +459,10 @@ export component DetailView inherits Rectangle {
 
                 TrackTable {
                     scrollable: false;
+                    height: 37px + (State.tracks.length == 0 ? 120px : State.tracks.length * 58px) + (State.can-load-more ? 44px : 0px);
                     show-added: true;
                     show-year: false;
-                    show-album: true;
+                    show-album: State.view != "Album" && State.view-group-column != "album";
                     first-column: "TITLE";
                     first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
                     sort(column) => { Actions.sort-view(column); }

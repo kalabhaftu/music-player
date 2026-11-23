@@ -125,9 +125,11 @@ pub fn detail_sort_for_column(column: &str) -> (String, bool) {
 pub fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
     let is_folder = group.name.contains('\\') || group.name.contains('/');
     let display_name = if is_folder {
-        Path::new(&group.name)
+        let trimmed = group.name.trim_end_matches(['\\', '/']);
+        Path::new(trimmed)
             .file_name()
             .and_then(|f| f.to_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or(&group.name)
             .to_string()
     } else {

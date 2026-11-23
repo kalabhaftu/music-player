@@ -248,6 +248,32 @@ fn test_lyrics_match_scoring() {
     assert_eq!(m.result.id, 1);
     assert!(m.timed);
     assert!(m.raw.contains("It starts with one thing"));
+
+    // Verify preference for uncensored lyrics over censored ones
+    let censored_result = LyricsSearchResult {
+        id: 10,
+        track_name: "A Tale Of 2 Citiez".to_string(),
+        artist_name: "J. Cole".to_string(),
+        album_name: Some("2014 Forest Hills Drive".to_string()),
+        duration: 269.0,
+        instrumental: false,
+        plain_lyrics: None,
+        synced_lyrics: Some("[00:10.00] Last night I saw a b**** and f*** that".to_string()),
+    };
+    let uncensored_result = LyricsSearchResult {
+        id: 11,
+        track_name: "A Tale Of 2 Citiez".to_string(),
+        artist_name: "J. Cole".to_string(),
+        album_name: Some("2014 Forest Hills Drive".to_string()),
+        duration: 269.0,
+        instrumental: false,
+        plain_lyrics: None,
+        synced_lyrics: Some("[00:10.00] Last night I saw a bitch and fuck that".to_string()),
+    };
+    let candidates = vec![censored_result, uncensored_result];
+    let pick = select_lyrics_match("A Tale Of 2 Citiez", "J. Cole", 269.0, &candidates);
+    assert!(pick.is_some());
+    assert_eq!(pick.unwrap().result.id, 11, "Should select uncensored version");
 }
 
 #[test]

@@ -3,6 +3,7 @@ import { Palette, IcBtn, TextBtn, PlayerSlider } from "../widgets.slint";
 
 export component ImmersivePlayerOverlay inherits Rectangle {
     background: #10110f;
+    animate background { duration: 400ms; easing: ease-in-out; }
     clip: true;
 
     if State.current-has-cover : Image {
@@ -23,6 +24,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         width: 100%;
         height: 100%;
         background: State.accent.with-alpha(0.04);
+        animate background { duration: 400ms; easing: ease-in-out; }
     }
 
     VerticalLayout {
@@ -32,58 +34,74 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         padding-bottom: 22px;
         spacing: 12px;
 
-        HorizontalLayout {
+        top-area := Rectangle {
             height: 48px;
-            spacing: 12px;
-            Text {
-                text: "NOW PLAYING";
-                color: #ffffffb0;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-                horizontal-stretch: 1;
-                vertical-alignment: center;
-            }
-            Rectangle {
-                width: 36px;
-                height: 36px;
-                border-radius: 18px;
-                background: fs-ta.has-hover ? #ffffff2a : #00000052;
-                animate background { duration: 150ms; }
-                fs-ta := TouchArea { clicked => { Actions.toggle-immersive-fullscreen(); } }
-                Image {
-                    source: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
-                    width: 16px;
-                    height: 16px;
-                    colorize: #ffffff;
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
+            top-hover := TouchArea { }
+            HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: "NOW PLAYING";
+                    color: #ffffffb0;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 1.5px;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
                 }
-            }
-            Rectangle {
-                width: 86px;
-                height: 36px;
-                border-radius: 18px;
-                background: close-ta.has-hover ? #ffffff2a : #00000052;
-                animate background { duration: 150ms; }
-                close-ta := TouchArea { clicked => { Actions.close-immersive-player(); } }
                 HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 14px;
-                    spacing: 8px;
-                    alignment: center;
-                    Image {
-                        source: @image-url("../../assets/icons/close.svg");
-                        width: 14px;
-                        height: 14px;
-                        colorize: #ffffff;
+                    spacing: 12px;
+                    opacity: (top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.0;
+                    animate opacity { duration: 180ms; }
+
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 18px;
+                        background: fs-ta.has-hover ? #ffffff2a : #00000052;
+                        animate background { duration: 150ms; }
+                        fs-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.toggle-immersive-fullscreen(); }
+                        }
+                        Image {
+                            source: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: #ffffff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
                     }
-                    Text {
-                        text: "Close";
-                        color: #ffffff;
-                        font-size: 12px;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    Rectangle {
+                        width: close-row.preferred-width + 24px;
+                        height: 36px;
+                        border-radius: 18px;
+                        background: close-ta.has-hover ? #ffffff2a : #00000052;
+                        animate background { duration: 150ms; }
+                        close-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.close-immersive-player(); }
+                        }
+                        close-row := HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 14px;
+                            spacing: 8px;
+                            alignment: center;
+                            Image {
+                                source: @image-url("../../assets/icons/close.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: #ffffff;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            Text {
+                                text: "Close";
+                                color: #ffffff;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
                 }
             }
@@ -162,6 +180,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
 
             if State.immersive-lyrics-open : VerticalLayout {
                 horizontal-stretch: 1;
+                min-width: 0px;
                 height: 100%;
                 spacing: 8px;
                 HorizontalLayout {
@@ -189,26 +208,44 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                         clicked => { Actions.toggle-immersive-lyrics(); }
                     }
                 }
-                Rectangle {
+                lyrics-scroll-area := Rectangle {
                     vertical-stretch: 1;
                     clip: true;
                     Flickable {
-                        content-y: min(0px, - State.lyrics-active-line * 44px + 100px);
+                        content-y: min(0px, - State.lyrics-active-line * 48px + 100px);
                         animate content-y { duration: 250ms; easing: ease-out; }
                         VerticalLayout {
+                            width: lyrics-scroll-area.width;
                             padding-top: 120px;
                             padding-bottom: 200px;
-                            for line[index] in State.lyrics-lines : TouchArea {
-                                height: 44px;
-                                clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
-                                Text {
-                                    text: line.text;
-                                    color: line.is-active ? #ffffff : (line.is-past ? #a4a8a18c : #e3e4df8c);
-                                    font-size: line.is-active ? 24px : 18px;
-                                    font-weight: line.is-active ? 800 : 550;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    wrap: word-wrap;
+                            spacing: 4px;
+                            for line[index] in State.lyrics-lines : Rectangle {
+                                border-radius: 8px;
+                                background: line-ta.has-hover && State.lyrics-timed ? #ffffff18 : transparent;
+                                animate background { duration: 120ms; }
+
+                                line-ta := TouchArea {
+                                    mouse-cursor: State.lyrics-timed ? pointer : default;
+                                    clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
+                                }
+
+                                VerticalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    padding-top: 8px;
+                                    padding-bottom: 8px;
+                                    alignment: center;
+                                    Text {
+                                        width: 100%;
+                                        text: line.text;
+                                        color: line.is-active ? #ffffff : (line-ta.has-hover ? #ffffff : (line.is-past ? #a4a8a18c : #e3e4df8c));
+                                        font-size: line.is-active ? 22px : 16px;
+                                        font-weight: line.is-active ? 800 : 550;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        wrap: word-wrap;
+                                        animate color { duration: 120ms; }
+                                    }
                                 }
                             }
                             if State.lyrics-lines.length == 0 : Text {

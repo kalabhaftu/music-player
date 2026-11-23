@@ -298,130 +298,222 @@ impl AudioEngine {
     }
 
     fn try_init_vlc() -> Option<VlcContext> {
-        let possible_paths = [
-            PathBuf::from("libvlc.dll"),
-            PathBuf::from("artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"),
-            PathBuf::from("../artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"),
-            PathBuf::from("../../artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"),
-        ];
+        let mut candidates = Vec::new();
 
-        let mut dll_path = None;
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(parent) = exe_path.parent() {
-                let candidate = parent.join("libvlc.dll");
-                if candidate.exists() {
-                    dll_path = Some(candidate);
+                candidates.push(parent.join("libvlc.dll"));
+                candidates.push(parent.join("libvlc").join("win-x64").join("libvlc.dll"));
+                candidates.push(parent.join("libvlc").join("libvlc.dll"));
+
+                let mut cur = parent.to_path_buf();
+                for _ in 0..6 {
+                    if let Some(p) = cur.parent() {
+                        cur = p.to_path_buf();
+                        candidates.push(cur.join("libvlc.dll"));
+                        candidates.push(cur.join("artifacts").join("local-installer").join("payload-x64").join("libvlc").join("win-x64").join("libvlc.dll"));
+                        candidates.push(cur.join("libvlc").join("win-x64").join("libvlc.dll"));
+                    } else {
+                        break;
+                    }
                 }
             }
         }
 
-        if dll_path.is_none() {
-            for p in &possible_paths {
-                if p.exists() {
-                    dll_path = Some(p.clone());
+        if let Ok(cwd) = std::env::current_dir() {
+            candidates.push(cwd.join("libvlc.dll"));
+            candidates.push(cwd.join("artifacts").join("local-installer").join("payload-x64").join("libvlc").join("win-x64").join("libvlc.dll"));
+
+            let mut cur = cwd;
+            for _ in 0..6 {
+                if let Some(p) = cur.parent() {
+                    cur = p.to_path_buf();
+                    candidates.push(cur.join("libvlc.dll"));
+                    candidates.push(cur.join("artifacts").join("local-installer").join("payload-x64").join("libvlc").join("win-x64").join("libvlc.dll"));
+                    candidates.push(cur.join("libvlc").join("win-x64").join("libvlc.dll"));
+                } else {
                     break;
                 }
             }
         }
 
-        let dll_path = dll_path?;
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(local_app_data).join("Programs").join("Music Player").join("libvlc").join("win-x64").join("libvlc.dll"));
+        }
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            candidates.push(PathBuf::from(pf).join("VideoLAN").join("VLC").join("libvlc.dll"));
+        }
+        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
+            candidates.push(PathBuf::from(pfx86).join("VideoLAN").join("VLC").join("libvlc.dll"));
+        }
+
+        candidates.push(PathBuf::from("libvlc.dll"));
+        candidates.push(PathBuf::from("artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"));
+        candidates.push(PathBuf::from("../artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"));
+        candidates.push(PathBuf::from("../../artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"));
+        candidates.push(PathBuf::from("../../../artifacts/local-installer/payload-x64/libvlc/win-x64/libvlc.dll"));
+
+        let mut dll_path = None;
+        for c in candidates {
+            if c.exists() {
+                dll_path = Some(c);
+                break;
+            }
+        }
+
+        let Some(dll_path) = dll_path else {
+            crate::log::LocalAppLog::shared().warning("audio-engine", "No candidate for libvlc.dll found");
+            return None;
+        };
+
+        // On Windows, set DLL directory so libvlccore.dll and dependencies resolve
+        #[cfg(windows)]
+        if let Some(parent) = dll_path.parent() {
+            use std::os::windows::ffi::OsStrExt;
+            let mut wide: Vec<u16> = parent.as_os_str().encode_wide().collect();
+            wide.push(0);
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn SetDllDirectoryW(lpPathName: *const u16) -> i32;
+            }
+            unsafe {
+                SetDllDirectoryW(wide.as_ptr());
+            }
+        }
 
         // Set VLC_PLUGIN_PATH if plugins directory exists next to dll
         if let Some(parent) = dll_path.parent() {
             let plugins_dir = parent.join("plugins");
             if plugins_dir.exists() {
-                std::env::set_var("VLC_PLUGIN_PATH", plugins_dir);
+                std::env::set_var("VLC_PLUGIN_PATH", &plugins_dir);
             }
         }
 
         unsafe {
-            let lib = libloading::Library::new(&dll_path).ok()?;
-            let fn_new: unsafe extern "C" fn(i32, *const *const c_char) -> *mut c_void =
-                *lib.get(b"libvlc_new").ok()?;
-            let fn_release: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_release").ok()?;
-            let fn_media_new_path: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void =
-                *lib.get(b"libvlc_media_new_path").ok()?;
-            let fn_media_release: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_media_release").ok()?;
-            let fn_media_add_option: unsafe extern "C" fn(*mut c_void, *const c_char) =
-                *lib.get(b"libvlc_media_add_option").ok()?;
-            let fn_player_new_from_media: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
-                *lib.get(b"libvlc_media_player_new_from_media").ok()?;
-            let fn_player_play: unsafe extern "C" fn(*mut c_void) -> i32 =
-                *lib.get(b"libvlc_media_player_play").ok()?;
-            let fn_player_pause: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_media_player_pause").ok()?;
-            let fn_player_set_pause: unsafe extern "C" fn(*mut c_void, i32) =
-                *lib.get(b"libvlc_media_player_set_pause").ok()?;
-            let fn_player_stop: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_media_player_stop").ok()?;
-            let fn_player_release: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_media_player_release").ok()?;
-            let fn_player_get_time: unsafe extern "C" fn(*mut c_void) -> i64 =
-                *lib.get(b"libvlc_media_player_get_time").ok()?;
-            let fn_player_set_time: unsafe extern "C" fn(*mut c_void, i64) =
-                *lib.get(b"libvlc_media_player_set_time").ok()?;
-            let fn_player_get_length: unsafe extern "C" fn(*mut c_void) -> i64 =
-                *lib.get(b"libvlc_media_player_get_length").ok()?;
-            let fn_player_is_playing: unsafe extern "C" fn(*mut c_void) -> i32 =
-                *lib.get(b"libvlc_media_player_is_playing").ok()?;
-            let fn_player_get_state: unsafe extern "C" fn(*mut c_void) -> i32 =
-                *lib.get(b"libvlc_media_player_get_state").ok()?;
-            let fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32 =
-                *lib.get(b"libvlc_audio_set_volume").ok()?;
-            let fn_audio_output_set: Option<
-                unsafe extern "C" fn(*mut c_void, *const c_char) -> i32,
-            > = lib
-                .get(b"libvlc_audio_output_set")
-                .ok()
-                .map(|symbol| *symbol);
-            let fn_audio_output_device_set: Option<
-                unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char),
-            > = lib
-                .get(b"libvlc_audio_output_device_set")
-                .ok()
-                .map(|symbol| *symbol);
-            let fn_event_manager: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
-                *lib.get(b"libvlc_media_player_event_manager").ok()?;
-            let fn_event_attach:
-                unsafe extern "C" fn(*mut c_void, i32, VlcEventCallback, *mut c_void) -> i32 =
-                    *lib.get(b"libvlc_event_attach").ok()?;
-            let fn_event_detach:
-                unsafe extern "C" fn(*mut c_void, i32, VlcEventCallback, *mut c_void) =
-                    *lib.get(b"libvlc_event_detach").ok()?;
-            let fn_event_type_name: Option<unsafe extern "C" fn(i32) -> *const c_char> =
-                lib.get(b"libvlc_event_type_name").ok().map(|symbol| *symbol);
-
-            let fn_equalizer_new: unsafe extern "C" fn() -> *mut c_void =
-                *lib.get(b"libvlc_audio_equalizer_new").ok()?;
-            let fn_equalizer_new_from_preset: unsafe extern "C" fn(u32) -> *mut c_void =
-                *lib.get(b"libvlc_audio_equalizer_new_from_preset").ok()?;
-            let fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32) =
-                *lib.get(b"libvlc_audio_equalizer_set_preamp_value").ok()?;
-            let fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32) =
-                *lib.get(b"libvlc_audio_equalizer_set_amp_at_index").ok()?;
-            let fn_equalizer_release: unsafe extern "C" fn(*mut c_void) =
-                *lib.get(b"libvlc_audio_equalizer_release").ok()?;
-            let fn_player_set_equalizer: unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32 =
-                *lib.get(b"libvlc_media_player_set_equalizer").ok()?;
-            let fn_equalizer_preset_count: unsafe extern "C" fn() -> u32 =
-                *lib.get(b"libvlc_audio_equalizer_get_preset_count").ok()?;
-            let fn_equalizer_preset_name: unsafe extern "C" fn(u32) -> *const c_char =
-                *lib.get(b"libvlc_audio_equalizer_get_preset_name").ok()?;
-            let fn_equalizer_band_count: unsafe extern "C" fn() -> u32 =
-                *lib.get(b"libvlc_audio_equalizer_get_band_count").ok()?;
-            let fn_equalizer_band_frequency: unsafe extern "C" fn(u32) -> f32 =
-                *lib.get(b"libvlc_audio_equalizer_get_band_frequency").ok()?;
-            let fn_player_set_rate: unsafe extern "C" fn(*mut c_void, f32) -> i32 =
-                *lib.get(b"libvlc_media_player_set_rate").ok()?;
-            let fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32 =
-                *lib.get(b"libvlc_media_player_get_rate").ok()?;
-
-            let instance = fn_new(0, std::ptr::null());
-            if instance.is_null() {
-                return None;
+            let lib = match libloading::Library::new(&dll_path) {
+                Ok(l) => l,
+                Err(e) => {
+                    crate::log::LocalAppLog::shared().warning(
+                        "audio-engine",
+                        &format!("Failed to load {:?}: {:?}", dll_path, e),
+                    );
+                    return None;
+                }
+            };
+            macro_rules! get_sym {
+                ($lib:expr, $name:literal) => {
+                    match $lib.get($name) {
+                        Ok(s) => *s,
+                        Err(e) => {
+                            crate::log::LocalAppLog::shared().warning(
+                                "audio-engine",
+                                &format!("Missing symbol {:?}: {:?}", String::from_utf8_lossy($name), e),
+                            );
+                            return None;
+                        }
+                    }
+                };
             }
+
+        let fn_new: unsafe extern "C" fn(i32, *const *const c_char) -> *mut c_void =
+            get_sym!(lib, b"libvlc_new");
+        let fn_release: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_release");
+        let fn_media_new_path: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void =
+            get_sym!(lib, b"libvlc_media_new_path");
+        let fn_media_release: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_media_release");
+        let fn_media_add_option: unsafe extern "C" fn(*mut c_void, *const c_char) =
+            get_sym!(lib, b"libvlc_media_add_option");
+        let fn_player_new_from_media: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
+            get_sym!(lib, b"libvlc_media_player_new_from_media");
+        let fn_player_play: unsafe extern "C" fn(*mut c_void) -> i32 =
+            get_sym!(lib, b"libvlc_media_player_play");
+        let fn_player_pause: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_media_player_pause");
+        let fn_player_set_pause: unsafe extern "C" fn(*mut c_void, i32) =
+            get_sym!(lib, b"libvlc_media_player_set_pause");
+        let fn_player_stop: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_media_player_stop");
+        let fn_player_release: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_media_player_release");
+        let fn_player_get_time: unsafe extern "C" fn(*mut c_void) -> i64 =
+            get_sym!(lib, b"libvlc_media_player_get_time");
+        let fn_player_set_time: unsafe extern "C" fn(*mut c_void, i64) =
+            get_sym!(lib, b"libvlc_media_player_set_time");
+        let fn_player_get_length: unsafe extern "C" fn(*mut c_void) -> i64 =
+            get_sym!(lib, b"libvlc_media_player_get_length");
+        let fn_player_is_playing: unsafe extern "C" fn(*mut c_void) -> i32 =
+            get_sym!(lib, b"libvlc_media_player_is_playing");
+        let fn_player_get_state: unsafe extern "C" fn(*mut c_void) -> i32 =
+            get_sym!(lib, b"libvlc_media_player_get_state");
+        let fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32 =
+            get_sym!(lib, b"libvlc_audio_set_volume");
+        let fn_audio_output_set: Option<
+            unsafe extern "C" fn(*mut c_void, *const c_char) -> i32,
+        > = lib
+            .get(b"libvlc_audio_output_set")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_audio_output_device_set: Option<
+            unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char),
+        > = lib
+            .get(b"libvlc_audio_output_device_set")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_event_manager: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
+            get_sym!(lib, b"libvlc_media_player_event_manager");
+        let fn_event_attach:
+            unsafe extern "C" fn(*mut c_void, i32, VlcEventCallback, *mut c_void) -> i32 =
+                get_sym!(lib, b"libvlc_event_attach");
+        let fn_event_detach:
+            unsafe extern "C" fn(*mut c_void, i32, VlcEventCallback, *mut c_void) =
+                get_sym!(lib, b"libvlc_event_detach");
+        let fn_event_type_name: Option<unsafe extern "C" fn(i32) -> *const c_char> =
+            lib.get(b"libvlc_event_type_name").ok().map(|symbol| *symbol);
+
+        let fn_equalizer_new: unsafe extern "C" fn() -> *mut c_void =
+            get_sym!(lib, b"libvlc_audio_equalizer_new");
+        let fn_equalizer_new_from_preset: unsafe extern "C" fn(u32) -> *mut c_void =
+            get_sym!(lib, b"libvlc_audio_equalizer_new_from_preset");
+        let fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32) =
+            get_sym!(lib, b"libvlc_audio_equalizer_set_preamp");
+        let fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32) =
+            get_sym!(lib, b"libvlc_audio_equalizer_set_amp_at_index");
+        let fn_equalizer_release: unsafe extern "C" fn(*mut c_void) =
+            get_sym!(lib, b"libvlc_audio_equalizer_release");
+        let fn_player_set_equalizer: unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32 =
+            get_sym!(lib, b"libvlc_media_player_set_equalizer");
+        let fn_equalizer_preset_count: unsafe extern "C" fn() -> u32 =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_preset_count");
+        let fn_equalizer_preset_name: unsafe extern "C" fn(u32) -> *const c_char =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_preset_name");
+        let fn_equalizer_band_count: unsafe extern "C" fn() -> u32 =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_band_count");
+        let fn_equalizer_band_frequency: unsafe extern "C" fn(u32) -> f32 =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_band_frequency");
+        let fn_player_set_rate: unsafe extern "C" fn(*mut c_void, f32) -> i32 =
+            get_sym!(lib, b"libvlc_media_player_set_rate");
+        let fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32 =
+            get_sym!(lib, b"libvlc_media_player_get_rate");
+
+        const ARGS: &[&[u8]] = &[
+            b"--aout=directsound\0",
+            b"--directx-volume=0\0",
+            b"--no-video-title-show\0",
+            b"--no-volume-save\0",
+            b"--no-equalizer-2pass\0",
+            b"--no-equalizer-vlcfreqs\0",
+        ];
+        let argv: Vec<*const c_char> = ARGS.iter().map(|s| s.as_ptr() as *const c_char).collect();
+        let mut instance = fn_new(argv.len() as i32, argv.as_ptr());
+        if instance.is_null() {
+            instance = fn_new(0, std::ptr::null());
+        }
+        if instance.is_null() {
+            eprintln!("[AudioEngine] fn_new returned null instance!");
+            return None;
+        }
 
             Some(VlcContext {
                 _lib: lib,
@@ -923,6 +1015,10 @@ impl AudioEngine {
             }
         }
         self.status == PlaybackStatus::Playing && !self.fallback_flags.end_reached.load(Ordering::SeqCst)
+    }
+
+    pub fn vlc_is_available(&self) -> bool {
+        self.vlc.is_some()
     }
 
     /// Mirrors `_mediaGeneration`.
@@ -1578,5 +1674,16 @@ impl AudioEngine {
         let len = return_buf.iter().position(|&c| c == 0).unwrap_or(return_buf.len());
         let res = String::from_utf16_lossy(&return_buf[..len]);
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vlc_initializes() {
+        let engine = AudioEngine::new();
+        assert!(engine.vlc_is_available(), "AudioEngine must successfully initialize LibVLC");
     }
 }

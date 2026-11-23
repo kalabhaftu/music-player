@@ -1,7 +1,7 @@
 import { State, Actions } from "../state.slint";
 import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
-import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect } from "../widgets.slint";
-import { ScrollView, ListView, Slider } from "std-widgets.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, VerticalEqSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect } from "../widgets.slint";
+import { ScrollView, ListView } from "std-widgets.slint";
 
 // ---- Queue ------------------------------------------------------------------
 component QueueRow inherits Rectangle {
@@ -172,12 +172,13 @@ component QueueRow inherits Rectangle {
 
 export component QueueView inherits Rectangle {
     ScrollView {
-      VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 0px;
+        VerticalLayout {
+            width: parent.width;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -236,6 +237,7 @@ export component QueueView inherits Rectangle {
 export component NowPlayingView inherits Rectangle {
     ScrollView {
         VerticalLayout {
+            width: parent.width;
             padding-left: 24px;
             padding-right: 24px;
             padding-top: 20px;
@@ -277,8 +279,9 @@ export component NowPlayingView inherits Rectangle {
 // ---- Lyrics ------------------------------------------------------------------
 export component LyricsView inherits Rectangle {
     ScrollView {
-      VerticalLayout {
-        padding-left: 24px;
+        VerticalLayout {
+            width: parent.width;
+            padding-left: 24px;
         padding-right: 24px;
         padding-top: 20px;
         padding-bottom: 32px;
@@ -387,6 +390,7 @@ export component LyricsView inherits Rectangle {
 export component AudioView inherits Rectangle {
     ScrollView {
         VerticalLayout {
+            width: parent.width;
             padding-left: 24px;
             padding-right: 24px;
             padding-top: 20px;
@@ -494,20 +498,14 @@ export component AudioView inherits Rectangle {
                         VerticalLayout {
                             spacing: 4px;
                             Text { text: "Preamp"; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
-                            Rectangle {
-                                width: 44px;
-                                height: 220px;
-                                Slider {
-                                    y: 10px;
-                                    height: parent.height - 20px;
-                                    width: parent.width;
-                                    orientation: Orientation.vertical;
-                                    minimum: -12.0;
-                                    maximum: 12.0;
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 4px;
+                                VerticalEqSlider {
                                     value: State.eq-preamp;
-                                    changed value => { Actions.set-eq-preamp(self.value); }
+                                    changed(val) => { Actions.set-eq-preamp(val); }
                                 }
-                                Text { text: "\{round(State.eq-preamp)}dB"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                                Text { text: "\{round(State.eq-preamp)}dB"; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
                             }
                         }
                         HorizontalLayout {
@@ -515,20 +513,14 @@ export component AudioView inherits Rectangle {
                             for band[index] in State.eq-bands : VerticalLayout {
                                 spacing: 4px;
                                 Text { text: band.label; color: Palette.muted; font-size: 9px; horizontal-alignment: center; }
-                                Rectangle {
-                                    width: 36px;
-                                    height: 220px;
-                                    Slider {
-                                        y: 10px;
-                                        height: parent.height - 20px;
-                                        width: parent.width;
-                                        orientation: Orientation.vertical;
-                                        minimum: -12.0;
-                                        maximum: 12.0;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 4px;
+                                    VerticalEqSlider {
                                         value: band.value;
-                                        changed value => { Actions.set-eq-band(index, self.value); }
+                                        changed(val) => { Actions.set-eq-band(index, val); }
                                     }
-                                    Text { text: "\{round(band.value)}"; y: parent.height - 16px; width: parent.width; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                                    Text { text: "\{round(band.value)}"; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
                                 }
                             }
                         }

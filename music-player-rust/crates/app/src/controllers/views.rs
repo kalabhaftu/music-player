@@ -70,7 +70,9 @@ impl App {
         };
         state.set_accent_preset_name(ss(accent_preset));
 
-        let custom_caption = if accent_mode == "Artwork" {
+        let custom_caption = if self.ui.global::<State>().get_immersive_player_open() {
+            Some((0x10, 0x11, 0x0f))
+        } else if accent_mode == "Artwork" {
             artwork_palette
                 .as_ref()
                 .map(|p| (p.sidebar.r, p.sidebar.g, p.sidebar.b))
@@ -975,7 +977,7 @@ impl App {
                 source: ss("Windows App SDK"),
             },
         ];
-        let releases = vec![
+        let mut releases = vec![
             ReleaseItem {
                 tag: ss("v1.0.4"),
                 prerelease: false,
@@ -1002,6 +1004,7 @@ impl App {
                 url: ss("https://github.com/kalabhaftu/music-player/releases/tag/v1.0.0"),
             },
         ];
+        releases.truncate(8);
         let state = self.ui.global::<State>();
         state.set_about_rows(ui_model(rows).into());
         state.set_about_components(ui_model(components).into());
@@ -1639,9 +1642,11 @@ impl App {
             _ => "folder",
         };
         let group_title = if column == "folder" {
-            Path::new(value)
+            let trimmed = value.trim_end_matches(['\\', '/']);
+            Path::new(trimmed)
                 .file_name()
                 .and_then(|f| f.to_str())
+                .filter(|s| !s.is_empty())
                 .unwrap_or(value)
                 .to_string()
         } else {

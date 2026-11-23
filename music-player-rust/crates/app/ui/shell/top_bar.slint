@@ -10,6 +10,7 @@ export component TopBar inherits Rectangle {
 
     height: 56px;
     background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
 
     // 1px bottom border matching original CSS
     Rectangle {
@@ -295,7 +296,7 @@ export component ToolsMenuOverlay inherits Rectangle {
     background: #00000000;
     TouchArea { clicked => { State.tools-menu-open = false; } }
     Rectangle {
-        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 200px);
+        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 190px - (State.window-width <= 700 ? 8px : 16px));
         y: 60px;
         width: 190px;
         height: 86px;

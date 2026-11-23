@@ -201,6 +201,82 @@ export component PlayerSlider inherits Rectangle {
     }
 }
 
+export component VerticalEqSlider inherits Rectangle {
+    in-out property <float> value: 0.0;
+    in property <float> minimum: -12.0;
+    in property <float> maximum: 12.0;
+    in property <float> step: 0.5;
+    callback changed(float);
+
+    width: 36px;
+    height: 200px;
+
+    area := TouchArea {
+        mouse-cursor: ns-resize;
+        clicked => {
+            let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+            let raw = root.minimum + frac * (root.maximum - root.minimum);
+            let stepped = round(raw / root.step) * root.step;
+            root.value = clamp(stepped, root.minimum, root.maximum);
+            root.changed(root.value);
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down || (event.kind == PointerEventKind.move && area.pressed)) {
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                root.value = clamp(stepped, root.minimum, root.maximum);
+                root.changed(root.value);
+            }
+        }
+    }
+
+    // Vertical track line
+    Rectangle {
+        x: (parent.width - 4px) / 2;
+        y: 10px;
+        width: 4px;
+        height: 180px;
+        border-radius: 2px;
+        background: Palette.border;
+
+        // 0 dB center tick
+        Rectangle {
+            y: 90px;
+            x: (parent.width - 12px) / 2;
+            width: 12px;
+            height: 1px;
+            background: Palette.muted-2;
+        }
+
+        // Active fill from center
+        Rectangle {
+            x: 0px;
+            width: 4px;
+            border-radius: 2px;
+            background: area.has-hover || area.pressed ? State.accent : Palette.text-subtle;
+            animate background { duration: 100ms; }
+            y: root.value >= 0.0
+                ? 10px + (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - 10px
+                : 90px;
+            height: abs(root.value) / (root.maximum - root.minimum) * 180px;
+        }
+    }
+
+    // Circular Thumb
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: clamp(10px + (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - self.height / 2, 3px, parent.height - self.height - 3px);
+        width: area.has-hover || area.pressed ? 16px : 14px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: #ffffff;
+        drop-shadow-blur: 4px;
+        drop-shadow-color: #00000050;
+        animate width { duration: 100ms; }
+    }
+}
+
 export component TextBtn inherits Rectangle {
     in property <string> label;
     in property <bool> danger: false;
@@ -239,7 +315,7 @@ export component CustomSelect inherits Rectangle {
     in property <bool> enabled: true;
     callback selected(string);
 
-    min-width: 120px;
+    min-width: 75px;
     height: 31px;
     border-radius: 8px;
     border-width: 1px;
@@ -529,7 +605,7 @@ export component TrackRow inherits Rectangle {
 
         HorizontalLayout {
             horizontal-stretch: 1;
-            min-width: 160px;
+            min-width: 0px;
             spacing: 6px;
 
             VerticalLayout {
@@ -595,8 +671,8 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        if root.show-album && State.show-list-album : Rectangle {
-            width: max(130px, State.content-avail-width * 0.25);
+        if root.show-album && State.show-list-album && State.content-avail-width > 480px : Rectangle {
+            width: max(80px, State.content-avail-width * 0.22);
             album-area := TouchArea {
                 clicked => { Actions.set-view("Album", "", root.track.album, ""); }
             }
@@ -612,7 +688,7 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        if State.show-list-added && root.show-added && State.content-avail-width > 550px : Text {
+        if State.show-list-added && root.show-added && State.content-avail-width > 680px : Text {
             text: root.track.added;
             color: Palette.text-subtle;
             font-size: 11px;
@@ -621,7 +697,7 @@ export component TrackRow inherits Rectangle {
             vertical-alignment: center;
         }
 
-        if State.show-list-year && root.show-year && State.content-avail-width > 620px : Text {
+        if State.show-list-year && root.show-year && State.content-avail-width > 760px : Text {
             text: root.track.year;
             color: Palette.text-subtle;
             font-size: 11px;
@@ -642,7 +718,7 @@ export component TrackRow inherits Rectangle {
             text: root.track.duration;
             color: Palette.muted;
             font-size: 11px;
-            width: 64px;
+            width: 54px;
             horizontal-alignment: right;
             vertical-alignment: center;
         }
@@ -687,19 +763,19 @@ export component TrackHeader inherits Rectangle {
             active: root.active-sort == root.first-sort;
             descending: root.descending;
             horizontal-stretch: 1;
-            min-width: 160px;
+            min-width: 0px;
             sort => { root.sort(root.first-sort); }
         }
 
-        if root.show-album && State.show-list-album : HeaderCell {
+        if root.show-album && State.show-list-album && State.content-avail-width > 480px : HeaderCell {
             label: "ALBUM";
-            width: max(130px, State.content-avail-width * 0.25);
+            width: max(80px, State.content-avail-width * 0.22);
             active: root.active-sort == "Album";
             descending: root.descending;
             sort => { root.sort("Album"); }
         }
 
-        if State.show-list-added && root.show-added && State.content-avail-width > 550px : HeaderCell {
+        if State.show-list-added && root.show-added && State.content-avail-width > 680px : HeaderCell {
             label: "ADDED";
             width: 100px;
             active: root.active-sort == "Added";
@@ -707,7 +783,7 @@ export component TrackHeader inherits Rectangle {
             sort => { root.sort("Added"); }
         }
 
-        if State.show-list-year && root.show-year && State.content-avail-width > 620px : HeaderCell {
+        if State.show-list-year && root.show-year && State.content-avail-width > 760px : HeaderCell {
             label: "YEAR";
             width: 70px;
             active: root.active-sort == "Year";
@@ -725,7 +801,7 @@ export component TrackHeader inherits Rectangle {
 
         if State.show-list-duration : HeaderCell {
             label: "TIME";
-            width: 64px;
+            width: 54px;
             right-align: true;
             sort => { root.sort("Duration"); }
         }
@@ -747,6 +823,7 @@ export component TrackTable inherits Rectangle {
     callback sort(string);
 
     VerticalLayout {
+        alignment: start;
         TrackHeader {
             first-column: root.first-column;
             first-sort: root.first-sort;
@@ -780,6 +857,7 @@ export component TrackTable inherits Rectangle {
         }
 
         if !root.scrollable : VerticalLayout {
+            alignment: start;
             for row[index] in State.tracks : TrackRow {
                 track: row;
                 index: index + 1;
@@ -1136,6 +1214,7 @@ export component HeroDetail inherits Rectangle {
     min-height: 230px;
     border-radius: 8px;
     background: State.light-theme ? Palette.panel : #0e100e;
+    animate background { duration: 400ms; easing: ease-in-out; }
 
     Rectangle {
         width: 100%;
@@ -1151,8 +1230,8 @@ export component HeroDetail inherits Rectangle {
         spacing: 24px;
 
         Rectangle {
-            width: 190px;
-            height: 190px;
+            width: clamp(State.content-avail-width * 0.28, 120px, 190px);
+            height: self.width;
             border-radius: root.round ? self.width / 2 : 8px;
             clip: true;
             drop-shadow-offset-x: 0px;
