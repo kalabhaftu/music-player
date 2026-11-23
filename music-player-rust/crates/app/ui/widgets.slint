@@ -1218,17 +1218,47 @@ export component HeroDetail inherits Rectangle {
     callback details();
 
     min-height: 230px;
-    border-radius: 8px;
+    border-radius: 12px;
+    clip: true;
     background: State.light-theme ? Palette.panel : #0e100e;
     animate background { duration: 400ms; easing: ease-in-out; }
 
+    // Blurred artwork backdrop behind the hero card (like immersive player & WebUI)
+    if root.has-cover : Image {
+        source: root.cover;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * 1.25;
+        height: parent.height * 1.45;
+        image-fit: ImageFit.cover;
+        opacity: State.light-theme ? 0.14 : 0.26;
+    }
+
+    // Gradient overlay to keep text fully legible and contrast crisp
     Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: 8px;
-        background: State.light-theme
-            ? @linear-gradient(110deg, State.accent.with-alpha(0.08) 0%, Palette.text.with-alpha(0.02) 45%, transparent 100%)
-            : @linear-gradient(110deg, State.accent.with-alpha(0.11) 0%, #ffffff05 45%, transparent 100%);
+        background: @linear-gradient(90deg,
+            (State.light-theme ? #ffffffea : #0e100ef2) 0%,
+            (State.light-theme ? #ffffffd0 : #0e100ec0) 50%,
+            (State.light-theme ? #ffffff98 : #0e100e70) 100%
+        );
+    }
+
+    // Accent wash
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(110deg, State.accent.with-alpha(0.18) 0%, transparent 60%);
+    }
+
+    // 1px subtle border
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Palette.border;
     }
 
     HorizontalLayout {
