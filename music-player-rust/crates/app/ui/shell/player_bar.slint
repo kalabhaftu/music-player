@@ -27,7 +27,7 @@ export component PlayerBar inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             min-width: 0px;
-            max-width: clamp(State.window-width * 0.3 * 1px, 160px, 280px);
+            max-width: clamp(State.window-width * 0.32 * 1px, 180px, 460px);
             alignment: center;
 
             HorizontalLayout {
@@ -92,15 +92,20 @@ export component PlayerBar inherits Rectangle {
                         icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
                         icon-size: 16px;
                         tint: State.current-favorite ? State.accent : Palette.icon-muted;
-                        clicked => { if (State.current-id != "") { Actions.toggle-favorite(State.current-id); } }
+                        clicked => {
+                            if (State.current-id != "") {
+                                State.current-favorite = !State.current-favorite;
+                                Actions.toggle-favorite(State.current-id);
+                            }
+                        }
                     }
                 }
             }
         }
 
         VerticalLayout {
-            horizontal-stretch: 2;
-            min-width: 140px;
+            horizontal-stretch: 1;
+            min-width: State.window-width <= 650 ? 140px : (State.window-width <= 900 ? 190px : 260px);
             alignment: center;
             spacing: 7px;
 
@@ -219,62 +224,61 @@ export component PlayerBar inherits Rectangle {
             }
 
             HorizontalLayout {
-                alignment: center;
+                Rectangle { horizontal-stretch: 1; }
                 Rectangle {
-                    max-width: 520px;
-                    min-width: 140px;
-                    horizontal-stretch: 1;
+                    width: clamp(State.window-width * 0.38 * 1px, 160px, 520px);
                     height: 16px;
                     HorizontalLayout {
                         width: 100%;
                         height: 100%;
                         spacing: State.window-width <= 650 ? 4px : 8px;
 
-                    Text {
-                        text: State.current-time;
-                        color: #747b74;
-                        font-size: State.window-width <= 650 ? 8px : 9px;
-                        vertical-alignment: center;
-                        horizontal-alignment: right;
-                    }
-                    PlayerSlider {
-                        horizontal-stretch: 1;
-                        scrollable: false;
-                        commit-on-release: true;
-                        minimum: 0.0;
-                        maximum: 1.0;
-                        value: State.progress;
-                        fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
-                        track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
-                        thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
-                        preview(val) => { Actions.preview-seek-fraction(val); }
-                        finished(val) => { Actions.seek-fraction(val); }
-                        scrolled(event) => {
-                            if (!State.has-track) { return reject; }
-                            let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
-                            if (delta != 0) {
-                                Actions.seek-wheel(delta);
-                                return accept;
+                        Text {
+                            text: State.current-time;
+                            color: #747b74;
+                            font-size: State.window-width <= 650 ? 8px : 9px;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        PlayerSlider {
+                            horizontal-stretch: 1;
+                            min-width: 40px;
+                            scrollable: false;
+                            commit-on-release: true;
+                            minimum: 0.0;
+                            maximum: 1.0;
+                            value: State.progress;
+                            fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                            preview(val) => { Actions.preview-seek-fraction(val); }
+                            finished(val) => { Actions.seek-fraction(val); }
+                            scrolled(event) => {
+                                if (!State.has-track) { return reject; }
+                                let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
+                                if (delta != 0) {
+                                    Actions.seek-wheel(delta);
+                                    return accept;
+                                }
+                                reject
                             }
-                            reject
+                        }
+                        Text {
+                            text: State.total-time;
+                            color: #747b74;
+                            font-size: State.window-width <= 650 ? 8px : 9px;
+                            horizontal-alignment: left;
+                            vertical-alignment: center;
                         }
                     }
-                    Text {
-                        text: State.total-time;
-                        color: #747b74;
-                        font-size: State.window-width <= 650 ? 8px : 9px;
-                        horizontal-alignment: left;
-                        vertical-alignment: center;
-                    }
                 }
-            }
+                Rectangle { horizontal-stretch: 1; }
             }
         }
 
         VerticalLayout {
             horizontal-stretch: 1;
             min-width: 0px;
-            max-width: clamp(State.window-width * 0.3 * 1px, 160px, 280px);
             alignment: center;
 
             HorizontalLayout {

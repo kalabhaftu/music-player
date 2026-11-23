@@ -1935,6 +1935,10 @@ impl App {
             }
         }
 
+        while let Ok((path, matched)) = self.prefetch_lyrics_rx.try_recv() {
+            self.lyrics_cache.insert(path, (Instant::now(), matched));
+        }
+
         if let Some(rx) = &self.auto_lyrics_rx {
             if let Ok((path, result)) = rx.try_recv() {
                 self.auto_lyrics_rx = None;

@@ -734,6 +734,15 @@ impl App {
             return;
         };
         let new_value = !track.favorite;
+        if let Some(cached) = self.track_cache.get_mut(&track.path) {
+            cached.favorite = new_value;
+        }
+        if let Some(curr) = &mut self.current {
+            if curr.path == track.path {
+                curr.favorite = new_value;
+                self.ui.global::<State>().set_current_favorite(new_value);
+            }
+        }
         if self.store.set_favorite(&track.path, new_value).is_ok() {
             self.refresh_view();
             if self.current.as_ref().map(|t| t.path.as_str()) == Some(track.path.as_str()) {

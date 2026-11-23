@@ -169,6 +169,9 @@ pub fn lyric_match_score(
 /// Detects if lyrics contain censored profanity (e.g. `f***`, `b****`, `n****`, `s***`, `***`).
 pub fn is_censored_lyrics(text: &str) -> bool {
     let lower = text.to_lowercase();
+    if lower.contains("[censored]") || lower.contains("[bleep]") {
+        return true;
+    }
     for word in lower.split_whitespace() {
         let clean: String = word
             .chars()
@@ -188,6 +191,12 @@ pub fn is_censored_lyrics(text: &str) -> bool {
                 || clean.starts_with("c*")
                 || clean.starts_with("d*")
                 || clean.starts_with("a**")
+                || clean.contains("f**")
+                || clean.contains("f--")
+                || clean.contains("b**")
+                || clean.contains("b--")
+                || clean.contains("n**")
+                || clean.contains("sh*")
                 || clean == "***"
                 || clean == "****"
                 || clean == "*****"

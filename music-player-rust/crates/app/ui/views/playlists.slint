@@ -380,7 +380,6 @@ export component PlaylistView inherits Rectangle {
         }
         if State.tracks.length > 0 || State.page-loading : TrackTable {
             scrollable: false;
-            height: 37px + (State.tracks.length == 0 ? 120px : State.tracks.length * 58px) + (State.can-load-more ? 44px : 0px);
             show-added: false;
             show-year: false;
             first-column: "TITLE";

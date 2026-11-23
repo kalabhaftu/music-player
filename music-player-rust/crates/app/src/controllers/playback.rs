@@ -58,6 +58,73 @@ impl App {
                 }
             }
         }
+
+        // Preload upcoming lyrics (next 3 tracks in queue, 1:1 parity with WebUI preloadUpcomingLyrics)
+        use music_player_core::settings::keys as k;
+        let auto_load = self.settings.bool_or(k::AUTO_LOAD_LYRICS, true);
+        for path in entries.iter().skip(upcoming_start).take(3) {
+            if self.lyrics_cache.contains_key(path) {
+                continue;
+            }
+            if let Some(sidecar) = read_sidecar(path) {
+                let doc = parse_lrc(&sidecar);
+                let timed = !doc.lines.is_empty();
+                self.lyrics_cache.insert(
+                    path.clone(),
+                    (
+                        Instant::now(),
+                        Some(music_player_core::lyrics::LyricsMatch {
+                            raw: sidecar,
+                            timed,
+                            score: 1.0,
+                            result: music_player_core::lyrics::LyricsSearchResult::default(),
+                        }),
+                    ),
+                );
+                continue;
+            }
+            if let Some(embedded) = read_tags(path).lyrics {
+                let doc = parse_lrc(&embedded);
+                let timed = !doc.lines.is_empty();
+                self.lyrics_cache.insert(
+                    path.clone(),
+                    (
+                        Instant::now(),
+                        Some(music_player_core::lyrics::LyricsMatch {
+                            raw: embedded,
+                            timed,
+                            score: 1.0,
+                            result: music_player_core::lyrics::LyricsSearchResult::default(),
+                        }),
+                    ),
+                );
+                continue;
+            }
+            if auto_load {
+                if let Some(track) = self.track_cache.get(path).cloned() {
+                    let tx = self.prefetch_lyrics_tx.clone();
+                    let t_path = path.clone();
+                    let t_title = track.title.clone();
+                    let t_artist = track.artist.clone();
+                    let t_duration = (track.duration_ms as f64) / 1000.0;
+                    std::thread::spawn(move || {
+                        let mut client = music_player_core::lyrics::LrclibSearchClient::new();
+                        let matched = client
+                            .search(&t_title, &t_artist)
+                            .ok()
+                            .and_then(|results| {
+                                music_player_core::lyrics::select_lyrics_match(
+                                    &t_title,
+                                    &t_artist,
+                                    t_duration,
+                                    &results,
+                                )
+                            });
+                        let _ = tx.send((t_path, matched));
+                    });
+                }
+            }
+        }
     }
 
     pub(crate) fn play_track(&mut self, track: Track, reset_queue: bool, index: Option<usize>) {

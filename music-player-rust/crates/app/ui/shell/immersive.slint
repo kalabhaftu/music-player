@@ -27,6 +27,10 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         animate background { duration: 400ms; easing: ease-in-out; }
     }
 
+    overlay-hover := TouchArea {
+        mouse-cursor: default;
+    }
+
     VerticalLayout {
         padding-left: 28px;
         padding-right: 28px;
@@ -50,7 +54,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 }
                 HorizontalLayout {
                     spacing: 12px;
-                    opacity: (top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.0;
+                    opacity: (overlay-hover.has-hover || top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.0;
                     animate opacity { duration: 180ms; }
 
                     Rectangle {
@@ -112,15 +116,18 @@ export component ImmersivePlayerOverlay inherits Rectangle {
             alignment: center;
             padding-left: 20px;
             padding-right: 20px;
-            spacing: State.immersive-lyrics-open ? 44px : 0px;
+            spacing: State.immersive-lyrics-open ? 40px : 0px;
 
-            VerticalLayout {
+            art-column := VerticalLayout {
                 alignment: center;
                 spacing: 16px;
-                horizontal-stretch: State.immersive-lyrics-open ? 0.85 : 1;
+                horizontal-stretch: 0;
+                width: State.immersive-lyrics-open
+                    ? clamp(State.window-height * 0.38 * 1px, 240px, 420px)
+                    : clamp(State.window-height * 0.44 * 1px, 280px, 480px);
 
                 Rectangle {
-                    width: max(320px, min(State.window-width * 1px * (State.immersive-lyrics-open ? 0.30 : 0.40), State.immersive-lyrics-open ? 380px : 480px));
+                    width: parent.width;
                     height: self.width;
                     border-radius: 16px;
                     clip: true;
@@ -144,17 +151,18 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 }
 
                 HorizontalLayout {
-                    width: max(320px, min(State.window-width * 1px * (State.immersive-lyrics-open ? 0.30 : 0.40), State.immersive-lyrics-open ? 380px : 480px));
+                    width: parent.width;
                     spacing: 12px;
                     alignment: center;
 
                     VerticalLayout {
                         horizontal-stretch: 1;
+                        min-width: 0px;
                         spacing: 4px;
                         Text {
                             text: State.has-track ? State.current-title : "Nothing playing";
                             color: #ffffff;
-                            font-size: 26px;
+                            font-size: 24px;
                             font-weight: 800;
                             letter-spacing: -0.5px;
                             overflow: elide;
@@ -173,14 +181,17 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                         icon-size: 20px;
                         width: 40px;
                         height: 40px;
-                        clicked => { Actions.toggle-favorite(State.current-id); }
+                        clicked => {
+                            State.current-favorite = !State.current-favorite;
+                            Actions.toggle-favorite(State.current-id);
+                        }
                     }
                 }
             }
 
             if State.immersive-lyrics-open : VerticalLayout {
                 horizontal-stretch: 1;
-                min-width: 0px;
+                min-width: 240px;
                 height: 100%;
                 spacing: 8px;
                 HorizontalLayout {
@@ -212,12 +223,12 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     vertical-stretch: 1;
                     clip: true;
                     Flickable {
-                        content-y: min(0px, - State.lyrics-active-line * 48px + 100px);
+                        content-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 44px + 120px);
                         animate content-y { duration: 250ms; easing: ease-out; }
                         VerticalLayout {
-                            width: lyrics-scroll-area.width;
-                            padding-top: 120px;
-                            padding-bottom: 200px;
+                            width: 100%;
+                            padding-top: 140px;
+                            padding-bottom: 220px;
                             spacing: 4px;
                             for line[index] in State.lyrics-lines : Rectangle {
                                 border-radius: 8px;
@@ -266,17 +277,20 @@ export component ImmersivePlayerOverlay inherits Rectangle {
             alignment: center;
 
             VerticalLayout {
-                width: min(parent.width - 56px, 860px);
+                width: clamp(State.window-width * (State.immersive-lyrics-open ? 0.84 : 0.60) * 1px, 280px, 860px);
                 spacing: 6px;
                 HorizontalLayout {
-                    Text { text: State.current-time; color: #ffffffb0; font-size: 12px; horizontal-stretch: 1; }
-                    Text { text: State.total-time; color: #ffffffb0; font-size: 12px; horizontal-alignment: right; }
+                    Text { text: State.current-time; color: #ffffffb0; font-size: 12px; font-weight: 550; horizontal-stretch: 1; }
+                    Text { text: State.total-time; color: #ffffffb0; font-size: 12px; font-weight: 550; horizontal-alignment: right; }
                 }
                 PlayerSlider {
                     commit-on-release: true;
                     minimum: 0.0;
                     maximum: 1.0;
                     value: State.progress;
+                    fill-color: State.accent;
+                    track-color: #ffffff30;
+                    thumb-color: #ffffff;
                     preview(val) => { Actions.preview-seek-fraction(val); }
                     finished(val) => { Actions.seek-fraction(val); }
                     scrolled(event) => {

@@ -277,6 +277,12 @@ impl Default for AudioEngine {
 impl AudioEngine {
     pub fn new() -> Self {
         let vlc = Self::try_init_vlc();
+        if vlc.is_none() {
+            crate::log::LocalAppLog::shared().warning(
+                "audio-engine",
+                "LibVLC is unavailable. Audio playback will fall back to platform native audio (MCI).",
+            );
+        }
         Self {
             current_path: None,
             duration_ms: 0,
@@ -697,9 +703,10 @@ impl AudioEngine {
         #[cfg(windows)]
         {
             let _ = Self::send_mci("close mp_audio");
-            let open_cmd = format!("open \"{}\" type mpegvideo alias mp_audio", path_str);
+            let mci_target = Self::get_short_path(&path_str).unwrap_or_else(|| path_str.clone());
+            let open_cmd = format!("open \"{}\" type mpegvideo alias mp_audio", mci_target);
             if let Err(e) = Self::send_mci(&open_cmd) {
-                let fallback_cmd = format!("open \"{}\" alias mp_audio", path_str);
+                let fallback_cmd = format!("open \"{}\" alias mp_audio", mci_target);
                 Self::send_mci(&fallback_cmd).map_err(|e2| format!("{}: {}", e, e2))?;
             }
             let _ = Self::send_mci("set mp_audio time format milliseconds");
@@ -1636,6 +1643,33 @@ impl AudioEngine {
             if let Some(ref spare) = vlc.spare {
                 let _ = (vlc.fn_audio_set_volume)(spare.player, incoming as i32);
             }
+        }
+    }
+
+    #[cfg(windows)]
+    fn get_short_path(path: &str) -> Option<String> {
+        use std::ffi::{OsStr, OsString};
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetShortPathNameW(
+                lpszLongPath: *const u16,
+                lpszShortPath: *mut u16,
+                cchBuffer: u32,
+            ) -> u32;
+        }
+
+        let mut wide: Vec<u16> = OsStr::new(path).encode_wide().collect();
+        wide.push(0);
+
+        let mut buf = vec![0u16; 1024];
+        let len = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+        if len > 0 && (len as usize) < buf.len() {
+            buf.truncate(len as usize);
+            Some(OsString::from_wide(&buf).to_string_lossy().to_string())
+        } else {
+            None
         }
     }
 

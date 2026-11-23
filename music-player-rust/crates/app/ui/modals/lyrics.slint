@@ -123,6 +123,16 @@ export component FindLyricsModal inherits Rectangle {
                 }
             }
         }
+
+        HorizontalLayout {
+            height: 36px;
+            alignment: end;
+            TextBtn {
+                label: "Close";
+                height: 32px;
+                clicked => { Actions.close-modal(); }
+            }
+        }
     }
 }
 

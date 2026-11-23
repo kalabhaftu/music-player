@@ -459,10 +459,9 @@ export component DetailView inherits Rectangle {
 
                 TrackTable {
                     scrollable: false;
-                    height: 37px + (State.tracks.length == 0 ? 120px : State.tracks.length * 58px) + (State.can-load-more ? 44px : 0px);
                     show-added: true;
                     show-year: false;
-                    show-album: State.view != "Album" && State.view-group-column != "album";
+                    show-album: State.view != "Album" && State.view-group-column != "album" && root.eyebrow != "ALBUM";
                     first-column: "TITLE";
                     first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
                     sort(column) => { Actions.sort-view(column); }

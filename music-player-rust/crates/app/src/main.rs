@@ -4,6 +4,7 @@
 //! the UI thread behind a 250 ms timer (`Clock_Tick`), exactly like the
 //! original DispatcherTimer loop. The `core` crate remains headless.
 #![allow(deprecated)]
+#![windows_subsystem = "windows"]
 
 mod controllers;
 mod native_io;
@@ -43,7 +44,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 slint::include_modules!();
@@ -120,6 +121,8 @@ pub(crate) struct App {
     pub(crate) scan_progress_rx: Option<Receiver<ScanProgress>>,
     pub(crate) lyrics_rx: Option<Receiver<std::result::Result<Vec<LyricsSearchResult>, String>>>,
     pub(crate) auto_lyrics_rx: Option<Receiver<(String, std::result::Result<Option<music_player_core::lyrics::LyricsMatch>, String>)>>,
+    pub(crate) prefetch_lyrics_tx: Sender<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
+    pub(crate) prefetch_lyrics_rx: Receiver<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
     pub(crate) lyrics_cache: HashMap<String, (Instant, Option<music_player_core::lyrics::LyricsMatch>)>,
     pub(crate) lyrics_results: Vec<LyricsSearchResult>,
     pub(crate) notice_timer: Timer,
@@ -204,6 +207,7 @@ impl App {
             let _ = engine.set_audio_output_device(&direct_sound);
         }
         let now = Instant::now();
+        let (prefetch_lyrics_tx, prefetch_lyrics_rx) = mpsc::channel();
         Self {
             ui,
             availability: TrackAvailabilityService::new(&store)
@@ -218,6 +222,8 @@ impl App {
             scan_progress_rx: None,
             lyrics_rx: None,
             auto_lyrics_rx: None,
+            prefetch_lyrics_tx,
+            prefetch_lyrics_rx,
             lyrics_cache: HashMap::new(),
             lyrics_results: Vec::new(),
             notice_timer: Timer::default(),

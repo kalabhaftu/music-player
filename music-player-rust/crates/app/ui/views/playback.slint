@@ -329,8 +329,8 @@ export component LyricsView inherits Rectangle {
             vertical-stretch: 1;
             clip: true;
             Flickable {
-                content-y: min(0px, - State.lyrics-active-line * 64px + parent.height * 0.42);
-                animate content-y { duration: 250ms; easing: ease-out; }
+                viewport-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + parent.height * 0.42);
+                animate viewport-y { duration: 250ms; easing: ease-out; }
 
                 VerticalLayout {
                     for line[index] in State.lyrics-lines : TouchArea {
@@ -492,36 +492,33 @@ export component AudioView inherits Rectangle {
                     border-radius: 12px;
                     background: Palette.raised;
                     HorizontalLayout {
-                        padding: 16px;
-                        spacing: 8px;
-                        alignment: start;
-                        VerticalLayout {
-                            spacing: 4px;
-                            Text { text: "Preamp"; color: Palette.muted; font-size: 10px; horizontal-alignment: center; }
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 4px;
-                                VerticalEqSlider {
-                                    value: State.eq-preamp;
-                                    changed(val) => { Actions.set-eq-preamp(val); }
-                                }
-                                Text { text: "\{round(State.eq-preamp)}dB"; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
+                        padding-top: 24px;
+                        padding-bottom: 24px;
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 12px;
+                        alignment: center;
+                        for band[index] in State.eq-bands : VerticalLayout {
+                            spacing: 12px;
+                            alignment: center;
+                            Text {
+                                text: band.label;
+                                color: Palette.muted;
+                                font-size: 11px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
                             }
-                        }
-                        HorizontalLayout {
-                            spacing: 10px;
-                            for band[index] in State.eq-bands : VerticalLayout {
-                                spacing: 4px;
-                                Text { text: band.label; color: Palette.muted; font-size: 9px; horizontal-alignment: center; }
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 4px;
-                                    VerticalEqSlider {
-                                        value: band.value;
-                                        changed(val) => { Actions.set-eq-band(index, val); }
-                                    }
-                                    Text { text: "\{round(band.value)}"; color: Palette.muted-2; font-size: 9px; horizontal-alignment: center; }
-                                }
+                            VerticalEqSlider {
+                                minimum: -20.0;
+                                maximum: 20.0;
+                                value: band.value;
+                                changed(val) => { Actions.set-eq-band(index, val); }
+                            }
+                            Text {
+                                text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
+                                color: Palette.text;
+                                font-size: 11px;
+                                horizontal-alignment: center;
                             }
                         }
                     }

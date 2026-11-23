@@ -277,7 +277,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_open_immersive_player(move || {
-            let mut app = a.borrow_mut();
+            let app = a.borrow();
             let state = app.ui.global::<State>();
             state.set_immersive_player_open(true);
             state.set_immersive_lyrics_open(false);
@@ -288,7 +288,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive_player(move || {
-            let mut app = a.borrow_mut();
+            let app = a.borrow();
             if app.ui.window().is_fullscreen() {
                 app.ui.window().set_fullscreen(false);
             }
