@@ -16,6 +16,7 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM,
     ERROR_ALREADY_EXISTS,
 };
+use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NOTIFYICONDATAW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
@@ -333,7 +334,11 @@ unsafe fn run_tray_thread(
     }
     hwnd_slot.store(hwnd as isize, Ordering::SeqCst);
 
-    let icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
+    let hinstance = GetModuleHandleW(std::ptr::null());
+    let mut icon = LoadIconW(hinstance, 1 as *const u16);
+    if icon.is_null() {
+        icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
+    }
     let taskbar_created_name: Vec<u16> = "TaskbarCreated\0".encode_utf16().collect();
     let taskbar_created_msg = RegisterWindowMessageW(taskbar_created_name.as_ptr());
 
