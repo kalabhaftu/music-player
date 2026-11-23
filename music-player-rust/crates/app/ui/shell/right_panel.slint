@@ -223,7 +223,7 @@ export component RightPanel inherits Rectangle {
                     overflow: elide;
                 }
                 Text {
-                    text: State.current-album == "" ? State.current-artist : "\{State.current-artist} • \{State.current-album}";
+                    text: State.current-album == "" ? State.current-artist : "\{State.current-artist} · \{State.current-album}";
                     color: Palette.muted;
                     font-size: 11px;
                     overflow: elide;

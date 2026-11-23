@@ -102,9 +102,9 @@ export component AppWindow inherits Window {
                     return accept;
                 }
                 // Left / Right arrows: seek backward/forward (5s; 10s if shift)
-                // Ctrl+Left / Ctrl+Right: previous / next track
+                // Alt+Left / Alt+Right (or Ctrl+Left / Ctrl+Right): previous / next track
                 if (event.text == Key.LeftArrow) {
-                    if (event.modifiers.control) {
+                    if (event.modifiers.control || event.modifiers.alt) {
                         Actions.previous();
                     } else {
                         Actions.seek-relative(event.modifiers.shift ? -10 : -5);
@@ -112,7 +112,7 @@ export component AppWindow inherits Window {
                     return accept;
                 }
                 if (event.text == Key.RightArrow) {
-                    if (event.modifiers.control) {
+                    if (event.modifiers.control || event.modifiers.alt) {
                         Actions.next();
                     } else {
                         Actions.seek-relative(event.modifiers.shift ? 10 : 5);

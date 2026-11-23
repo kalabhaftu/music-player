@@ -77,7 +77,7 @@ export component PlayerBar inherits Rectangle {
                         overflow: elide;
                     }
                     Text {
-                        text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? (State.current-unavailable ? "\{State.current-artist} • File unavailable" : State.current-artist) : (State.current-unavailable ? "\{State.current-artist} • \{State.current-album} • File unavailable" : "\{State.current-artist} • \{State.current-album}"));
+                        text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? (State.current-unavailable ? "\{State.current-artist} · File unavailable" : State.current-artist) : (State.current-unavailable ? "\{State.current-artist} · \{State.current-album} · File unavailable" : "\{State.current-artist} · \{State.current-album}"));
                         color: Palette.muted;
                         font-size: 10px;
                         overflow: elide;
