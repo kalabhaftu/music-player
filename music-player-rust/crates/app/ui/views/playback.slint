@@ -329,8 +329,8 @@ export component LyricsView inherits Rectangle {
             vertical-stretch: 1;
             clip: true;
             Flickable {
-                viewport-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + parent.height * 0.42);
-                animate viewport-y { duration: 250ms; easing: ease-out; }
+                content-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + 140px);
+                animate content-y { duration: 250ms; easing: ease-out; }
 
                 VerticalLayout {
                     for line[index] in State.lyrics-lines : TouchArea {

@@ -416,12 +416,12 @@ export component SettingsView inherits Rectangle {
             GridLayout {
                 padding: 6px;
                 spacing: 4px;
-                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; settings-scroll.viewport-y = 0px; } }
-                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; settings-scroll.viewport-y = -(appearance-section.height + 24px); } }
-                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + 48px); } }
+                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
+                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
+                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
                 SettingsNavTab { col: 1; row: 1; label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + playback-section.height + 72px); } }
-                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + playback-section.height + advanced-section.height + 96px); } }
+                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
+                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
             }
         }
         if State.content-width > 600 : Rectangle {
@@ -432,12 +432,12 @@ export component SettingsView inherits Rectangle {
                 padding: 7px;
                 spacing: 4px;
                 alignment: start;
-                SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; settings-scroll.viewport-y = 0px; } }
-                SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; settings-scroll.viewport-y = -(appearance-section.height + 24px); } }
-                SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + 48px); } }
+                SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
+                SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
+                SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
                 SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + playback-section.height + 72px); } }
-                SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; settings-scroll.viewport-y = -(appearance-section.height + library-section.height + playback-section.height + advanced-section.height + 96px); } }
+                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
+                SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
             }
         }
 
@@ -448,7 +448,12 @@ export component SettingsView inherits Rectangle {
             background: Palette.raised;
             clip: true;
             settings-scroll := ScrollView {
-                animate viewport-y { duration: 250ms; easing: ease-out; }
+                content-y: State.settings-section == "Library" ? -(appearance-section.height + 24px) :
+                           State.settings-section == "Playback" ? -(appearance-section.height + library-section.height + 48px) :
+                           State.settings-section == "Advanced" ? -(appearance-section.height + library-section.height + playback-section.height + 72px) :
+                           State.settings-section == "About" ? -(appearance-section.height + library-section.height + playback-section.height + advanced-section.height + 96px) :
+                           0px;
+                animate content-y { duration: 250ms; easing: ease-out; }
                 VerticalLayout {
                     width: parent.width;
                     padding: 20px;
