@@ -2,9 +2,35 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 static ARTWORK_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Tracks active artwork extraction and repair tasks.
+/// Pruning must NEVER run while artwork operations are in flight.
+pub static ARTWORK_OPERATIONS_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// RAII guard to track in-flight artwork extraction and repair operations.
+pub struct ArtworkOperationGuard;
+
+impl ArtworkOperationGuard {
+    pub fn new() -> Self {
+        ARTWORK_OPERATIONS_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Default for ArtworkOperationGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for ArtworkOperationGuard {
+    fn drop(&mut self) {
+        ARTWORK_OPERATIONS_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 pub fn artwork_cache_dir() -> PathBuf {
     let base = directories::BaseDirs::new()
@@ -29,6 +55,13 @@ pub fn save_artwork_to_cache(data: &[u8]) -> std::io::Result<PathBuf> {
 }
 
 pub fn save_artwork_to_cache_in(dir: &std::path::Path, data: &[u8]) -> std::io::Result<PathBuf> {
+    if data.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Artwork data cannot be empty",
+        ));
+    }
+
     let hash = hash_artwork(data);
     let ext = if data.starts_with(b"\x89PNG\r\n\x1a\n") {
         "png"
@@ -42,7 +75,7 @@ pub fn save_artwork_to_cache_in(dir: &std::path::Path, data: &[u8]) -> std::io::
     let filename = format!("{}.{}", hash, ext);
     let target = dir.join(filename);
 
-    if target.exists() {
+    if target.exists() && fs::metadata(&target).map(|m| m.len() > 0).unwrap_or(false) {
         return Ok(target);
     }
 
@@ -51,18 +84,28 @@ pub fn save_artwork_to_cache_in(dir: &std::path::Path, data: &[u8]) -> std::io::
     let write_result = (|| {
         let mut file = fs::OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(true)
             .open(&temporary)?;
         file.write_all(data)?;
-        fs::rename(&temporary, &target)
+        file.sync_all()?;
+        drop(file);
+
+        match fs::rename(&temporary, &target) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                if target.exists() && fs::metadata(&target).map(|m| m.len() > 0).unwrap_or(false) {
+                    let _ = fs::remove_file(&temporary);
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     })();
 
     match write_result {
         Ok(()) => Ok(target),
-        Err(_error) if target.exists() => {
-            let _ = fs::remove_file(&temporary);
-            Ok(target)
-        }
         Err(error) => {
             let _ = fs::remove_file(&temporary);
             Err(error)
@@ -93,15 +136,22 @@ fn path_key(path: &str) -> String {
     }
 }
 
-/// Deletes artwork cache files that no track references any more
-/// (mirrors `LibraryStore.PruneUnreferencedArtwork`). Files younger than the
-/// grace period are skipped: the startup artwork repair writes cache files on a
-/// worker thread and only then commits their database references, so a scan
-/// completing in between must not delete them.
+/// Deletes artwork cache files that no track references any more.
+/// Never prunes while extraction/repair tasks are in flight.
+/// Never prunes if the database returns an empty reference list.
+/// Grace period is 30 minutes to prevent race conditions during scanning.
 pub fn prune_unreferenced_artwork(cache_dir: &std::path::Path, store: &crate::db::LibraryStore) -> usize {
-    const GRACE: std::time::Duration = std::time::Duration::from_secs(120);
-    let now = std::time::SystemTime::now();
+    if ARTWORK_OPERATIONS_IN_FLIGHT.load(Ordering::SeqCst) > 0 {
+        return 0;
+    }
+
     let refs = store.artwork_refs().unwrap_or_default();
+    if refs.is_empty() {
+        return 0;
+    }
+
+    const GRACE: std::time::Duration = std::time::Duration::from_secs(1800);
+    let now = std::time::SystemTime::now();
     let referenced: std::collections::HashSet<String> = refs
         .iter()
         .map(|path| path_key(path))

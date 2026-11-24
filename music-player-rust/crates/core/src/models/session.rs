@@ -37,6 +37,18 @@ pub struct TagBackup {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetadataEditEntry {
+    pub id: i64,
+    pub track_path: String,
+    pub field_name: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub snapshot_json: String,
+    pub backup_file_path: Option<String>,
+    pub created_utc: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScanProgress {
     pub files_found: u32,
     pub directories_visited: u32,

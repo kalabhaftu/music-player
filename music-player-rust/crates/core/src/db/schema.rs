@@ -102,6 +102,19 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
             created_utc TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS metadata_edit_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_path TEXT NOT NULL,
+            field_name TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            snapshot_json TEXT,
+            backup_file_path TEXT,
+            created_utc TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_metadata_edit_history_path ON metadata_edit_history(track_path COLLATE NOCASE);
+
         CREATE TABLE IF NOT EXISTS track_handles (
             id TEXT PRIMARY KEY,
             path TEXT NOT NULL UNIQUE

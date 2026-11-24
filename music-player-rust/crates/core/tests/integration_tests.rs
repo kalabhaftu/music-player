@@ -1999,3 +1999,204 @@ fn opening_pre_v11_database_adds_unavailable_column_before_indexes() {
     assert_eq!(count, 1);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn test_lofty_metadata_adapter_and_hybrid_engine() {
+    use music_player_core::metadata::{
+        HybridMetadataEngine, LoftyAdapter, MetadataAdapter,
+    };
+    use std::path::Path;
+
+    let lofty = LoftyAdapter::new();
+    let hybrid = HybridMetadataEngine::new();
+
+    // Verify behavior on non-existent file: returns clean Err, does not panic
+    let non_existent = Path::new("non_existent_track.mp3");
+    assert!(lofty.read_metadata(non_existent, None).is_err());
+    assert!(lofty.inspect_file(non_existent).is_err());
+    assert!(hybrid.inspect_file(non_existent).is_err());
+
+    // Verify on real audio file if present in library
+    let music_dir = Path::new(r"C:\Users\SlimShady\Music");
+    if let Ok(entries) = std::fs::read_dir(music_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("mp3")).unwrap_or(false) {
+                let tags_lofty = lofty.read_metadata(&p, None).expect("lofty read failed");
+                let tags_hybrid = hybrid.read_metadata(&p, None).expect("hybrid read failed");
+                assert_eq!(tags_lofty.title, tags_hybrid.title);
+                assert_eq!(tags_lofty.artist, tags_hybrid.artist);
+                assert_eq!(tags_lofty.album, tags_hybrid.album);
+                assert!(tags_lofty.duration_ms > 0);
+
+                let details = hybrid.inspect_file(&p).expect("inspect failed");
+                assert!(details.file_size > 0);
+                assert!(details.duration_ms > 0);
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+fn test_artwork_reliability_lifecycle_and_pruning_guards() {
+    use music_player_core::metadata::{
+        prune_unreferenced_artwork, save_artwork_to_cache_in, ArtworkOperationGuard,
+    };
+
+    let dir = std::env::temp_dir().join(format!("mp_art_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // 1. Valid PNG artwork
+    let fake_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00";
+    let saved_path = save_artwork_to_cache_in(&dir, fake_png).unwrap();
+    assert!(saved_path.is_file());
+    assert!(saved_path.to_string_lossy().ends_with(".png"));
+
+    let store = LibraryStore::in_memory().unwrap();
+
+    // 2. Prune while in-flight operation guard is active MUST abort (return 0, keep file)
+    {
+        let _guard = ArtworkOperationGuard::new();
+        let pruned = prune_unreferenced_artwork(&dir, &store);
+        assert_eq!(pruned, 0);
+        assert!(saved_path.is_file());
+    }
+
+    // 3. Prune when DB has 0 references MUST abort as safety guard (never wipe cache)
+    let pruned = prune_unreferenced_artwork(&dir, &store);
+    assert_eq!(pruned, 0);
+    assert!(saved_path.is_file());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn test_sqlite_concurrency_single_writer_multi_reader() {
+    let test_dir = std::env::temp_dir().join(format!("mp_concurrency_test_{}_{}", std::process::id(), fastrand()));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("concurrency.db");
+
+    let store = LibraryStore::open(&db_path).expect("failed to open disk store");
+
+    // Spawn 4 reader threads querying concurrently
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut reader_handles = Vec::new();
+
+    for _r_id in 0..4 {
+        let store_clone = store.clone();
+        let stop_clone = std::sync::Arc::clone(&stop);
+        let handle = std::thread::spawn(move || {
+            let mut read_iterations = 0;
+            while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = store_clone.get_all_tracks(TrackSort::Title, false);
+                let _ = store_clone.get_library_stats();
+                let _ = store_clone.search("test", 50);
+                read_iterations += 1;
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            read_iterations
+        });
+        reader_handles.push(handle);
+    }
+
+    // Spawn 1 writer inserting batches
+    let mut total_inserted = 0;
+    for batch_idx in 0..10 {
+        let mut batch = Vec::new();
+        for item_idx in 0..20 {
+            let id = batch_idx * 20 + item_idx;
+            batch.push(sample_track(
+                &format!("C:/Music/test_track_{}.mp3", id),
+                &format!("Track {}", id),
+                "Concurrency Artist",
+                "Concurrency Album",
+            ));
+        }
+        let inserted = store.upsert_tracks(&batch).expect("batch insert failed");
+        total_inserted += inserted;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+
+    assert_eq!(total_inserted, 200);
+
+    // Stop readers and gather stats
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    for handle in reader_handles {
+        let iterations = handle.join().expect("reader thread panicked");
+        assert!(iterations > 0, "Reader thread did not execute queries");
+    }
+
+    let stats = store.get_library_stats().expect("failed to get library stats");
+    assert_eq!(stats.total_tracks, 200);
+
+    // Clean up
+    drop(store);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
+fn test_metadata_edit_history_indefinite_persistence() {
+    let test_dir = std::env::temp_dir().join(format!("mp_history_test_{}_{}", std::process::id(), fastrand()));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("history.db");
+
+    let store = LibraryStore::open(&db_path).expect("failed to open disk store");
+    let track_path = "C:/Music/Test/Song.mp3";
+
+    // 1. Initial edit
+    let edit_id1 = store
+        .record_metadata_edit(
+            track_path,
+            "title",
+            Some("Original Title"),
+            Some("Edited Title 1"),
+            r#"{"title":"Edited Title 1","artist":"Artist"}"#,
+            Some("C:/Backups/song-1.bak"),
+        )
+        .expect("record edit 1 failed");
+    assert!(edit_id1 > 0);
+
+    // 2. Second edit
+    let edit_id2 = store
+        .record_metadata_edit(
+            track_path,
+            "artist",
+            Some("Artist"),
+            Some("New Artist"),
+            r#"{"title":"Edited Title 1","artist":"New Artist"}"#,
+            None, // full audio file backup optional/omitted
+        )
+        .expect("record edit 2 failed");
+    assert!(edit_id2 > edit_id1);
+
+    // 3. Query history: must return both entries, newest first
+    let history = store
+        .get_metadata_edit_history(track_path)
+        .expect("get history failed");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].id, edit_id2);
+    assert_eq!(history[0].field_name, "artist");
+    assert_eq!(history[0].new_value.as_deref(), Some("New Artist"));
+    assert_eq!(history[0].backup_file_path, None);
+
+    assert_eq!(history[1].id, edit_id1);
+    assert_eq!(history[1].field_name, "title");
+    assert_eq!(history[1].old_value.as_deref(), Some("Original Title"));
+    assert_eq!(history[1].new_value.as_deref(), Some("Edited Title 1"));
+    assert_eq!(history[1].backup_file_path.as_deref(), Some("C:/Backups/song-1.bak"));
+
+    // Clean up
+    drop(store);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+fn fastrand() -> u64 {
+    use std::time::SystemTime;
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
+}

@@ -18,6 +18,7 @@ impl App {
         }
         let id = self.new_playlist_id();
         if self.store.create_playlist(&id, name.trim()).is_ok() {
+            self.invalidate_view_caches();
             self.refresh_playlists();
             self.set_view("Playlist", "", "", &id);
             self.close_modal();
@@ -31,6 +32,7 @@ impl App {
             return;
         }
         if self.store.rename_playlist(id, name.trim()).is_ok() {
+            self.invalidate_view_caches();
             self.refresh_playlists();
             self.close_modal();
         }
@@ -38,6 +40,7 @@ impl App {
 
     pub(crate) fn delete_playlist(&mut self, id: &str) {
         if self.store.delete_playlist(id).is_ok() {
+            self.invalidate_view_caches();
             self.refresh_playlists();
             self.set_view("Playlists", "", "", "");
             self.close_modal();
@@ -441,7 +444,17 @@ impl App {
         };
         let editor = TagEditor::new(tag_backups_dir());
         match editor.save(&path, &edit) {
-            Ok(_) => {
+            Ok(backup) => {
+                let snapshot = serde_json::to_string(&edit).unwrap_or_default();
+                let _ = self.store.record_metadata_edit(
+                    &path,
+                    "tags",
+                    None,
+                    None,
+                    &snapshot,
+                    Some(&backup.backup_path),
+                );
+                self.invalidate_view_caches();
                 self.show_notice(
                     "Tags saved. A backup of the original was kept.",
                     NoticeSeverity::Success,
@@ -479,7 +492,16 @@ impl App {
             return;
         };
         match TagEditor::new(tag_backups_dir()).restore(&backups) {
-            Ok(_) => {
+            Ok(restored) => {
+                let _ = self.store.record_metadata_edit(
+                    &target,
+                    "restore",
+                    None,
+                    None,
+                    "{}",
+                    Some(&restored.backup_path),
+                );
+                self.invalidate_view_caches();
                 self.show_notice("Tag backup restored.", NoticeSeverity::Success);
                 self.close_modal();
                 self.refresh_view();
@@ -713,6 +735,7 @@ impl App {
             }
         }
         if self.store.set_favorite(&track.path, new_value).is_ok() {
+            self.invalidate_view_caches();
             self.refresh_view();
             if self.current.as_ref().map(|t| t.path.as_str()) == Some(track.path.as_str()) {
                 if let Ok(Some(updated)) = self.store.get_track(&track.path) {
@@ -737,6 +760,7 @@ impl App {
             .set_rating(&path, rating.clamp(0, 5) as u8)
             .is_ok()
         {
+            self.invalidate_view_caches();
             self.close_modal();
             self.refresh_view();
         }
@@ -755,6 +779,7 @@ impl App {
                     .filter(|r| !r.eq_ignore_ascii_case(&path))
                     .collect();
                 let _ = self.store.purge_tracks_under_directory(&path);
+                self.invalidate_view_caches();
                 self.settings.set_library_roots(&roots);
                 roots.retain(|r| Path::new(r).exists());
                 self.load_roots();

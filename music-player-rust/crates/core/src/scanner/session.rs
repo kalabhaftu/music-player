@@ -3,11 +3,12 @@
 //! blocked subtrees and legacy exclusion paths.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::scan::{normalize_path, root_prefix, ScanExcludedPathKind};
+use crate::db::LibraryStore;
 
 const SEEN_BATCH_SIZE: usize = 256;
 
@@ -18,10 +19,10 @@ struct CachedTrackState {
     artwork: Option<String>,
 }
 
-/// One indexing run. Opens its own connection against the library database so
-/// scans can run on a worker thread while the UI keeps querying.
+/// One indexing run. Routes all mutations through the single library database writer
+/// while reading track state concurrently via independent WAL readers.
 pub struct LibraryScanSession {
-    conn: Connection,
+    store: LibraryStore,
     run_id: i64,
     pending_seen: Vec<PathBuf>,
     pending_seen_set: std::collections::HashSet<String>,
@@ -41,39 +42,44 @@ fn stamp(value: DateTime<Utc>) -> String {
 }
 
 impl LibraryScanSession {
-    pub fn begin(db_path: &Path, roots: &[PathBuf]) -> Result<Self> {
-        let conn = Connection::open(db_path)?;
-        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
-        crate::db::schema::initialize_schema(&conn)?;
-
+    pub fn begin(store: &LibraryStore, roots: &[PathBuf]) -> Result<Self> {
         let stale = stamp(Utc::now() - chrono::Duration::days(1));
-        conn.execute_batch(&format!(
-            r#"
-            BEGIN;
-            DELETE FROM scan_seen WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_user_ignored WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_default_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_incomplete_paths WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_roots WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
-            DELETE FROM scan_runs WHERE started_utc < '{stale}';
-            COMMIT;
-            "#,
-            stale = stale
-        ))?;
+        let roots_owned = roots.to_vec();
 
-        conn.execute("INSERT INTO scan_runs(started_utc) VALUES (?1)", params![stamp(Utc::now())])?;
-        let run_id = conn.last_insert_rowid();
-        for root in roots {
+        let run_id = store.write(move |conn| {
+            conn.execute_batch(&format!(
+                r#"
+                BEGIN;
+                DELETE FROM scan_seen WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_user_ignored WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_default_excluded WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_incomplete_paths WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_roots WHERE run_id IN (SELECT id FROM scan_runs WHERE started_utc < '{stale}');
+                DELETE FROM scan_runs WHERE started_utc < '{stale}';
+                COMMIT;
+                "#,
+                stale = stale
+            ))?;
+
             conn.execute(
-                "INSERT OR IGNORE INTO scan_roots(run_id, root_path, root_prefix) VALUES (?1, ?2, ?3)",
-                params![run_id, normalize_path(root).to_string_lossy(), root_prefix(root)],
+                "INSERT INTO scan_runs(started_utc) VALUES (?1)",
+                params![stamp(Utc::now())],
             )?;
-        }
+            let run_id = conn.last_insert_rowid();
+            for root in &roots_owned {
+                conn.execute(
+                    "INSERT OR IGNORE INTO scan_roots(run_id, root_path, root_prefix) VALUES (?1, ?2, ?3)",
+                    params![run_id, normalize_path(root).to_string_lossy(), root_prefix(root)],
+                )?;
+            }
+            Ok(run_id)
+        })?;
 
-        // Load cached track state for unchanged-detection.
+        // Load cached track state for unchanged-detection via reader connection.
         let mut cached_state = HashMap::new();
         {
+            let conn = store.read_conn()?;
             let mut stmt = conn.prepare(
                 "SELECT path, file_size, modified_utc, has_lyrics, artwork_path FROM tracks",
             )?;
@@ -87,14 +93,19 @@ impl LibraryScanSession {
                 if let Some(modified) = parse_stamp(&modified_raw) {
                     cached_state.insert(
                         path.to_lowercase(),
-                        CachedTrackState { size, modified, has_lyrics, artwork },
+                        CachedTrackState {
+                            size,
+                            modified,
+                            has_lyrics,
+                            artwork,
+                        },
                     );
                 }
             }
         }
 
         Ok(Self {
-            conn,
+            store: store.clone(),
             run_id,
             pending_seen: Vec::new(),
             pending_seen_set: std::collections::HashSet::new(),
@@ -115,10 +126,16 @@ impl LibraryScanSession {
     ) -> bool {
         let full = path.to_string_lossy().to_string();
         let key = full.to_lowercase();
-        let cache_root = artwork_cache.to_string_lossy().trim_end_matches(['/', '\\']).to_lowercase();
+        let cache_root = artwork_cache
+            .to_string_lossy()
+            .trim_end_matches(['/', '\\'])
+            .to_lowercase();
 
         if let Some(cached) = self.cached_state.get(&key) {
-            if cached.size != length as i64 || cached.modified != modified_utc || cached.has_lyrics < 0 {
+            if cached.size != length as i64
+                || cached.modified != modified_utc
+                || cached.has_lyrics < 0
+            {
                 return false;
             }
             match &cached.artwork {
@@ -146,10 +163,15 @@ impl LibraryScanSession {
     }
 
     pub fn mark_root_completed(&mut self, root: &Path, complete: bool) {
-        let _ = self.conn.execute(
-            "UPDATE scan_roots SET completed = ?1 WHERE run_id = ?2 AND root_path = ?3",
-            params![if complete { 1 } else { 0 }, self.run_id, normalize_path(root).to_string_lossy()],
-        );
+        let root_path = normalize_path(root).to_string_lossy().to_string();
+        let run_id = self.run_id;
+        let _ = self.store.write(move |conn| {
+            conn.execute(
+                "UPDATE scan_roots SET completed = ?1 WHERE run_id = ?2 AND root_path = ?3",
+                params![if complete { 1 } else { 0 }, run_id, root_path],
+            )?;
+            Ok(())
+        });
     }
 
     /// Protects a subtree whose contents could not be fully inspected.
@@ -161,7 +183,8 @@ impl LibraryScanSession {
     }
 
     pub fn mark_excluded_path(&mut self, path: &Path, kind: ScanExcludedPathKind) {
-        self.pending_protected.push((normalize_path(path), Some(kind)));
+        self.pending_protected
+            .push((normalize_path(path), Some(kind)));
         if self.pending_protected.len() >= SEEN_BATCH_SIZE {
             let _ = self.flush_protected();
         }
@@ -171,21 +194,29 @@ impl LibraryScanSession {
         if self.pending_protected.is_empty() {
             return Ok(());
         }
-        self.conn.execute_batch("BEGIN")?;
-        for (path, kind) in self.pending_protected.drain(..) {
-            let prefix = root_prefix(&path);
-            let table = match kind {
-                None => "scan_incomplete_paths",
-                Some(ScanExcludedPathKind::DefaultExcluded) => "scan_default_excluded",
-                Some(ScanExcludedPathKind::UserIgnored) => "scan_user_ignored",
-                Some(ScanExcludedPathKind::ReparsePoint) => "scan_excluded",
-            };
-            self.conn.execute(
-                &format!("INSERT OR IGNORE INTO {}(run_id, path, prefix) VALUES (?1, ?2, ?3)", table),
-                params![self.run_id, path.to_string_lossy(), prefix],
-            )?;
-        }
-        self.conn.execute_batch("COMMIT")?;
+        let batch: Vec<_> = self.pending_protected.drain(..).collect();
+        let run_id = self.run_id;
+        self.store.write(move |conn| {
+            let tx = conn.transaction()?;
+            for (path, kind) in batch {
+                let prefix = root_prefix(&path);
+                let table = match kind {
+                    None => "scan_incomplete_paths",
+                    Some(ScanExcludedPathKind::DefaultExcluded) => "scan_default_excluded",
+                    Some(ScanExcludedPathKind::UserIgnored) => "scan_user_ignored",
+                    Some(ScanExcludedPathKind::ReparsePoint) => "scan_excluded",
+                };
+                tx.execute(
+                    &format!(
+                        "INSERT OR IGNORE INTO {}(run_id, path, prefix) VALUES (?1, ?2, ?3)",
+                        table
+                    ),
+                    params![run_id, path.to_string_lossy(), prefix],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -193,14 +224,19 @@ impl LibraryScanSession {
         if self.pending_seen.is_empty() {
             return Ok(());
         }
-        self.conn.execute_batch("BEGIN")?;
-        for path in self.pending_seen.drain(..) {
-            self.conn.execute(
-                "INSERT OR IGNORE INTO scan_seen(run_id, path) VALUES (?1, ?2)",
-                params![self.run_id, path.to_string_lossy()],
-            )?;
-        }
-        self.conn.execute_batch("COMMIT")?;
+        let batch: Vec<_> = self.pending_seen.drain(..).collect();
+        let run_id = self.run_id;
+        self.store.write(move |conn| {
+            let tx = conn.transaction()?;
+            for path in batch {
+                tx.execute(
+                    "INSERT OR IGNORE INTO scan_seen(run_id, path) VALUES (?1, ?2)",
+                    params![run_id, path.to_string_lossy()],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })?;
         self.pending_seen_set.clear();
         Ok(())
     }
@@ -211,10 +247,9 @@ impl LibraryScanSession {
         self.flush_seen()?;
         self.flush_protected()?;
         let run = self.run_id;
-        self.conn.execute_batch("BEGIN")?;
-        let mut removed = self
-            .conn
-            .execute(
+        let removed = self.store.write(move |conn| {
+            let tx = conn.transaction()?;
+            let mut removed = tx.execute(
                 r#"
                 DELETE FROM tracks
                 WHERE EXISTS (
@@ -262,42 +297,18 @@ impl LibraryScanSession {
                 "#,
                 params![run],
             )?;
-        removed += self.conn.execute(
-            r#"
-            DELETE FROM tracks
-            WHERE EXISTS (
-              SELECT 1 FROM scan_user_ignored u
-              WHERE u.run_id = ?1 AND
-                (tracks.path COLLATE NOCASE = u.path OR
-                 substr(tracks.path, 1, length(u.prefix)) COLLATE NOCASE = u.prefix)
-            )
-            "#,
-            params![run],
-        )?;
-        for table in [
-            "scan_seen",
-            "scan_user_ignored",
-            "scan_excluded",
-            "scan_default_excluded",
-            "scan_incomplete_paths",
-            "scan_roots",
-            "scan_runs",
-        ] {
-            self.conn.execute(&format!("DELETE FROM {} WHERE run_id = ?1", table), params![run])?;
-        }
-        self.conn.execute_batch("COMMIT")?;
-        self.completed = true;
-        Ok(removed)
-    }
-}
-
-impl Drop for LibraryScanSession {
-    fn drop(&mut self) {
-        if !self.completed {
-            // An abandoned generation is cleaned up by the next scan's stale purge.
-            let _ = self.conn.execute_batch("ROLLBACK");
-            let run = self.run_id;
-            let _ = self.conn.execute_batch("BEGIN");
+            removed += tx.execute(
+                r#"
+                DELETE FROM tracks
+                WHERE EXISTS (
+                  SELECT 1 FROM scan_user_ignored u
+                  WHERE u.run_id = ?1 AND
+                    (tracks.path COLLATE NOCASE = u.path OR
+                     substr(tracks.path, 1, length(u.prefix)) COLLATE NOCASE = u.prefix)
+                )
+                "#,
+                params![run],
+            )?;
             for table in [
                 "scan_seen",
                 "scan_user_ignored",
@@ -307,13 +318,49 @@ impl Drop for LibraryScanSession {
                 "scan_roots",
                 "scan_runs",
             ] {
-                if table == "scan_runs" {
-                    let _ = self.conn.execute(&format!("DELETE FROM {} WHERE id = ?1", table), params![run]);
-                } else {
-                    let _ = self.conn.execute(&format!("DELETE FROM {} WHERE run_id = ?1", table), params![run]);
-                }
+                tx.execute(
+                    &format!("DELETE FROM {} WHERE run_id = ?1", table),
+                    params![run],
+                )?;
             }
-            let _ = self.conn.execute_batch("COMMIT");
+            tx.commit()?;
+            Ok(removed)
+        })?;
+        self.completed = true;
+        Ok(removed)
+    }
+}
+
+impl Drop for LibraryScanSession {
+    fn drop(&mut self) {
+        if !self.completed {
+            let run = self.run_id;
+            let _ = self.store.write(move |conn| {
+                let tx = conn.transaction()?;
+                for table in [
+                    "scan_seen",
+                    "scan_user_ignored",
+                    "scan_excluded",
+                    "scan_default_excluded",
+                    "scan_incomplete_paths",
+                    "scan_roots",
+                    "scan_runs",
+                ] {
+                    if table == "scan_runs" {
+                        let _ = tx.execute(
+                            &format!("DELETE FROM {} WHERE id = ?1", table),
+                            params![run],
+                        );
+                    } else {
+                        let _ = tx.execute(
+                            &format!("DELETE FROM {} WHERE run_id = ?1", table),
+                            params![run],
+                        );
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            });
         }
     }
 }

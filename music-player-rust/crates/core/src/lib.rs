@@ -22,9 +22,10 @@ pub use duplicates::{DuplicateDetector, ExactDuplicateGroup, ExactDuplicateGroup
 pub use lyrics::{format_lrc, has_sidecar, parse_lrc, plain_text, read_sidecar, write_sidecar};
 pub use log::LocalAppLog;
 pub use metadata::{
-    artwork_cache_dir, custom_field_format, extract_palette, hash_artwork, inspect_file, read_tags,
-    read_tags_in_cache, resolve_cached_artwork, save_artwork_to_cache, ADDITIONAL_STANDARD_FIELDS,
-    ArtworkPalette, ExtractedTags, RgbColor, TagEditor, TrackDetails,
+    artwork_cache_dir, clean_stale_temp_files, custom_field_format, extract_palette, hash_artwork, inspect_file, read_tags,
+    read_tags_in_cache, resolve_cached_artwork, save_artwork_to_cache, ArtworkOperationGuard,
+    HybridMetadataEngine, LoftyAdapter, MetadataAdapter,
+    ADDITIONAL_STANDARD_FIELDS, ArtworkPalette, ExtractedTags, RgbColor, TagEditor, TrackDetails,
 };
 pub use models::{
     LibraryGroup, LibraryStats, LyricsDocument, LyricsLine, PlaybackSession, Playlist,

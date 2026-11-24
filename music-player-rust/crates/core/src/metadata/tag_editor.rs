@@ -204,7 +204,7 @@ impl TagEditor {
                 fs::write(&staged, bytes)?;
             }
             fs::rename(&backup_stage, &backup_path)?;
-            fs::rename(&staged, &original)?;
+            safe_atomic_replace(&staged, &original)?;
             Ok(())
         })();
 
@@ -242,7 +242,7 @@ impl TagEditor {
             fs::copy(&original, &backup_stage)?;
             fs::copy(&source, &restore_stage)?;
             fs::rename(&backup_stage, &undo_backup)?;
-            fs::rename(&restore_stage, &original)?;
+            safe_atomic_replace(&restore_stage, &original)?;
             Ok(())
         })();
 
@@ -347,6 +347,45 @@ fn temporary_path(original: &Path, purpose: &str) -> PathBuf {
         unique_token(),
         extension
     ))
+}
+
+/// Atomically replaces target with source, with safe rollback and fallback
+/// handling for Windows filesystem semantics.
+fn safe_atomic_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    if fs::rename(source, target).is_ok() {
+        return Ok(());
+    }
+    let old_backup = temporary_path(target, "old_backup");
+    if fs::rename(target, &old_backup).is_ok() {
+        match fs::rename(source, target) {
+            Ok(()) => {
+                let _ = fs::remove_file(&old_backup);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = fs::rename(&old_backup, target);
+                Err(e)
+            }
+        }
+    } else {
+        fs::copy(source, target)?;
+        let _ = fs::remove_file(source);
+        Ok(())
+    }
+}
+
+/// Cleans up any leftover `.musicplayer-*` or `.tmp` files in a directory after a crash.
+pub fn clean_stale_temp_files(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with(".musicplayer-") || name.ends_with(".tmp") || name.ends_with(".partial") {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
 }
 
 fn backup_stamp_now() -> String {

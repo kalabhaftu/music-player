@@ -33,4 +33,5 @@ windows-sys = { version = "0.60", features = [
     "Win32_System_Shutdown",
     "Win32_Networking_WinHttp",
 ] }
+lofty = "0.25.5"
 

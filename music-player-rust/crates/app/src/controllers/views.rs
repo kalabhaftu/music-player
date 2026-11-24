@@ -1092,6 +1092,36 @@ impl App {
         let hide_dupes = self
             .settings
             .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        let cache_key = format!(
+            "{}:{}:{}:{}:{}:{}:{}",
+            view, search, group_column, group_value, sort_name, descending, self.tracks_offset
+        );
+        if view != "Search" {
+            if let Some((epoch, cached_items, cached_paths, cached_id_map, cached_total)) =
+                self.track_view_cache.get(&cache_key)
+            {
+                if *epoch == self.library_epoch {
+                    self.view_paths = cached_paths.clone();
+                    self.id_to_path = cached_id_map.clone();
+                    let state = self.ui.global::<State>();
+                    state.set_tracks(ui_model(cached_items.clone()).into());
+                    state.set_tracks_total(*cached_total as i32);
+                    state.set_can_load_more(
+                        self.tracks_offset + TRACK_PAGE_SIZE < *cached_total as usize,
+                    );
+                    state.set_view_title(ss(&view));
+                    state.set_view_subtitle(ss(format!(
+                        "{} {}",
+                        fmt_count(*cached_total as u32),
+                        if view == "Videos" { "videos" } else { "tracks" }
+                    )));
+                    state.set_has_roots(!self.settings.library_roots().is_empty());
+                    state.set_library_empty(*cached_total == 0);
+                    state.set_page_loading(false);
+                    return;
+                }
+            }
+        }
         let video_extensions = self.video_extensions();
         let mut query = TrackQuery {
             favorites: view == "Favorites",
@@ -1177,7 +1207,7 @@ impl App {
         }
 
         let state = self.ui.global::<State>();
-        state.set_tracks(ui_model(items).into());
+        state.set_tracks(ui_model(items.clone()).into());
         state.set_tracks_total(total as i32);
         state.set_can_load_more(
             view != "Search" && self.tracks_offset + TRACK_PAGE_SIZE < total as usize,
@@ -1191,6 +1221,19 @@ impl App {
         state.set_has_roots(!self.settings.library_roots().is_empty());
         state.set_library_empty(view == "Home" && total == 0);
         state.set_page_loading(false);
+
+        if view != "Search" {
+            self.track_view_cache.insert(
+                cache_key,
+                (
+                    self.library_epoch,
+                    items,
+                    self.view_paths.clone(),
+                    self.id_to_path.clone(),
+                    total,
+                ),
+            );
+        }
 
         // Home sections.
         if view == "Home" {
@@ -1412,6 +1455,21 @@ impl App {
             "Search" => "album",
             _ => "album",
         };
+        let cache_key = format!("{}:{}:{}", view, search, hide_dupes);
+        if self.groups_offset == 0 && view != "Search" {
+            if let Some((epoch, cached_items, cached_total)) = self.group_view_cache.get(&cache_key) {
+                if *epoch == self.library_epoch {
+                    self.group_items = cached_items.clone();
+                    self.group_total = *cached_total;
+                    let rows = chunk_groups(self.group_items.clone());
+                    let state = self.ui.global::<State>();
+                    state.set_groups(ui_model(self.group_items.clone()).into());
+                    state.set_group_rows(ui_model(rows).into());
+                    state.set_groups_total(*cached_total as i32);
+                    return;
+                }
+            }
+        }
         let (groups, total) = self
             .store
             .query_group_page(
@@ -1428,6 +1486,12 @@ impl App {
             self.group_items.clear();
         }
         self.group_items.extend(items);
+        if self.groups_offset == 0 && view != "Search" {
+            self.group_view_cache.insert(
+                cache_key,
+                (self.library_epoch, self.group_items.clone(), total),
+            );
+        }
         let rows = chunk_groups(self.group_items.clone());
         let state = self.ui.global::<State>();
         state.set_groups(ui_model(self.group_items.clone()).into());

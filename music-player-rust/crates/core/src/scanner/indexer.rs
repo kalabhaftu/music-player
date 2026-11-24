@@ -189,7 +189,6 @@ impl SessionMode {
 struct ScanRun<'s> {
     store: &'s LibraryStore,
     artwork_cache: PathBuf,
-    batch_size: usize,
     pending: Vec<Track>,
     result: IndexResult,
     since_flush: Instant,
@@ -245,7 +244,7 @@ impl<'a> LibraryIndexer<'a> {
             SessionMode::Memory(MemoryScanSession::begin(self.store))
         } else {
             SessionMode::Database(
-                LibraryScanSession::begin(self.store.db_path(), roots)
+                LibraryScanSession::begin(self.store, roots)
                     .map_err(|e| format!("Could not begin a library scan session: {}", e))?,
             )
         };
@@ -269,7 +268,6 @@ impl<'a> LibraryIndexer<'a> {
         let run = Rc::new(RefCell::new(ScanRun {
             store: self.store,
             artwork_cache: self.artwork_cache.clone(),
-            batch_size: self.batch_size,
             pending: Vec::with_capacity(self.batch_size),
             result: IndexResult::default(),
             since_flush: Instant::now(),
@@ -278,8 +276,19 @@ impl<'a> LibraryIndexer<'a> {
             control: control.clone(),
         }));
 
+        let artwork_guard = crate::metadata::ArtworkOperationGuard::new();
+
+        let pipeline = std::sync::Arc::new(super::pipeline::ScanPipeline::new(
+            self.store.clone(),
+            self.artwork_cache.clone(),
+            control.clone(),
+            None,
+            self.batch_size,
+        ));
+
         {
             let run_for_files = run.clone();
+            let pipeline_files = pipeline.clone();
             let mut on_audio_file = move |path: &Path| {
                 let mut run = run_for_files.borrow_mut();
                 if run.control.is_cancelled() {
@@ -305,12 +314,12 @@ impl<'a> LibraryIndexer<'a> {
                             run.session.borrow_mut().mark_seen(path);
                             return;
                         }
-                        let track = build_track(path, info.len(), modified, &run.artwork_cache);
                         run.session.borrow_mut().mark_seen(path);
-                        run.pending.push(track);
-                        if run.pending.len() >= run.batch_size {
-                            run.flush();
-                        }
+                        let _ = pipeline_files.submit(super::pipeline::CandidateFile {
+                            path: path.to_path_buf(),
+                            file_size: info.len(),
+                            modified_utc: modified,
+                        });
                     }
                 }
             };
@@ -386,6 +395,11 @@ impl<'a> LibraryIndexer<'a> {
             }
         }
 
+        if let Ok(p) = std::sync::Arc::try_unwrap(pipeline) {
+            let indexed = p.finish();
+            run.borrow_mut().result.indexed += indexed;
+        }
+
         // Refresh already-indexed files: explicit rebuilds repair files that no
         // longer sit under today's roots; normal scans cheaply revisit only
         // broken artwork references.
@@ -409,6 +423,8 @@ impl<'a> LibraryIndexer<'a> {
         };
         let removed = removed_from_session + excluded_purged;
         run.borrow_mut().result.removed = removed;
+
+        drop(artwork_guard);
 
         {
             let mut run = run.borrow_mut();
@@ -587,7 +603,10 @@ fn build_track(path: &Path, file_size: u64, modified_utc: DateTime<Utc>, artwork
         .to_string();
     let added_utc = Utc::now();
 
-    let tags = crate::metadata::read_tags_in_cache(path, artwork_cache);
+    let engine = crate::metadata::HybridMetadataEngine::new();
+    let tags = engine
+        .read_metadata(path, Some(artwork_cache))
+        .unwrap_or_else(|_| crate::metadata::read_tags_in_cache(path, artwork_cache));
 
     let (stem_artist, stem_title) = match file_stem.split_once(" - ") {
         Some((a, t)) => (Some(a.trim().to_string()), Some(t.trim().to_string())),

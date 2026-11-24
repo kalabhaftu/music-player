@@ -84,20 +84,26 @@ impl App {
             .unwrap_or(false);
         if recent {
             // Availability-only reconcile path (< 12 h since the last scan).
+            // Run in background thread so application startup and UI painting are never blocked.
+            let availability = self.availability.clone();
             let root_refs = roots.clone();
-            let reconciliation =
-                self.availability
-                    .reconcile_indexed_tracks(&[], &[], Some(&root_refs));
-            let _ = self.availability.clear_unavailable_tracks_that_exist();
-            if reconciliation.unavailable_count > 0 || reconciliation.recovered_count > 0 {
-                LocalAppLog::shared().info(
-                    "library-scan",
-                    &format!(
-                        "Startup reconcile: {} unavailable, {} recovered",
-                        reconciliation.unavailable_count, reconciliation.recovered_count
-                    ),
-                );
-            }
+            std::thread::Builder::new()
+                .name("startup-reconcile".to_string())
+                .spawn(move || {
+                    let reconciliation =
+                        availability.reconcile_indexed_tracks(&[], &[], Some(&root_refs));
+                    let _ = availability.clear_unavailable_tracks_that_exist();
+                    if reconciliation.unavailable_count > 0 || reconciliation.recovered_count > 0 {
+                        LocalAppLog::shared().info(
+                            "library-scan",
+                            &format!(
+                                "Startup reconcile: {} unavailable, {} recovered",
+                                reconciliation.unavailable_count, reconciliation.recovered_count
+                            ),
+                        );
+                    }
+                })
+                .ok();
         } else {
             self.start_scan(&roots, false);
         }
@@ -179,6 +185,7 @@ impl App {
         self.ui.global::<State>().set_scan_outcome(ss(message));
         self.scan_outcome_time = Some(Instant::now());
         self.track_cache.clear();
+        self.invalidate_view_caches();
         self.settings.set_raw(
             music_player_core::settings::keys::LIBRARY_LAST_SCAN_UTC,
             &chrono::Utc::now().to_rfc3339(),
@@ -194,6 +201,7 @@ impl App {
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         let _ = self.store.purge_deleted_tracks(&strings);
+        self.invalidate_view_caches();
         self.coordinator.queue_mut().remove_paths(&strings);
         self.save_session();
         self.publish_queue(true);

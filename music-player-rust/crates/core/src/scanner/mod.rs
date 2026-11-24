@@ -1,6 +1,7 @@
 pub mod coordinator;
 pub mod exclusions;
 pub mod indexer;
+pub mod pipeline;
 pub mod reconciler;
 pub mod scan;
 pub mod session;
@@ -11,6 +12,7 @@ pub mod watch_source;
 pub use coordinator::{LibraryScanCoordinator, ScanStatus};
 pub use exclusions::{is_excluded_directory, is_supported_audio, AUDIO_EXTENSIONS};
 pub use indexer::{IndexResult, LibraryIndexer};
+pub use pipeline::{CandidateFile, ScanPipeline};
 pub use reconciler::{AvailabilityReconciliation, TrackAvailabilityService};
 pub use scan::{
     is_default_excluded_directory, is_default_ignored_directory, is_under_default_excluded_directory,

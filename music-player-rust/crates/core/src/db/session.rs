@@ -70,3 +70,61 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     )?;
     Ok(())
 }
+
+pub fn record_metadata_edit(
+    conn: &Connection,
+    track_path: &str,
+    field_name: &str,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    snapshot_json: &str,
+    backup_file_path: Option<&str>,
+) -> Result<i64> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        r#"INSERT INTO metadata_edit_history
+           (track_path, field_name, old_value, new_value, snapshot_json, backup_file_path, created_utc)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+        params![
+            track_path,
+            field_name,
+            old_value,
+            new_value,
+            snapshot_json,
+            backup_file_path,
+            now
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_metadata_edit_history(
+    conn: &Connection,
+    track_path: &str,
+) -> Result<Vec<crate::models::MetadataEditEntry>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, track_path, field_name, old_value, new_value, snapshot_json, backup_file_path, created_utc
+           FROM metadata_edit_history
+           WHERE track_path = ?1 COLLATE NOCASE
+           ORDER BY id DESC"#,
+    )?;
+    let mut rows = stmt.query(params![track_path])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        let created_raw: String = row.get(7)?;
+        let created_utc = chrono::DateTime::parse_from_rfc3339(&created_raw)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+        entries.push(crate::models::MetadataEditEntry {
+            id: row.get(0)?,
+            track_path: row.get(1)?,
+            field_name: row.get(2)?,
+            old_value: row.get(3)?,
+            new_value: row.get(4)?,
+            snapshot_json: row.get(5)?,
+            backup_file_path: row.get(6)?,
+            created_utc,
+        });
+    }
+    Ok(entries)
+}

@@ -182,6 +182,10 @@ pub(crate) struct App {
     pub(crate) track_cache: HashMap<String, Track>,
     pub(crate) startup_scan_deferred: bool,
     pub(crate) started: bool,
+    pub(crate) library_epoch: u64,
+    pub(crate) query_generation: u64,
+    pub(crate) track_view_cache: HashMap<String, (u64, Vec<TrackItem>, Vec<String>, HashMap<String, String>, i64)>,
+    pub(crate) group_view_cache: HashMap<String, (u64, Vec<GroupItem>, i64)>,
 }
 
 impl App {
@@ -195,8 +199,17 @@ impl App {
         let crossfade_ms = settings.crossfade_seconds() as u64 * 1000;
         let coordinator =
             PlaybackCoordinator::with_crossfade_ms(QueueCoordinator::new(), crossfade_ms);
-        let eq_bands = settings.eq_bands().unwrap_or([0.0; 10]);
-        let eq_preamp = settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP);
+        let eq_preset = settings.eq_current();
+        let eq_bands = if eq_preset == "Off" {
+            [0.0; 10]
+        } else {
+            settings.eq_bands().unwrap_or([0.0; 10])
+        };
+        let eq_preamp = if eq_preset == "Off" {
+            NEUTRAL_EQUALIZER_PREAMP
+        } else {
+            settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP)
+        };
         let mut engine = music_player_core::AudioEngine::new();
         let selected_device = settings
             .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
@@ -283,7 +296,17 @@ impl App {
             track_cache: HashMap::new(),
             startup_scan_deferred: true,
             started: false,
+            library_epoch: 0,
+            query_generation: 0,
+            track_view_cache: HashMap::new(),
+            group_view_cache: HashMap::new(),
         }
+    }
+
+    pub(crate) fn invalidate_view_caches(&mut self) {
+        self.library_epoch = self.library_epoch.wrapping_add(1);
+        self.track_view_cache.clear();
+        self.group_view_cache.clear();
     }
 }
 

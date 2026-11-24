@@ -5,6 +5,7 @@ impl App {
 
     pub(crate) fn startup(&mut self) {
         LocalAppLog::shared().info("startup", "Music Player starting");
+        music_player_core::clean_stale_temp_files(&tag_backups_dir());
         self.publish_settings();
         self.refresh_playlists();
         self.load_roots();
@@ -18,70 +19,57 @@ impl App {
         self.publish_about();
     }
 
-    /// Drops artwork references whose cache file disappeared, then restores
-    /// artwork for every indexed track that has no reference yet. Older builds
-    /// could persist a whole library without artwork while the files still
-    /// contain embedded covers, and a missing cache file made those albums fall
-    /// back to gradients forever (the scan's unchanged check treats `NULL`
-    /// artwork as fresh, mirroring the C# indexer).
+    /// Restores missing artwork cache files for indexed tracks without
+    /// destructively nulling out database references. This eliminates the race
+    /// condition where nulling database references causes background pruning to
+    /// delete newly re-extracted artwork.
     pub(crate) fn clear_stale_artwork(&mut self) {
-        let refs = match self.store.artwork_refs() {
-            Ok(refs) => refs,
-            Err(_) => return,
-        };
-        let missing: Vec<String> = refs
-            .into_iter()
-            .filter(|path| !Path::new(path).is_file())
-            .collect();
-        let mut repair_paths = Vec::new();
-        if !missing.is_empty() {
-            let affected = self
-                .store
-                .tracks_with_artwork_refs(&missing)
-                .unwrap_or_default();
-            match self.store.clear_missing_artwork_refs(&missing) {
-                Ok(cleared) => LocalAppLog::shared().info(
-                    "artwork-cache",
-                    &format!(
-                        "Cleared {} missing artwork reference{} across {} track{}",
-                        cleared,
-                        if cleared == 1 { "" } else { "s" },
-                        affected.len(),
-                        if affected.len() == 1 { "" } else { "s" }
-                    ),
-                ),
-                Err(error) => {
-                    LocalAppLog::shared().warning(
-                        "artwork-cache",
-                        &format!("Could not clear missing artwork references: {error}"),
-                    );
-                    return;
-                }
-            }
-            repair_paths.extend(affected);
-        }
-        if let Ok(paths) = self.store.tracks_missing_artwork() {
-            repair_paths.extend(paths);
-        }
-        if repair_paths.is_empty() {
-            return;
-        }
-
-        let mut seen = HashSet::new();
-        repair_paths.retain(|path| seen.insert(path.to_lowercase()));
         let store = self.store.clone();
         let cache = artwork_cache_dir();
         let (tx, rx) = mpsc::channel();
         self.artwork_repair_rx = Some(rx);
         std::thread::spawn(move || {
+            let _guard = music_player_core::ArtworkOperationGuard::new();
+            let refs = match store.artwork_refs() {
+                Ok(refs) => refs,
+                Err(_) => {
+                    let _ = tx.send(0);
+                    return;
+                }
+            };
+            let missing: Vec<String> = refs
+                .into_iter()
+                .filter(|path| !Path::new(path).is_file())
+                .collect();
+            let mut repair_paths = Vec::new();
+            if !missing.is_empty() {
+                let affected = store
+                    .tracks_with_artwork_refs(&missing)
+                    .unwrap_or_default();
+                repair_paths.extend(affected);
+            }
+            if let Ok(paths) = store.tracks_missing_artwork() {
+                repair_paths.extend(paths);
+            }
+            if repair_paths.is_empty() {
+                let _ = tx.send(0);
+                return;
+            }
+
+            let mut seen = HashSet::new();
+            repair_paths.retain(|path| seen.insert(path.to_lowercase()));
+            let engine = music_player_core::HybridMetadataEngine::new();
             let mut repaired = 0usize;
             let mut batch: Vec<(String, String)> = Vec::with_capacity(64);
             for path in repair_paths {
                 if !Path::new(&path).is_file() {
                     continue;
                 }
-                let tags =
-                    music_player_core::metadata::read_tags_in_cache(Path::new(&path), &cache);
+                let tags = engine
+                    .read_metadata(Path::new(&path), Some(&cache))
+                    .unwrap_or_else(|_| {
+                        music_player_core::metadata::read_tags_in_cache(Path::new(&path), &cache)
+                    });
                 if let Some(artwork) = tags.artwork_path {
                     batch.push((path, artwork));
                     if batch.len() >= 64 {
