@@ -174,10 +174,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>()
             .on_lyrics_scroll_changed(move |paused| {
-                a.borrow()
-                    .ui
-                    .global::<State>()
-                    .set_lyrics_scroll_paused(paused);
+                let app = a.borrow_mut();
+                let state = app.ui.global::<State>();
+                state.set_lyrics_scroll_paused(paused);
+                if !paused {
+                    state.set_lyrics_scroll_nonce(state.get_lyrics_scroll_nonce() + 1);
+                    state.set_lyrics_active_line(app.lyrics_active);
+                }
             });
     }
 

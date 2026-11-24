@@ -186,9 +186,8 @@ export component TopBar inherits Rectangle {
                     width: parent.width;
                     height: parent.height;
                     colorize: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
-                    rotation-angle: State.scan-angle * 1deg;
-                    rotation-origin-x: self.width / 2;
-                    rotation-origin-y: self.height / 2;
+                    transform-rotation: State.scan-angle * 1deg;
+                    transform-origin: center;
                 }
                 if State.scan-paused : Text {
                     text: "Ⅱ";

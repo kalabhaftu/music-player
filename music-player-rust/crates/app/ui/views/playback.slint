@@ -282,10 +282,10 @@ export component LyricsView inherits Rectangle {
         VerticalLayout {
             width: parent.width;
             padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 20px;
-        padding-bottom: 32px;
-        spacing: 0px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -328,8 +328,19 @@ export component LyricsView inherits Rectangle {
         if State.has-track && State.has-lyrics : Rectangle {
             vertical-stretch: 1;
             clip: true;
-            Flickable {
-                content-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + 140px);
+
+            TouchArea {
+                scroll-event(event) => {
+                    if (event.delta-y != 0px) {
+                        State.lyrics-scroll-paused = true;
+                        Actions.lyrics-scroll-changed(true);
+                    }
+                    reject
+                }
+            }
+
+            lyrics-flickable := Flickable {
+                content-y: (State.lyrics-scroll-nonce * 0px) + (State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + 140px));
                 animate content-y { duration: 250ms; easing: ease-out; }
 
                 VerticalLayout {
@@ -362,17 +373,27 @@ export component LyricsView inherits Rectangle {
                 height: 38px;
                 border-radius: 19px;
                 border-width: 1px;
-                border-color: State.accent.with-alpha(0.5);
+                border-color: State.accent.with-alpha(0.6);
                 background: Palette.raised;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 4px;
+                drop-shadow-blur: 16px;
+                drop-shadow-color: #00000060;
                 Image {
-                    source: @image-url("../../assets/icons/sync.svg");
+                    source: @image-url("../../assets/icons/locate.svg");
                     width: 18px;
                     height: 18px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     colorize: State.accent;
                 }
-                TouchArea { clicked => { Actions.lyrics-scroll-changed(false); } }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        State.lyrics-scroll-paused = false;
+                        Actions.lyrics-scroll-changed(false);
+                    }
+                }
             }
         }
         if State.has-track && !State.has-lyrics : VerticalLayout {
@@ -497,12 +518,14 @@ export component AudioView inherits Rectangle {
                     HorizontalLayout {
                         padding-top: 24px;
                         padding-bottom: 24px;
-                        padding-left: 14px;
-                        padding-right: 14px;
-                        spacing: 12px;
+                        padding-left: clamp(8px, State.window-width * 0.015 * 1px, 24px);
+                        padding-right: clamp(8px, State.window-width * 0.015 * 1px, 24px);
+                        spacing: State.window-width <= 750 ? 4px : (State.window-width <= 950 ? 8px : 14px);
                         alignment: center;
                         for band[index] in State.eq-bands : VerticalLayout {
-                            width: 44px;
+                            horizontal-stretch: 1;
+                            min-width: 20px;
+                            max-width: 60px;
                             spacing: 10px;
                             alignment: center;
                             Text {

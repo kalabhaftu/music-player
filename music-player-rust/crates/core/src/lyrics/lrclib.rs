@@ -3,18 +3,42 @@ use std::time::{Duration, Instant};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+fn deserialize_null_as_default_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<f64>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(0.0))
+}
+
+fn deserialize_null_as_default_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<bool>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(false))
+}
+
+fn deserialize_null_as_default_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LyricsSearchResult {
     pub id: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_default_string")]
     pub track_name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_default_string")]
     pub artist_name: String,
     pub album_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_default_f64")]
     pub duration: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_default_bool")]
     pub instrumental: bool,
     pub plain_lyrics: Option<String>,
     pub synced_lyrics: Option<String>,

@@ -1,5 +1,5 @@
 use music_player_core::{
-    parse_lrc, plain_text, EqualizerState, LibraryScanCoordinator, LibraryStore,
+    parse_lrc, plain_text, EqualizerState, LibraryFileWatcher, LibraryScanCoordinator, LibraryStore,
     QueueCoordinator, RepeatMode, RgbColor, TagEdit, TagEditor, Track, TrackAvailabilityService,
     TrackSort, inspect_file, read_tags, read_tags_in_cache,
 };
@@ -2509,6 +2509,88 @@ fn test_metadata_edit_history_indefinite_persistence() {
     // Clean up
     drop(store);
     std::thread::sleep(std::time::Duration::from_millis(50));
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
+fn test_stage5_event_driven_dispatch_and_polling_reduction() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    let test_dir = std::env::temp_dir().join(format!("mp_stage5_{}", fastrand()));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("test.db");
+    let store = LibraryStore::open(&db_path).expect("open db");
+
+    // 1. Verify LibraryScanCoordinator completion notifier
+    let scan_notified = Arc::new(AtomicBool::new(false));
+    let scan_notified_clone = scan_notified.clone();
+
+    let mut coordinator = LibraryScanCoordinator::new(&store)
+        .with_completion_notifier(move || {
+            scan_notified_clone.store(true, Ordering::SeqCst);
+        });
+
+    let scan_root = test_dir.join("music");
+    std::fs::create_dir_all(&scan_root).unwrap();
+    std::fs::write(scan_root.join("test.mp3"), b"ID3\x03\0\0\0\0\0\0").unwrap();
+
+    let started = coordinator.start(&[scan_root.clone()], &[], false, None, None);
+    assert!(started, "scan coordinator must start");
+
+    // Wait for the completion notifier to trigger without requiring periodic polling
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !scan_notified.load(Ordering::SeqCst) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        scan_notified.load(Ordering::SeqCst),
+        "completion notifier must be called immediately when scan worker completes"
+    );
+
+    let result = coordinator.poll_result();
+    assert!(result.is_some(), "poll_result must return completed result");
+
+    // 2. Verify LibraryFileWatcher wake notifier and debounced batching
+    let wake_count = Arc::new(AtomicUsize::new(0));
+    let wake_count_clone = wake_count.clone();
+
+    let mut watcher = LibraryFileWatcher::new().with_wake_notifier(move || {
+        wake_count_clone.fetch_add(1, Ordering::SeqCst);
+    });
+
+    let watch_root = test_dir.join("watch_music");
+    std::fs::create_dir_all(&watch_root).unwrap();
+    watcher.set_roots(&[watch_root.clone()], &[], None);
+
+    // Give OS watcher a moment to register
+    std::thread::sleep(Duration::from_millis(100));
+
+    // Create a new audio file to trigger notify
+    let new_file = watch_root.join("incoming.mp3");
+    std::fs::write(&new_file, b"ID3\x03\0\0\0\0\0\0").unwrap();
+
+    // Verify wake notifier is called on filesystem change
+    let watch_deadline = Instant::now() + Duration::from_secs(5);
+    while wake_count.load(Ordering::SeqCst) == 0 && Instant::now() < watch_deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        wake_count.load(Ordering::SeqCst) > 0,
+        "wake notifier must be called immediately when filesystem events arrive"
+    );
+
+    // Pump watcher with event callbacks
+    let mut rescanned = Vec::new();
+    let mut on_rescan = |paths: &[std::path::PathBuf], _full: bool| {
+        rescanned.extend_from_slice(paths);
+    };
+    watcher.pump(Instant::now(), None, Some(&mut on_rescan));
+
+    // Clean up
+    drop(store);
+    std::thread::sleep(Duration::from_millis(50));
     std::fs::remove_dir_all(&test_dir).ok();
 }
 

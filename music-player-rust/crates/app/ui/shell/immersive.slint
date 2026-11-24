@@ -14,17 +14,17 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         width: parent.width * 1.15;
         height: parent.height * 1.15;
         image-fit: ImageFit.cover;
-        opacity: 0.65;
+        opacity: 0.92;
     }
     Rectangle {
         width: 100%;
         height: 100%;
-        background: @linear-gradient(180deg, #10110f60 0%, #10110fe8 100%);
+        background: @linear-gradient(180deg, #00000028 0%, #00000055 50%, #10110fa0 100%);
     }
     Rectangle {
         width: 100%;
         height: 100%;
-        background: State.accent.with-alpha(0.04);
+        background: State.accent.with-alpha(0.12);
         animate background { duration: 400ms; easing: ease-in-out; }
     }
 
@@ -110,79 +110,84 @@ export component ImmersivePlayerOverlay inherits Rectangle {
 
         HorizontalLayout {
             vertical-stretch: 1;
+            alignment: center;
             padding-left: 20px;
             padding-right: 20px;
             spacing: root.show-lyrics ? 40px : 0px;
 
             VerticalLayout {
-                horizontal-stretch: 1;
                 alignment: center;
+                horizontal-stretch: root.show-lyrics ? 1 : 0;
 
-                art-column := VerticalLayout {
+                HorizontalLayout {
                     alignment: center;
-                    spacing: 16px;
-                    width: root.show-lyrics
-                        ? clamp(min(State.window-height * 0.38 * 1px, State.window-width * 0.36 * 1px), 240px, 420px)
-                        : clamp(min(State.window-height * 0.48 * 1px, State.window-width * 0.50 * 1px), 280px, 540px);
 
-                    Rectangle {
-                        width: parent.width;
-                        height: self.width;
-                        border-radius: 16px;
-                        clip: true;
-                        background: State.current-badge-bg;
-                        border-width: 1px;
-                        border-color: #ffffff1c;
-                        if State.current-has-cover : Image {
-                            source: State.current-cover;
-                            width: parent.width;
-                            height: parent.height;
-                            image-fit: ImageFit.cover;
-                        }
-                        if !State.current-has-cover : Text {
-                            text: State.current-initials;
-                            color: #ffffffcc;
-                            font-size: 64px;
-                            font-weight: 900;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                        }
-                    }
-
-                    HorizontalLayout {
-                        width: parent.width;
-                        spacing: 12px;
+                    art-column := VerticalLayout {
                         alignment: center;
+                        spacing: 16px;
+                        width: root.show-lyrics
+                            ? clamp(min(State.window-height * 0.38 * 1px, State.window-width * 0.36 * 1px), 240px, 420px)
+                            : clamp(min(State.window-height * 0.52 * 1px, State.window-width * 0.44 * 1px), 280px, 540px);
 
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            min-width: 0px;
-                            spacing: 4px;
-                            Text {
-                                text: State.has-track ? State.current-title : "Nothing playing";
-                                color: #ffffff;
-                                font-size: 24px;
-                                font-weight: 800;
-                                letter-spacing: -0.5px;
-                                overflow: elide;
+                        Rectangle {
+                            width: parent.width;
+                            height: self.width;
+                            border-radius: 16px;
+                            clip: true;
+                            background: State.current-badge-bg;
+                            border-width: 1px;
+                            border-color: #ffffff1c;
+                            if State.current-has-cover : Image {
+                                source: State.current-cover;
+                                width: parent.width;
+                                height: parent.height;
+                                image-fit: ImageFit.cover;
                             }
-                            Text {
-                                text: State.has-track ? State.current-artist : "Choose a song from your library";
-                                color: #ffffffb3;
-                                font-size: 14px;
-                                overflow: elide;
+                            if !State.current-has-cover : Text {
+                                text: State.current-initials;
+                                color: #ffffffcc;
+                                font-size: 64px;
+                                font-weight: 900;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
                             }
                         }
 
-                        if State.has-track : IcBtn {
-                            icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
-                            tint: State.current-favorite ? State.accent : #ffffffb3;
-                            icon-size: 20px;
-                            width: 40px;
-                            height: 40px;
-                            clicked => {
-                                State.current-favorite = !State.current-favorite;
-                                Actions.toggle-favorite(State.current-id);
+                        HorizontalLayout {
+                            width: parent.width;
+                            spacing: 12px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                spacing: 4px;
+                                Text {
+                                    text: State.has-track ? State.current-title : "Nothing playing";
+                                    color: #ffffff;
+                                    font-size: 24px;
+                                    font-weight: 800;
+                                    letter-spacing: -0.5px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: State.has-track ? State.current-artist : "Choose a song from your library";
+                                    color: #ffffffb3;
+                                    font-size: 14px;
+                                    overflow: elide;
+                                }
+                            }
+
+                            if State.has-track : IcBtn {
+                                icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                                tint: State.current-favorite ? State.accent : #ffffffb3;
+                                icon-size: 20px;
+                                width: 40px;
+                                height: 40px;
+                                clicked => {
+                                    State.current-favorite = !State.current-favorite;
+                                    Actions.toggle-favorite(State.current-id);
+                                }
                             }
                         }
                     }
@@ -222,8 +227,19 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 lyrics-scroll-area := Rectangle {
                     vertical-stretch: 1;
                     clip: true;
-                    Flickable {
-                        content-y: State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 44px + 120px);
+
+                    TouchArea {
+                        scroll-event(event) => {
+                            if (event.delta-y != 0px) {
+                                State.lyrics-scroll-paused = true;
+                                Actions.lyrics-scroll-changed(true);
+                            }
+                            reject
+                        }
+                    }
+
+                    immersive-lyrics-flickable := Flickable {
+                        content-y: (State.lyrics-scroll-nonce * 0px) + (State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 44px + 120px));
                         animate content-y { duration: 250ms; easing: ease-out; }
                         VerticalLayout {
                             width: 100%;
@@ -265,6 +281,36 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 font-size: 13px;
                                 wrap: word-wrap;
                                 horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    if State.lyrics-scroll-paused : Rectangle {
+                        x: parent.width - 52px;
+                        y: parent.height - 52px;
+                        width: 38px;
+                        height: 38px;
+                        border-radius: 19px;
+                        border-width: 1px;
+                        border-color: State.accent.with-alpha(0.6);
+                        background: #181c19f0;
+                        drop-shadow-offset-x: 0px;
+                        drop-shadow-offset-y: 4px;
+                        drop-shadow-blur: 16px;
+                        drop-shadow-color: #00000070;
+                        Image {
+                            source: @image-url("../../assets/icons/locate.svg");
+                            width: 18px;
+                            height: 18px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            colorize: State.accent;
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                State.lyrics-scroll-paused = false;
+                                Actions.lyrics-scroll-changed(false);
                             }
                         }
                     }

@@ -524,11 +524,20 @@ unsafe extern "system" fn tray_wnd_proc(hwnd: HWND, message: u32, wparam: WPARAM
 }
 
 fn send(command: MediaCommand) {
-    TRAY.with(|cell| {
+    let sent = TRAY.with(|cell| {
         if let Some(sender) = &cell.borrow().commands {
-            let _ = sender.send(command);
+            sender.send(command).is_ok()
+        } else {
+            false
         }
     });
+    if sent {
+        let _ = slint::invoke_from_event_loop(|| {
+            crate::with_app(|app| {
+                app.poll_os_commands();
+            });
+        });
+    }
 }
 
 unsafe fn enable_dark_mode_support(hwnd: HWND) {

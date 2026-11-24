@@ -126,6 +126,11 @@ impl App {
                                 )
                             });
                         let _ = tx.send((t_path, matched));
+                        let _ = slint::invoke_from_event_loop(|| {
+                            crate::with_app(|app| {
+                                app.poll_lyrics_search();
+                            });
+                        });
                     });
                 }
             }

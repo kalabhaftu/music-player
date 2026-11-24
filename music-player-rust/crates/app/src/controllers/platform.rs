@@ -85,6 +85,11 @@ impl App {
                 }
             }
             let _ = tx.send(repaired);
+            let _ = slint::invoke_from_event_loop(|| {
+                crate::with_app(|app| {
+                    app.poll_artwork_repair();
+                });
+            });
         });
     }
 
@@ -351,8 +356,23 @@ impl App {
             let _ = self.store.checkpoint_wal();
         }
 
-        // File watcher + scan status poll. Collect first, then apply without
-        // holding two overlapping &mut self borrows in the callbacks.
+        self.pump_watcher();
+        self.poll_scan();
+        self.poll_lyrics_search();
+        self.poll_update_check();
+        self.poll_artwork_repair();
+        self.poll_artwork_images();
+        self.poll_duplicate_load();
+        self.poll_os_commands();
+        if self.startup_scan_deferred {
+            self.startup_scan_deferred = false;
+            self.startup_scan();
+            self.check_updates_if_enabled();
+        }
+    }
+
+    /// Drains filesystem watcher events and debounced batch rescans immediately.
+    pub(crate) fn pump_watcher(&mut self) {
         let mut removed_paths: Vec<PathBuf> = Vec::new();
         let mut rescan_paths: Vec<(PathBuf, bool)> = Vec::new();
         {
@@ -370,18 +390,6 @@ impl App {
         }
         for (path, full) in rescan_paths {
             self.on_paths_rescan(&[path], full);
-        }
-        self.poll_scan();
-        self.poll_lyrics_search();
-        self.poll_update_check();
-        self.poll_artwork_repair();
-        self.poll_artwork_images();
-        self.poll_duplicate_load();
-        self.poll_os_commands();
-        if self.startup_scan_deferred {
-            self.startup_scan_deferred = false;
-            self.startup_scan();
-            self.check_updates_if_enabled();
         }
     }
 
@@ -626,6 +634,11 @@ impl App {
             let _ = sender.send(UpdateOutcome {
                 channel: channel.to_string(),
                 result,
+            });
+            let _ = slint::invoke_from_event_loop(|| {
+                crate::with_app(|app| {
+                    app.poll_update_check();
+                });
             });
         });
     }

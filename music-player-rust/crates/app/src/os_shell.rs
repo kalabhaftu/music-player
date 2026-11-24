@@ -273,6 +273,11 @@ unsafe fn create_smtc(
             };
             if let Some(command) = command {
                 let _ = commands.send(command);
+                let _ = slint::invoke_from_event_loop(|| {
+                    crate::with_app(|app| {
+                        app.poll_os_commands();
+                    });
+                });
             }
             Ok(())
         },
@@ -454,13 +459,21 @@ fn thumb_button(
 }
 
 fn send_media_command(command: MediaCommand) -> bool {
-    SHELL.with(|cell| {
+    let sent = SHELL.with(|cell| {
         cell.borrow()
             .commands
             .as_ref()
             .map(|sender| sender.send(command).is_ok())
             .unwrap_or(false)
-    })
+    });
+    if sent {
+        let _ = slint::invoke_from_event_loop(|| {
+            crate::with_app(|app| {
+                app.poll_os_commands();
+            });
+        });
+    }
+    sent
 }
 
 fn is_playing() -> bool {

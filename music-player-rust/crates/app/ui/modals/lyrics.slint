@@ -51,7 +51,8 @@ export component FindLyricsModal inherits Rectangle {
                 color: #ffb04a;
                 font-size: 11px;
                 vertical-alignment: center;
-                overflow: elide;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
             }
         }
 
@@ -60,6 +61,18 @@ export component FindLyricsModal inherits Rectangle {
             VerticalLayout {
                 width: parent.width;
                 spacing: 8px;
+                if !State.lyrics-searching && State.lyrics-results.length == 0 && State.lyrics-search-status == "" : VerticalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    padding-top: 40px;
+                    padding-bottom: 40px;
+                    Text {
+                        text: "Enter a song title or artist and click Search LRCLIB.";
+                        color: Palette.muted;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                    }
+                }
                 for result in State.lyrics-results : Rectangle {
                     height: 52px;
                     border-radius: 8px;

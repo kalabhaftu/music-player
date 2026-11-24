@@ -35,6 +35,7 @@ pub struct LibraryScanCoordinator {
     artwork_cache: Option<PathBuf>,
     active: Option<ActiveScan>,
     result: Option<Result<IndexResult, String>>,
+    completion_notifier: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 }
 
 impl LibraryScanCoordinator {
@@ -44,12 +45,20 @@ impl LibraryScanCoordinator {
             artwork_cache: None,
             active: None,
             result: None,
+            completion_notifier: None,
         }
     }
 
     /// Overrides the artwork cache directory used during the scan.
     pub fn with_artwork_cache(mut self, cache: PathBuf) -> Self {
         self.artwork_cache = Some(cache);
+        self
+    }
+
+    /// Registers a completion notifier that is called immediately when the background
+    /// scan worker thread completes, fails, or cancels.
+    pub fn with_completion_notifier(mut self, notifier: impl Fn() + Send + Sync + 'static) -> Self {
+        self.completion_notifier = Some(Arc::new(notifier));
         self
     }
 
@@ -126,6 +135,7 @@ impl LibraryScanCoordinator {
         let extensions = supported_extensions.cloned();
         let artwork_cache = self.artwork_cache.clone();
         let store = self.store.clone();
+        let completion_notifier = self.completion_notifier.clone();
 
         let spawned = std::thread::Builder::new()
             .name("library-scan".to_string())
@@ -150,6 +160,9 @@ impl LibraryScanCoordinator {
                     extensions.as_ref(),
                 );
                 let _ = sender.send(result);
+                if let Some(notifier) = completion_notifier {
+                    notifier();
+                }
             })
             .is_ok();
         if !spawned {

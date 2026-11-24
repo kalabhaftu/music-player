@@ -396,6 +396,17 @@ fn artwork_loader() -> &'static ArtworkLoader {
                         {
                             break;
                         }
+
+                        static ARTWORK_WAKE_PENDING: std::sync::atomic::AtomicBool =
+                            std::sync::atomic::AtomicBool::new(false);
+                        if !ARTWORK_WAKE_PENDING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                            let _ = slint::invoke_from_event_loop(|| {
+                                ARTWORK_WAKE_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
+                                crate::with_app(|app| {
+                                    app.poll_artwork_images();
+                                });
+                            });
+                        }
                     }
                 })
                 .ok();
@@ -601,7 +612,7 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
     if width == 0 || height == 0 {
         return None;
     }
-    let factor = (160.0 / (width.max(height) as f32)).clamp(0.0, 1.0);
+    let factor = (320.0 / (width.max(height) as f32)).clamp(0.0, 1.0);
     let target_width = ((width as f32 * factor).round() as u32).max(1);
     let target_height = ((height as f32 * factor).round() as u32).max(1);
     let scaled = image::imageops::resize(
@@ -610,7 +621,7 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
         target_height,
         image::imageops::FilterType::Triangle,
     );
-    let blurred = image::imageops::blur(&scaled, 14.0);
+    let blurred = image::imageops::blur(&scaled, 18.0);
     let (b_w, b_h) = blurred.dimensions();
     let image = rgba_to_image(blurred.into_raw(), b_w, b_h);
     if let Ok(mut guard) = blurred_cache().lock() {

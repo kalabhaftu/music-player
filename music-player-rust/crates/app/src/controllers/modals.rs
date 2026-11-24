@@ -447,11 +447,34 @@ impl App {
             ..TagEdit::default()
         };
         let editor = TagEditor::new(tag_backups_dir());
-        match editor.save(&path, &edit) {
+        let target_path = path.clone();
+        let edit_clone = edit.clone();
+        std::thread::Builder::new()
+            .name("metadata-save".to_string())
+            .spawn(move || {
+                let outcome = editor
+                    .save(&target_path, &edit_clone)
+                    .map_err(|e| e.to_string());
+                let _ = slint::invoke_from_event_loop(move || {
+                    crate::with_app(|app| {
+                        app.finish_save_tags(&target_path, &edit_clone, outcome);
+                    });
+                });
+            })
+            .ok();
+    }
+
+    pub(crate) fn finish_save_tags(
+        &mut self,
+        path: &str,
+        edit: &TagEdit,
+        result: Result<TagBackup, String>,
+    ) {
+        match result {
             Ok(backup) => {
-                let snapshot = serde_json::to_string(&edit).unwrap_or_default();
+                let snapshot = serde_json::to_string(edit).unwrap_or_default();
                 let _ = self.store.record_metadata_edit(
-                    &path,
+                    path,
                     "tags",
                     None,
                     None,
@@ -463,8 +486,8 @@ impl App {
                     "Tags saved. A backup of the original was kept.",
                     NoticeSeverity::Success,
                 );
-                if let Ok(Some(track)) = self.store.get_track(&path) {
-                    self.track_cache.insert(path.clone(), track.clone());
+                if let Ok(Some(track)) = self.store.get_track(path) {
+                    self.track_cache.insert(path.to_string(), track.clone());
                     self.update_current_track(&track);
                 }
                 self.close_modal();
@@ -552,6 +575,11 @@ impl App {
         std::thread::spawn(move || {
             let mut client = LrclibSearchClient::new();
             let _ = tx.send(client.search(&title, &artist));
+            let _ = slint::invoke_from_event_loop(|| {
+                crate::with_app(|app| {
+                    app.poll_lyrics_search();
+                });
+            });
         });
     }
 
@@ -575,30 +603,18 @@ impl App {
         let Some(path) = self.lyrics_target.clone() else {
             return;
         };
-        let sidecar = self.ui.global::<State>().get_edit_lyrics_sidecar();
-        let stored = if sidecar {
-            write_sidecar(&path, &text).is_ok()
-        } else {
-            TagEditor::new(tag_backups_dir())
-                .save(
-                    &path,
-                    &TagEdit {
-                        lyrics: Some(text.clone()),
-                        ..TagEdit::default()
-                    },
-                )
-                .is_ok()
-        };
-        if !stored && sidecar {
-            // Embed-fallback-to-sidecar equivalent: if the sidecar write fails,
-            // try embedding instead.
-            let _ = TagEditor::new(tag_backups_dir()).save(
+        // Default: embed in audio file; fallback to sidecar if embedding fails
+        let stored = TagEditor::new(tag_backups_dir())
+            .save(
                 &path,
                 &TagEdit {
                     lyrics: Some(text.clone()),
                     ..TagEdit::default()
                 },
-            );
+            )
+            .is_ok();
+        if !stored {
+            let _ = write_sidecar(&path, &text);
         }
         let _ = self.store.update_track_lyrics_status(&path, true);
         if let Ok(Some(track)) = self.store.get_track(&path) {
@@ -625,15 +641,25 @@ impl App {
             .read_metadata(Path::new(&path), None)
             .ok()
             .and_then(|t| t.lyrics)
+            .filter(|l| !l.trim().is_empty())
         {
             (embedded, "embedded tags")
+        } else if let Some(doc) = &self.lyrics_doc {
+            (
+                doc.lines
+                    .iter()
+                    .map(|l| l.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                "currently loaded lyrics",
+            )
         } else {
             (String::new(), "no existing lyrics")
         };
         let state = self.ui.global::<State>();
         state.set_edit_lyrics_text(ss(text));
         state.set_edit_lyrics_source_label(ss(format!("Source: {}", source)));
-        state.set_edit_lyrics_sidecar(true);
+        state.set_edit_lyrics_sidecar(false);
         state.set_edit_lyrics_offset(ss(self
             .lyrics_doc
             .as_ref()
@@ -657,7 +683,7 @@ impl App {
             text = format!("[offset:{}]\n{}", offset, text);
         }
         let sidecar = state.get_edit_lyrics_sidecar();
-        let stored = if sidecar {
+        let mut stored = if sidecar {
             write_sidecar(&path, &text).is_ok()
         } else {
             TagEditor::new(tag_backups_dir())
@@ -670,6 +696,10 @@ impl App {
                 )
                 .is_ok()
         };
+        if !stored && !sidecar {
+            // Embed fallback to sidecar
+            stored = write_sidecar(&path, &text).is_ok();
+        }
         if !stored {
             self.show_notice(
                 "Lyrics could not be saved. Check the file location.",

@@ -36,7 +36,7 @@ use music_player_core::{
     ExactDuplicateGroup, HybridMetadataEngine, IndexResult, LibraryFileWatcher,
     LibraryScanCoordinator, LibraryStats, LibraryStore, LocalAppLog, PlaybackSession,
     PlayerSettings, PlaylistSummary, QueueCoordinator, RepeatMode, ScanProgress,
-    TagEdit, TagEditor, Track, TrackAvailabilityService, TrackQuery, TrackSort,
+    TagBackup, TagEdit, TagEditor, Track, TrackAvailabilityService, TrackQuery, TrackSort,
     EQUALIZER_BANDS,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -210,7 +210,15 @@ impl App {
     pub(crate) fn new(ui: AppWindow) -> Self {
         let store = LibraryStore::in_app_data().expect("could not open the library database");
         let settings = PlayerSettings::new(store.clone());
-        let scan = LibraryScanCoordinator::new(&store).with_artwork_cache(artwork_cache_dir());
+        let scan = LibraryScanCoordinator::new(&store)
+            .with_artwork_cache(artwork_cache_dir())
+            .with_completion_notifier(|| {
+                let _ = slint::invoke_from_event_loop(|| {
+                    with_app(|app| {
+                        app.poll_scan();
+                    });
+                });
+            });
         let metadata_engine = HybridMetadataEngine::new();
         let log_folder = LocalAppLog::shared().folder().to_path_buf();
         let persisted_volume = settings.int_or(music_player_core::settings::keys::VOLUME, 75);
@@ -240,6 +248,18 @@ impl App {
         }
         let now = Instant::now();
         let (prefetch_lyrics_tx, prefetch_lyrics_rx) = mpsc::channel();
+        static WATCHER_WAKE_PENDING: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        let watcher = LibraryFileWatcher::new().with_wake_notifier(|| {
+            if !WATCHER_WAKE_PENDING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let _ = slint::invoke_from_event_loop(|| {
+                    WATCHER_WAKE_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
+                    with_app(|app| {
+                        app.pump_watcher();
+                    });
+                });
+            }
+        });
         Self {
             ui,
             availability: TrackAvailabilityService::new(&store)
@@ -250,7 +270,7 @@ impl App {
             coordinator,
             listening: PlaybackListeningTracker::new(),
             scan,
-            watcher: LibraryFileWatcher::new(),
+            watcher,
             scan_progress_rx: None,
             lyrics_rx: None,
             auto_lyrics_rx: None,

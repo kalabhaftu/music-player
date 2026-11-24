@@ -820,6 +820,11 @@ impl App {
     }
 
     pub(crate) fn publish_eq(&mut self) {
+        let current_preset = self.settings.eq_current();
+        if current_preset == "Off" {
+            self.eq_bands = [0.0; 10];
+            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
+        }
         let labels: Vec<String> = EQUALIZER_BANDS
             .iter()
             .map(|f| {
@@ -870,11 +875,6 @@ impl App {
             );
             let _ = self.engine.set_audio_output_device("");
             selected_name = "System default".into();
-        }
-        let current_preset = self.settings.eq_current();
-        if current_preset == "Off" {
-            self.eq_bands = [0.0; 10];
-            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
         }
         let state = self.ui.global::<State>();
         state.set_eq_preset(ss(&current_preset));
@@ -1858,6 +1858,11 @@ impl App {
                 )
             });
             let _ = tx.send((track_path, result));
+            let _ = slint::invoke_from_event_loop(|| {
+                crate::with_app(|app| {
+                    app.poll_lyrics_search();
+                });
+            });
         });
     }
 
@@ -1892,7 +1897,9 @@ impl App {
             .collect();
         let state = self.ui.global::<State>();
         state.set_lyrics_lines(ui_model(lines).into());
-        state.set_lyrics_active_line(active);
+        if !state.get_lyrics_scroll_paused() {
+            state.set_lyrics_active_line(active);
+        }
         let _ = timed;
     }
 
@@ -2014,6 +2021,11 @@ impl App {
                 .map(|_| ())
                 .map_err(|error| error.to_string());
             let _ = tx.send(result);
+            let _ = slint::invoke_from_event_loop(|| {
+                crate::with_app(|app| {
+                    app.poll_duplicate_load();
+                });
+            });
         });
     }
 

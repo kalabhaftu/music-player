@@ -10,6 +10,7 @@ use notify::event::{ModifyKind, RenameMode};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Watches configured music folders for changes so the index follows the
@@ -22,6 +23,7 @@ pub struct LibraryFileWatcher {
     ignored_directories: Vec<PathBuf>,
     supported_extensions: HashSet<String>,
     retry_at: Option<Instant>,
+    wake_notifier: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 }
 
 struct RootWatch {
@@ -48,7 +50,14 @@ impl LibraryFileWatcher {
                 .map(|ext| format!(".{}", ext))
                 .collect(),
             retry_at: None,
+            wake_notifier: None,
         }
+    }
+
+    /// Registers a wake notifier that is called whenever new filesystem events arrive.
+    pub fn with_wake_notifier(mut self, notifier: impl Fn() + Send + Sync + 'static) -> Self {
+        self.wake_notifier = Some(Arc::new(notifier));
+        self
     }
 
     /// Replaces the watched roots and exclusion state. Existing watches are
@@ -80,7 +89,13 @@ impl LibraryFileWatcher {
             }
             seen.push(full.clone());
             let (sender, receiver) = channel();
-            let mut watcher = match notify::recommended_watcher(sender) {
+            let notifier = self.wake_notifier.clone();
+            let mut watcher = match notify::recommended_watcher(move |res| {
+                let _ = sender.send(res);
+                if let Some(ref notify) = notifier {
+                    notify();
+                }
+            }) {
                 Ok(watcher) => watcher,
                 // Startup and manual scans still reconcile the folder.
                 Err(_) => continue,
