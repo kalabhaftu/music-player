@@ -390,12 +390,12 @@ export component LyricsView inherits Rectangle {
 export component AudioView inherits Rectangle {
     ScrollView {
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            padding-left: clamp(16px, State.window-width * 0.02 * 1px, 28px);
+            padding-right: clamp(16px, State.window-width * 0.02 * 1px, 28px);
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 20px;
+            alignment: start;
 
             VerticalLayout {
                 spacing: 5px;
@@ -409,13 +409,14 @@ export component AudioView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     VerticalLayout {
-                        min-width: 220px;
+                        width: clamp(State.window-width * 0.25 * 1px, 140px, 240px);
                         spacing: 3px;
                         Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
-                        Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; }
+                        Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
                     }
                     PlayerSlider {
                         horizontal-stretch: 1;
+                        min-width: 60px;
                         minimum: 0.0;
                         maximum: 100.0;
                         value: State.volume;
@@ -424,7 +425,7 @@ export component AudioView inherits Rectangle {
                         scroll-step: 4.0;
                         changed(val) => { Actions.volume-changed(round(val)); }
                     }
-                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 42px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
+                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 36px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
                     ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
                 }
             }
@@ -435,9 +436,10 @@ export component AudioView inherits Rectangle {
                 Text { text: "Choose a connected Windows playback device."; color: Palette.muted; font-size: 10px; }
                 HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
                     if State.output-devices.length > 0 : CustomSelect {
                         horizontal-stretch: 1;
+                        min-width: 140px;
                         options: State.output-devices;
                         current-value: State.output-device;
                         selected(value) => { Actions.set-output-device(value); }
@@ -461,9 +463,9 @@ export component AudioView inherits Rectangle {
                 SectionTitle { text: "Playback transition"; font-size: 15px; letter-spacing: 0px; }
                 HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
                     CustomSelect {
-                        width: 180px;
+                        width: clamp(State.window-width * 0.20 * 1px, 130px, 180px);
                         options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
                         current-value: State.crossfade-label;
                         selected(value) => { Actions.set-crossfade-label(value); }
@@ -477,9 +479,9 @@ export component AudioView inherits Rectangle {
                 SectionTitle { text: "10-band equalizer"; font-size: 15px; letter-spacing: 0px; }
                 HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 120px; }
+                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
                     CustomSelect {
-                        width: 220px;
+                        width: clamp(State.window-width * 0.22 * 1px, 140px, 220px);
                         options: State.eq-presets;
                         current-value: State.eq-preset;
                         selected(value) => { Actions.set-eq-preset(value); }
@@ -491,34 +493,38 @@ export component AudioView inherits Rectangle {
                 Rectangle {
                     border-radius: 12px;
                     background: Palette.raised;
-                    HorizontalLayout {
-                        padding-top: 24px;
-                        padding-bottom: 24px;
-                        padding-left: 8px;
-                        padding-right: 8px;
-                        spacing: 12px;
-                        alignment: center;
-                        for band[index] in State.eq-bands : VerticalLayout {
-                            spacing: 12px;
+                    min-height: 290px;
+                    ScrollView {
+                        HorizontalLayout {
+                            padding-top: 24px;
+                            padding-bottom: 24px;
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 14px;
                             alignment: center;
-                            Text {
-                                text: band.label;
-                                color: Palette.muted;
-                                font-size: 11px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                            }
-                            VerticalEqSlider {
-                                minimum: -20.0;
-                                maximum: 20.0;
-                                value: band.value;
-                                changed(val) => { Actions.set-eq-band(index, val); }
-                            }
-                            Text {
-                                text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
-                                color: Palette.text;
-                                font-size: 11px;
-                                horizontal-alignment: center;
+                            for band[index] in State.eq-bands : VerticalLayout {
+                                min-width: 44px;
+                                spacing: 10px;
+                                alignment: center;
+                                Text {
+                                    text: band.label;
+                                    color: Palette.muted;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                }
+                                VerticalEqSlider {
+                                    minimum: -20.0;
+                                    maximum: 20.0;
+                                    value: band.value;
+                                    changed(val) => { Actions.set-eq-band(index, val); }
+                                }
+                                Text {
+                                    text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
+                                    color: Palette.text;
+                                    font-size: 11px;
+                                    horizontal-alignment: center;
+                                }
                             }
                         }
                     }

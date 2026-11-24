@@ -276,9 +276,10 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         VerticalLayout {
             spacing: 12px;
             alignment: center;
+            width: 100%;
 
             VerticalLayout {
-                width: clamp(State.window-width * (State.immersive-lyrics-open ? 0.84 : 0.60) * 1px, 280px, 860px);
+                width: 100%;
                 spacing: 6px;
                 HorizontalLayout {
                     Text { text: State.current-time; color: #ffffffb0; font-size: 12px; font-weight: 550; horizontal-stretch: 1; }
@@ -296,7 +297,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     finished(val) => { Actions.seek-fraction(val); }
                     scrolled(event) => {
                         if (!State.has-track) { return reject; }
-                        let delta = event.delta-y < 0px ? 5 : (event.delta-y > 0px ? -5 : 0);
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
                         if (delta != 0) {
                             Actions.seek-wheel(delta);
                             return accept;

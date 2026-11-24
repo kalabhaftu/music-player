@@ -141,7 +141,7 @@ export component PlayerSlider inherits Rectangle {
             }
             if (root.scrollable) {
                 let step = root.scroll-step > 0.0 ? root.scroll-step : max(0.01, (root.maximum - root.minimum) * 0.04);
-                let delta = event.delta-y < 0px ? step : (event.delta-y > 0px ? -step : 0.0);
+                let delta = event.delta-y > 0px ? step : (event.delta-y < 0px ? -step : 0.0);
                 if (delta != 0.0) {
                     root.value = clamp(root.value + delta, root.minimum, root.maximum);
                     root.changed(root.value);
@@ -210,9 +210,19 @@ export component VerticalEqSlider inherits Rectangle {
 
     width: 36px;
     height: 200px;
+    vertical-stretch: 0;
 
     area := TouchArea {
         mouse-cursor: ns-resize;
+        scroll-event(event) => {
+            let delta = event.delta-y > 0px ? root.step : (event.delta-y < 0px ? -root.step : 0.0);
+            if (delta != 0.0) {
+                root.value = clamp(root.value + delta, root.minimum, root.maximum);
+                root.changed(root.value);
+                return accept;
+            }
+            reject
+        }
         clicked => {
             let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
             let raw = root.minimum + frac * (root.maximum - root.minimum);
@@ -243,10 +253,10 @@ export component VerticalEqSlider inherits Rectangle {
         // 0 dB center tick
         Rectangle {
             y: 90px;
-            x: (parent.width - 12px) / 2;
+            x: -4px;
             width: 12px;
             height: 1px;
-            background: Palette.muted-2;
+            background: Palette.muted;
         }
 
         // Active fill from center
@@ -257,16 +267,18 @@ export component VerticalEqSlider inherits Rectangle {
             background: area.has-hover || area.pressed ? State.accent : Palette.text-subtle;
             animate background { duration: 100ms; }
             y: root.value >= 0.0
-                ? 10px + (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - 10px
+                ? (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px
                 : 90px;
-            height: abs(root.value) / (root.maximum - root.minimum) * 180px;
+            height: root.value >= 0.0
+                ? 90px - self.y
+                : (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - 90px;
         }
     }
 
     // Circular Thumb
     Rectangle {
         x: (parent.width - self.width) / 2;
-        y: clamp(10px + (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - self.height / 2, 3px, parent.height - self.height - 3px);
+        y: clamp(10px + (1.0 - clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - self.height / 2, 0px, parent.height - self.height);
         width: area.has-hover || area.pressed ? 16px : 14px;
         height: self.width;
         border-radius: self.width / 2;
@@ -837,10 +849,13 @@ export component TrackTable inherits Rectangle {
             sort(column) => { root.sort(column); }
         }
 
-        if root.scrollable : Rectangle {
+        if root.scrollable : ScrollView {
             vertical-stretch: 1;
 
-            ListView {
+            VerticalLayout {
+                spacing: 0px;
+                alignment: start;
+
                 for row[index] in State.tracks : TrackRow {
                     track: row;
                     index: index + 1;
@@ -853,6 +868,17 @@ export component TrackTable inherits Rectangle {
                     favorite => { Actions.toggle-favorite(row.id); }
                     context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                     remove => { Actions.remove-from-playlist(row.position); }
+                }
+
+                if State.can-load-more : Rectangle {
+                    height: 56px;
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionBtn {
+                            label: "Load more tracks";
+                            clicked => { Actions.load-more(); }
+                        }
+                    }
                 }
             }
         }
@@ -872,6 +898,17 @@ export component TrackTable inherits Rectangle {
                 context(x, y) => { Actions.open-context-menu(row.id, x, y); }
                 remove => { Actions.remove-from-playlist(row.position); }
             }
+
+            if State.can-load-more : Rectangle {
+                height: 56px;
+                HorizontalLayout {
+                    alignment: center;
+                    ActionBtn {
+                        label: "Load more tracks";
+                        clicked => { Actions.load-more(); }
+                    }
+                }
+            }
         }
 
         if State.tracks.length == 0 && !State.page-loading : Rectangle {
@@ -884,18 +921,6 @@ export component TrackTable inherits Rectangle {
                     font-size: 13px;
                     horizontal-alignment: center;
                 }
-            }
-        }
-
-        if State.can-load-more : Rectangle {
-            height: 44px;
-            TextBtn {
-                label: "Load more";
-                height: 30px;
-                width: 120px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                clicked => { Actions.load-more(); }
             }
         }
     }
