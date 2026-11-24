@@ -171,6 +171,11 @@ impl TagEditor {
         edit: &TagEdit,
     ) -> Result<TagBackup, Box<dyn std::error::Error>> {
         let original = full_path(path.as_ref());
+        if let Ok(metadata) = fs::metadata(&original) {
+            if metadata.permissions().readonly() {
+                return Err("The file is marked read-only in Windows. Please uncheck 'Read-only' in file properties to edit its tags.".into());
+            }
+        }
         let _path_mutex = FilePathLock::acquire(&original);
         fs::create_dir_all(&self.backup_directory)?;
 

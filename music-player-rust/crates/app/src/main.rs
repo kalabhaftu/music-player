@@ -9,6 +9,7 @@
 mod controllers;
 mod native_io;
 mod os;
+mod os_associations;
 mod os_shell;
 mod splash;
 mod ui;
@@ -355,9 +356,26 @@ impl App {
 }
 
 fn main() -> std::result::Result<(), slint::PlatformError> {
+    let cli_args: Vec<String> = std::env::args().skip(1).collect();
+
+    // Native file association registration without PowerShell:
+    if cli_args.iter().any(|a| a == "--register-associations" || a == "registerassociations") {
+        if let Err(e) = os_associations::register_associations() {
+            eprintln!("Failed to register file associations: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if cli_args.iter().any(|a| a == "--unregister-associations" || a == "unregisterassociations") {
+        if let Err(e) = os_associations::unregister_associations() {
+            eprintln!("Failed to unregister file associations: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     // Single instance: a duplicate launch asks the running instance to show
     // its window and exits, handing off any files passed via CLI.
-    let cli_args: Vec<String> = std::env::args().skip(1).collect();
     if !os::acquire_single_instance(&cli_args) {
         return Ok(());
     }
@@ -394,14 +412,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(1024)
-            .clamp(720, 2560);
+            .clamp(800, 1440);
         let h = store
             .get_setting("window-height")
             .ok()
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(640)
-            .clamp(500, 1600);
+            .clamp(520, 920);
         ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
     }
 
@@ -411,6 +429,18 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     // Show UI and dismiss splash immediately for instantaneous launch
     ui.show()?;
     drop(startup);
+
+    let hwnd = ui
+        .window()
+        .window_handle()
+        .window_handle()
+        .ok()
+        .and_then(|handle| match handle.as_raw() {
+            RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+            _ => None,
+        })
+        .unwrap_or(0);
+    native_io::restore_window_placement(hwnd, &app.borrow().store);
 
     // Startup runs on the first 250 ms clock tick (after the first frame), and
     // the engine-room clock drives playback from there.
@@ -423,8 +453,13 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
 
     ui.run()?;
+    native_io::save_window_placement(hwnd, &app.borrow().store);
     os_shell::detach();
-    app.borrow_mut().save_session();
+    {
+        let mut app_borrow = app.borrow_mut();
+        app_borrow.scan.cancel();
+        app_borrow.save_session();
+    }
     APP_INSTANCE.with(|cell| *cell.borrow_mut() = None);
     Ok(())
 }

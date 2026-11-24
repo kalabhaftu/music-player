@@ -41,13 +41,13 @@ use windows::Win32::System::WinRT::{
     RO_INIT_SINGLETHREADED,
 };
 use windows::Win32::UI::Shell::{
-    ITaskbarList3, THUMBBUTTON, THUMBBUTTONMASK, THB_FLAGS, THB_ICON, THB_TOOLTIP, THBF_DISABLED,
-    THBF_ENABLED, THBN_CLICKED,
+    DragAcceptFiles, DragFinish, DragQueryFileW, HDROP, ITaskbarList3, THUMBBUTTON,
+    THUMBBUTTONMASK, THB_FLAGS, THB_ICON, THB_TOOLTIP, THBF_DISABLED, THBF_ENABLED, THBN_CLICKED,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateIconIndirect, DefWindowProcW, DestroyIcon, GetWindowLongPtrW,
     RegisterWindowMessageW, SetWindowLongPtrW, GWLP_WNDPROC, ICONINFO, WM_APPCOMMAND, WM_COMMAND,
-    WNDPROC,
+    WM_DROPFILES, WNDPROC,
 };
 
 use crate::os::MediaCommand;
@@ -195,6 +195,7 @@ pub fn attach_main_window(hwnd: isize, commands: Sender<MediaCommand>) -> bool {
             GWLP_WNDPROC,
             shell_wnd_proc as *const () as usize as isize,
         );
+        DragAcceptFiles(window, true);
     }
 
     smtc_available
@@ -205,8 +206,9 @@ pub fn detach() {
     let hwnd = SHELL.with(|cell| cell.borrow().hwnd);
     let old = OLD_WNDPROC.take();
     unsafe {
-        if let Some(old) = old {
-            if !hwnd.0.is_null() {
+        if !hwnd.0.is_null() {
+            DragAcceptFiles(hwnd, false);
+            if let Some(old) = old {
                 SetWindowLongPtrW(hwnd, GWLP_WNDPROC, old as usize as isize);
             }
         }
@@ -586,6 +588,33 @@ unsafe extern "system" fn shell_wnd_proc(
                 return LRESULT(1);
             }
         }
+    }
+
+    if message == WM_DROPFILES {
+        let hdrop = HDROP(wparam.0 as *mut core::ffi::c_void);
+        let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
+        let mut paths = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let len = DragQueryFileW(hdrop, i, None);
+            if len > 0 {
+                let mut buffer = vec![0u16; (len + 1) as usize];
+                DragQueryFileW(hdrop, i, Some(&mut buffer));
+                buffer.truncate(len as usize);
+                if let Ok(path) = String::from_utf16(&buffer) {
+                    paths.push(path);
+                }
+            }
+        }
+        DragFinish(hdrop);
+
+        if !paths.is_empty() {
+            let _ = slint::invoke_from_event_loop(move || {
+                crate::with_app(|app| {
+                    app.play_external_files(&paths);
+                });
+            });
+        }
+        return LRESULT(0);
     }
 
     let old = OLD_WNDPROC.get();

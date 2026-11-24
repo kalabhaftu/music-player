@@ -128,6 +128,21 @@ export component AppWindow inherits Window {
                     Actions.volume-changed(max(0, State.volume - (event.modifiers.shift ? 10 : 5)));
                     return accept;
                 }
+                // Home: rewind to start
+                if (event.text == Key.Home) {
+                    Actions.seek-fraction(0.0);
+                    return accept;
+                }
+                // End: skip to next track
+                if (event.text == Key.End) {
+                    Actions.next();
+                    return accept;
+                }
+                // Enter / Return: toggle playback
+                if (event.text == Key.Return) {
+                    Actions.toggle-play();
+                    return accept;
+                }
                 // M: toggle mute
                 if (event.text == "m" || event.text == "M") {
                     Actions.set-volume-muted();

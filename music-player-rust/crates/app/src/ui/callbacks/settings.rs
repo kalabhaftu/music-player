@@ -42,8 +42,10 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         });
     }
     {
-        ui.global::<Actions>()
-            .on_open_default_apps(move || open_url("ms-settings:defaultapps"));
+        ui.global::<Actions>().on_open_default_apps(move || {
+            let _ = crate::os_associations::register_associations();
+            open_url("ms-settings:defaultapps");
+        });
     }
     {
         let a = app.clone();

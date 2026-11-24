@@ -2677,3 +2677,37 @@ fn test_backup_failure_injection_phases_and_byte_for_byte_restoration() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn test_tag_editor_read_only_file_handling() {
+    let root = temp_dir("test_readonly_tags");
+    std::fs::create_dir_all(&root).unwrap();
+    let backups = root.join("backups");
+    let song = root.join("readonly_track.mp3");
+
+    let mut initial_bytes = Vec::new();
+    initial_bytes.extend_from_slice(b"ID3\x04\x00\x00\x00\x00\x00\x00");
+    initial_bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+    initial_bytes.extend_from_slice(&[0; 1024]);
+    std::fs::write(&song, &initial_bytes).unwrap();
+
+    let mut perms = std::fs::metadata(&song).unwrap().permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&song, perms).unwrap();
+
+    let editor = TagEditor::new(&backups);
+    let edit = TagEdit {
+        title: Some("Read Only Test".to_string()),
+        ..Default::default()
+    };
+    let err = editor.save(&song, &edit).unwrap_err();
+    assert!(
+        err.to_string().contains("read-only"),
+        "Error message must clearly state that file is marked read-only: {err}"
+    );
+
+    let mut perms = std::fs::metadata(&song).unwrap().permissions();
+    perms.set_readonly(false);
+    std::fs::set_permissions(&song, perms).unwrap();
+    std::fs::remove_dir_all(&root).ok();
+}
+
