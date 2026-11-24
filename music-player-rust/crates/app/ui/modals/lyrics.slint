@@ -1,134 +1,184 @@
 import { State, Actions } from "../state.slint";
-import { Palette, TextBtn, CustomSelect } from "../widgets.slint";
-import { LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
-import { ModalField } from "common.slint";
+import { Palette, ActionBtn, CustomSelect } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { ModalField, ModalInput, ModalTextArea, ModalFooterBar } from "common.slint";
 
 export component FindLyricsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 20px;
-        padding-right: 20px;
-        padding-top: 14px;
-        padding-bottom: 16px;
-        spacing: 12px;
+        spacing: 0px;
 
-        HorizontalLayout {
-            spacing: 12px;
-            ModalField {
-                label: "Title";
-                text: State.find-lyrics-title;
-                changed(v) => { State.find-lyrics-title = v; }
-                horizontal-stretch: 1;
-            }
-            ModalField {
-                label: "Artist";
-                text: State.find-lyrics-artist;
-                changed(v) => { State.find-lyrics-artist = v; }
-                horizontal-stretch: 1;
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: start;
-            TextBtn {
-                label: "Search LRCLIB";
-                primary: true;
-                height: 32px;
-                clicked => { Actions.find-lyrics(); }
-            }
-            if State.lyrics-searching : HorizontalLayout {
-                spacing: 8px;
-                alignment: center;
-                Text {
-                    text: "Searching LRCLIB…";
-                    color: Palette.muted;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-            }
-            if !State.lyrics-searching && State.lyrics-search-status != "" : Text {
-                text: State.lyrics-search-status;
-                color: #ffb04a;
-                font-size: 11px;
-                vertical-alignment: center;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-        }
-
-        ScrollView {
+        // Body
+        VerticalLayout {
             vertical-stretch: 1;
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 14px;
+            padding-bottom: 10px;
+            spacing: 12px;
+
+            // `.lyric-search-form`
             VerticalLayout {
-                width: parent.width;
-                spacing: 8px;
-                if !State.lyrics-searching && State.lyrics-results.length == 0 && State.lyrics-search-status == "" : VerticalLayout {
-                    alignment: center;
-                    spacing: 6px;
-                    padding-top: 40px;
-                    padding-bottom: 40px;
-                    Text {
-                        text: "Enter a song title or artist and click Search LRCLIB.";
-                        color: Palette.muted;
-                        font-size: 12px;
-                        horizontal-alignment: center;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    ModalField {
+                        label: "Title";
+                        placeholder: "Song title";
+                        text: State.find-lyrics-title;
+                        changed(v) => { State.find-lyrics-title = v; }
+                        accepted(_) => { Actions.find-lyrics(); }
+                    }
+                    ModalField {
+                        label: "Artist";
+                        placeholder: "Artist name (optional)";
+                        text: State.find-lyrics-artist;
+                        changed(v) => { State.find-lyrics-artist = v; }
+                        accepted(_) => { Actions.find-lyrics(); }
                     }
                 }
-                for result in State.lyrics-results : Rectangle {
-                    height: 52px;
-                    border-radius: 8px;
-                    border-width: 1px;
-                    border-color: result-area.has-hover ? State.accent : Palette.border;
-                    background: result-area.has-hover ? #ffffff1a : #ffffff0d;
-                    animate background { duration: 120ms; }
-                    animate border-color { duration: 120ms; }
-                    result-area := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { Actions.use-lyric-result(result.timed ? result.synced-id : result.plain-id, result.timed); }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    ActionBtn {
+                        label: State.lyrics-searching ? "Searching…" : "Search";
+                        primary: true;
+                        enabled: !State.lyrics-searching;
+                        clicked => { Actions.find-lyrics(); }
                     }
-                    HorizontalLayout {
-                        padding-left: 14px;
-                        padding-right: 14px;
-                        spacing: 12px;
+                    if State.lyrics-searching : Text {
+                        text: "Querying LRCLIB catalog…";
+                        color: Palette.muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                    if !State.lyrics-searching && State.lyrics-search-status != "" : Text {
+                        text: State.lyrics-search-status;
+                        color: #ffb04a;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+
+            // `#lyricsSearchResults`
+            fl-sv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                VerticalLayout {
+                    width: fl-sv.visible-width;
+                    spacing: 8px;
+
+                    if State.lyrics-searching && State.lyrics-results.length == 0 : VerticalLayout {
                         alignment: center;
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 3px;
-                            horizontal-stretch: 1;
-                            min-width: 0px;
-                            Text {
-                                text: result.title;
-                                color: Palette.text;
-                                font-size: 13px;
-                                font-weight: 650;
-                                overflow: elide;
-                                min-width: 0px;
-                            }
-                            Text {
-                                text: result.artist;
-                                color: Palette.muted;
-                                font-size: 11px;
-                                font-weight: 500;
-                                overflow: elide;
-                                min-width: 0px;
-                            }
+                        spacing: 5px;
+                        padding-top: 32px;
+                        padding-bottom: 32px;
+                        Text {
+                            text: "Searching LRCLIB…";
+                            color: Palette.text;
+                            font-size: 13px;
+                            font-weight: 650;
+                            horizontal-alignment: center;
                         }
-                        Rectangle {
-                            height: 22px;
-                            border-radius: 999px;
-                            border-width: 1px;
-                            border-color: result.timed ? State.accent.with-alpha(0.35) : #ffffff1f;
-                            background: result.timed ? State.accent.with-alpha(0.18) : #ffffff14;
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
+                        Text {
+                            text: "Looking up lyrics matching “\{State.find-lyrics-title}”.";
+                            color: Palette.muted;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    if !State.lyrics-searching && State.lyrics-results.length == 0 && State.lyrics-search-status == "" : VerticalLayout {
+                        alignment: center;
+                        spacing: 5px;
+                        padding-top: 32px;
+                        padding-bottom: 32px;
+                        Text {
+                            text: "No matching lyrics found";
+                            color: Palette.text;
+                            font-size: 13px;
+                            font-weight: 650;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Try editing the title or artist keywords above and search again.";
+                            color: Palette.muted;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    for result in State.lyrics-results : Rectangle {
+                        min-height: 58px;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: result-area.has-hover ? State.accent : Palette.border;
+                        background: result-area.has-hover ? Palette.hover : Palette.raised;
+                        animate background { duration: 120ms; }
+                        animate border-color { duration: 120ms; }
+
+                        result-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.use-lyric-result(result.timed ? result.synced-id : result.plain-id, result.timed); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            padding-top: 10px;
+                            padding-bottom: 10px;
+                            spacing: 12px;
+                            alignment: center;
+
+                            VerticalLayout {
                                 alignment: center;
+                                spacing: 3px;
+                                horizontal-stretch: 1;
+                                min-width: 0px;
                                 Text {
-                                    text: result.badge;
-                                    color: result.timed ? State.accent : Palette.muted;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.5px;
-                                    vertical-alignment: center;
+                                    text: result.title;
+                                    color: Palette.text;
+                                    font-size: 13px;
+                                    font-weight: 650;
+                                    overflow: elide;
+                                    min-width: 0px;
+                                }
+                                Text {
+                                    text: result.artist;
+                                    color: Palette.muted;
+                                    font-size: 11px;
+                                    font-weight: 500;
+                                    overflow: elide;
+                                    min-width: 0px;
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 999px;
+                                    border-width: 1px;
+                                    border-color: result.timed ? State.accent.with-alpha(0.3) : Palette.border-hover;
+                                    background: result.timed ? State.accent.with-alpha(0.16) : #ffffff14;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        Text {
+                                            text: result.timed ? "TIMED" : "PLAIN";
+                                            color: result.timed ? State.accent : Palette.muted;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                            letter-spacing: 0.5px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -137,12 +187,10 @@ export component FindLyricsModal inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
-            height: 36px;
-            alignment: end;
-            TextBtn {
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
                 label: "Close";
-                height: 32px;
                 clicked => { Actions.close-modal(); }
             }
         }
@@ -151,107 +199,96 @@ export component FindLyricsModal inherits Rectangle {
 
 export component EditLyricsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 20px;
-        padding-right: 20px;
-        padding-top: 14px;
-        padding-bottom: 16px;
-        spacing: 10px;
+        spacing: 0px;
 
-        if State.current-title != "" : Text {
-            text: "\{State.current-title} · \{State.current-artist}";
-            color: Palette.text;
-            font-size: 12px;
-            font-weight: 650;
-            overflow: elide;
-        }
-
-        Text {
-            text: State.edit-lyrics-source-label;
-            color: Palette.muted;
-            font-size: 11px;
-            overflow: elide;
-        }
-
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: start;
-            TextBtn {
-                label: "⏱ Stamp position";
-                height: 32px;
-                clicked => { Actions.stamp-lyric-position(); }
-            }
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: center;
-                Text {
-                    text: "Offset (ms):";
-                    color: Palette.muted;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-                LineEdit {
-                    width: 76px;
-                    height: 32px;
-                    text: State.edit-lyrics-offset;
-                    edited(v) => { State.edit-lyrics-offset = v; }
-                }
-            }
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: center;
-                Text {
-                    text: "Save to:";
-                    color: Palette.muted;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-                CustomSelect {
-                    width: 175px;
-                    options: ["Embed in audio file", "Save beside audio file"];
-                    current-value: State.edit-lyrics-sidecar ? "Save beside audio file" : "Embed in audio file";
-                    selected(v) => { State.edit-lyrics-sidecar = v == "Save beside audio file"; }
-                }
-            }
-        }
-
-        Rectangle {
+        // Body
+        VerticalLayout {
             vertical-stretch: 1;
-            min-height: 260px;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Palette.border;
-            background: Palette.panel-2;
-            clip: true;
-            TextEdit {
-                width: 100%;
-                height: 100%;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 10px;
+
+            if State.current-title != "" : Text {
+                text: "\{State.current-title} · \{State.current-artist}";
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
+
+            Text {
+                text: State.edit-lyrics-source-label;
+                color: Palette.muted-2;
+                font-size: 10px;
+                overflow: elide;
+            }
+
+            // `.lyric-edit-toolbar`
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: end;
+                    ActionBtn {
+                        label: "⏱ Stamp position";
+                        clicked => { Actions.stamp-lyric-position(); }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: "Offset (ms)";
+                        color: Palette.text;
+                        font-size: 10px;
+                        font-weight: 650;
+                    }
+                    ModalInput {
+                        width: 88px;
+                        height: 34px;
+                        numeric: true;
+                        text: State.edit-lyrics-offset;
+                        edited(v) => { State.edit-lyrics-offset = v; }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: end;
+                    CustomSelect {
+                        width: 184px;
+                        height: 34px;
+                        options: ["Embed in audio file", "Save beside audio file"];
+                        current-value: State.edit-lyrics-sidecar ? "Save beside audio file" : "Embed in audio file";
+                        selected(v) => { State.edit-lyrics-sidecar = v == "Save beside audio file"; }
+                    }
+                }
+            }
+
+            ModalTextArea {
+                vertical-stretch: 1;
+                min-height: 240px;
+                monospace: true;
+                placeholder: "Enter lyrics or paste [mm:ss.xx] timestamped LRC text";
                 text <=> State.edit-lyrics-text;
-                font-size: 12px;
             }
         }
 
-        HorizontalLayout {
-            spacing: 10px;
-            height: 36px;
-            alignment: center;
-            TextBtn {
+        ModalFooterBar {
+            ActionBtn {
                 label: "Remove lyrics";
                 danger: true;
-                height: 32px;
                 clicked => { Actions.remove-lyrics(); }
             }
             Rectangle { horizontal-stretch: 1; }
-            TextBtn {
+            ActionBtn {
                 label: "Cancel";
-                height: 32px;
                 clicked => { Actions.close-modal(); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Save lyrics";
                 primary: true;
-                height: 32px;
                 clicked => { Actions.save-lyrics-modal(); }
             }
         }

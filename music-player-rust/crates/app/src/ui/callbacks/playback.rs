@@ -184,9 +184,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 }
                 return;
             }
-            if app.engine.is_playing() {
-                app.cancel_crossfade();
-            }
+            app.cancel_crossfade();
             let is_playing = app.engine.is_playing();
             let position = app.engine.position_ms();
             let duration = app.engine.duration_ms();
@@ -276,11 +274,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                     return;
                 }
                 let target = (duration as f64 * fraction.clamp(0.0, 1.0) as f64) as u64;
-                app.seek_preview_ms = Some(target);
-                let state = app.ui.global::<State>();
-                state.set_progress((target as f32 / duration as f32).clamp(0.0, 1.0));
-                state.set_current_time(ss(fmt_time(target)));
-                drop(state);
+                app.apply_seek_preview(target, duration);
             });
     }
     {
@@ -296,11 +290,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 .unwrap_or_else(|| app.engine.position_ms());
             let target = ((current as i64) + i64::from(delta_seconds) * 1000)
                 .clamp(0, duration as i64) as u64;
-            app.seek_preview_ms = Some(target);
-            let state = app.ui.global::<State>();
-            state.set_progress((target as f32 / duration as f32).clamp(0.0, 1.0));
-            state.set_current_time(ss(fmt_time(target)));
-            drop(state);
+            app.apply_seek_preview(target, duration);
 
             let callback_app = a.clone();
             app.seek_wheel_timer.start(
@@ -386,6 +376,22 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             let mut app = a.borrow_mut();
             app.cancel_crossfade();
             app.coordinator.queue_mut().cycle_repeat_mode();
+            app.publish_playback();
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_remaining_time(move || {
+            let mut app = a.borrow_mut();
+            let current = app
+                .settings
+                .bool_or(music_player_core::settings::keys::SHOW_REMAINING_TIME, false);
+            let next = !current;
+            app.settings.set_raw(
+                music_player_core::settings::keys::SHOW_REMAINING_TIME,
+                if next { "true" } else { "false" },
+            );
+            app.ui.global::<State>().set_show_remaining_time(next);
             app.publish_playback();
         });
     }
@@ -509,26 +515,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     // Audio / EQ.
     {
         let a = app.clone();
-        ui.global::<Actions>().on_set_eq_band(move |index, value| {
-            let mut app = a.borrow_mut();
-            if (index as usize) < app.eq_bands.len() {
-                app.eq_bands[index as usize] = value;
-                app.eq_dirty = true;
-                app.last_vol_debounce = Instant::now();
-                app.apply_equalizer();
-                app.publish_eq();
-            }
-        });
+        ui.global::<Actions>()
+            .on_set_eq_band(move |index, value| a.borrow_mut().set_eq_band(index as usize, value));
     }
     {
         let a = app.clone();
-        ui.global::<Actions>().on_set_eq_preamp(move |value| {
-            let mut app = a.borrow_mut();
-            app.eq_preamp = value;
-            app.eq_dirty = true;
-            app.last_vol_debounce = Instant::now();
-            app.apply_equalizer();
-        });
+        ui.global::<Actions>()
+            .on_set_eq_preamp(move |value| a.borrow_mut().set_eq_preamp(value));
     }
     {
         let a = app.clone();
@@ -539,11 +532,16 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_save_eq_preset(move |name| {
             let mut app = a.borrow_mut();
-            if name.trim().is_empty() {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
                 return;
             }
             app.settings
-                .save_eq_preset(&name, app.eq_bands, app.eq_preamp);
+                .save_eq_preset(trimmed, app.eq_bands, app.eq_preamp);
+            app.settings
+                .set_eq_state(trimmed, app.eq_bands, app.eq_preamp);
+            app.eq_preset = trimmed.to_string();
+            app.eq_dirty = false;
             app.close_modal();
             app.publish_eq();
         });

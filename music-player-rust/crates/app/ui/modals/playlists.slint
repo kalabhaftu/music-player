@@ -1,61 +1,118 @@
 import { State, Actions } from "../state.slint";
-import { Palette, TextBtn } from "../widgets.slint";
-import { LineEdit, ScrollView } from "std-widgets.slint";
+import { Palette, ActionBtn } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { ModalField, ModalFooterBar } from "common.slint";
 
 export component AddToPlaylistModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
-        spacing: 10px;
+        spacing: 0px;
 
-        ScrollView {
+        VerticalLayout {
             vertical-stretch: 1;
-            VerticalLayout {
-                spacing: 6px;
-                for name in State.playlist-names : TouchArea {
-                    height: 34px;
-                    clicked => { Actions.add-track-to-playlist(State.add-to-playlist-id, name); }
-                    Text {
-                        text: name;
-                        color: Palette.text-strong;
-                        font-size: 12px;
-                        vertical-alignment: center;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 10px;
+
+            Text {
+                text: "Choose a playlist";
+                color: Palette.text;
+                font-size: 11px;
+                font-weight: 650;
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 6px;
+                    for name in State.playlist-names : Rectangle {
+                        height: 40px;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: row-ta.has-hover ? State.accent : Palette.border;
+                        background: row-ta.has-hover ? Palette.hover : Palette.panel-2;
+                        animate background { duration: 120ms; }
+                        animate border-color { duration: 120ms; }
+
+                        row-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.add-track-to-playlist(State.add-to-playlist-id, name); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            Text {
+                                text: name;
+                                color: Palette.text;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    if State.playlist-names.length == 0 : Rectangle {
+                        height: 64px;
+                        Text {
+                            text: "No playlists yet. Create one below.";
+                            color: Palette.muted;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }
         }
 
-        HorizontalLayout {
-            spacing: 10px;
-            TextBtn {
+        ModalFooterBar {
+            ActionBtn {
                 label: "New playlist…";
                 clicked => { Actions.open-modal("new-playlist"); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
             }
         }
     }
 }
 
 export component NameModal inherits Rectangle {
+    in property <string> field-label: "Name";
     in property <string> placeholder: "";
-    in property <string> action: "OK";
+    in property <string> action: "Save";
     callback submit(string);
 
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
-        spacing: 10px;
+        spacing: 0px;
 
-        LineEdit {
-            height: 34px;
-            placeholder-text: root.placeholder;
-            text <=> State.modal-text;
-            accepted(text) => { root.submit(text); }
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 8px;
+
+            ModalField {
+                label: root.field-label;
+                placeholder: root.placeholder;
+                text <=> State.modal-text;
+                accepted(text) => { root.submit(text); }
+            }
         }
 
-        HorizontalLayout {
-            spacing: 10px;
-            alignment: end;
-            TextBtn {
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
                 label: root.action;
                 primary: true;
                 clicked => { root.submit(State.modal-text); }

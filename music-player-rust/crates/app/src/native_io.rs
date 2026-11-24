@@ -632,7 +632,20 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
         target_height,
         image::imageops::FilterType::Triangle,
     );
-    let blurred = image::imageops::blur(&scaled, 26.0);
+    let mut blurred = image::imageops::blur(&scaled, 9.0);
+    // Match WebUI CSS: filter: blur(20px) brightness(.72) saturate(1.25)
+    for px in blurred.pixels_mut() {
+        let r = px[0] as f32;
+        let g = px[1] as f32;
+        let b = px[2] as f32;
+        let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        let sr = (lum + 1.25 * (r - lum)) * 0.72;
+        let sg = (lum + 1.25 * (g - lum)) * 0.72;
+        let sb = (lum + 1.25 * (b - lum)) * 0.72;
+        px[0] = sr.clamp(0.0, 255.0) as u8;
+        px[1] = sg.clamp(0.0, 255.0) as u8;
+        px[2] = sb.clamp(0.0, 255.0) as u8;
+    }
     let (b_w, b_h) = blurred.dimensions();
     let image = rgba_to_image(blurred.into_raw(), b_w, b_h);
     if let Ok(mut guard) = blurred_cache().lock() {

@@ -8,16 +8,16 @@ component NavEntryRow inherits Rectangle {
     in property <string> label;
     in property <string> section-title;
 
-    height: root.section-title == "" ? 44px : 79px;
+    height: root.section-title == "" ? 38px : 65px;
 
     VerticalLayout {
         spacing: 0px;
         if root.section-title != "" : HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
-            padding-top: 10px;
-            padding-bottom: 7px;
-            height: 35px;
+            padding-top: 7px;
+            padding-bottom: 5px;
+            height: 27px;
             alignment: start;
             Text {
                 text: root.section-title;
@@ -29,7 +29,7 @@ component NavEntryRow inherits Rectangle {
             }
         }
         Rectangle {
-            height: 44px;
+            height: 38px;
             border-radius: 6px;
             background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? #ffffff0d : (State.view == root.view ? Palette.raised : transparent));
             animate background { duration: 120ms; }
@@ -132,12 +132,14 @@ export component NavRail inherits Rectangle {
             }
         }
 
-        Rectangle { height: 8px; }
+        Rectangle { height: 4px; }
 
-        Flickable {
+        nav-scroll := Flickable {
             vertical-stretch: 1;
+            content-width: self.width;
             content-height: nav-list.preferred-height;
             nav-list := VerticalLayout {
+                width: nav-scroll.width;
                 spacing: 2px;
                 for item in State.navigation-items : NavEntryRow {
                     view: item.view;

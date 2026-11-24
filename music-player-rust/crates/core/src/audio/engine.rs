@@ -170,6 +170,7 @@ struct VlcContext {
     fn_player_is_playing: unsafe extern "C" fn(*mut c_void) -> i32,
     fn_player_get_state: unsafe extern "C" fn(*mut c_void) -> i32,
     fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32,
+    fn_audio_get_volume: unsafe extern "C" fn(*mut c_void) -> i32,
     fn_audio_output_set: Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> i32>,
     fn_audio_output_device_set:
         Option<unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char)>,
@@ -182,8 +183,10 @@ struct VlcContext {
     // Equalizer function pointers
     fn_equalizer_new: unsafe extern "C" fn() -> *mut c_void,
     fn_equalizer_new_from_preset: unsafe extern "C" fn(u32) -> *mut c_void,
-    fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32),
-    fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32),
+    fn_equalizer_get_preamp: unsafe extern "C" fn(*mut c_void) -> f32,
+    fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32) -> i32,
+    fn_equalizer_get_amp: unsafe extern "C" fn(*mut c_void, u32) -> f32,
+    fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32) -> i32,
     fn_equalizer_release: unsafe extern "C" fn(*mut c_void),
     fn_player_set_equalizer: unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32,
     fn_equalizer_preset_count: unsafe extern "C" fn() -> u32,
@@ -208,9 +211,13 @@ impl Drop for VlcContext {
     }
 }
 
-/// Outcome of `AudioEngine::begin_crossfade`.
+/// Outcome of `AudioEngine::begin_crossfade` / `AudioEngine::start_crossfade` /
+/// `AudioEngine::poll_crossfade`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CrossfadeOutcome {
+    /// Non-blocking fade initialized; caller should poll `poll_crossfade`
+    /// every ~20 ms until `Committed`, `Canceled`, or `Failed`.
+    InProgress,
     /// The incoming track is now active; the old player was stopped and
     /// swapped into the spare slot.
     Committed,
@@ -221,6 +228,21 @@ pub enum CrossfadeOutcome {
     Rejected,
     /// The fade was attempted but failed; the outgoing track was restored.
     Failed(String),
+}
+
+enum CrossfadeStage {
+    Opening { started_at: Instant },
+    Holding,
+    Resuming { resumed_at: Instant },
+    Ramping { ramp_start: Instant },
+}
+
+struct CrossfadeMachine {
+    next_path: String,
+    requested_fade_ms: u64,
+    fade_ms: u64,
+    started_generation: u64,
+    stage: CrossfadeStage,
 }
 
 /// Port of `PlaybackService.CrossfadeVolumes`: equal-power cube-law gains
@@ -255,6 +277,10 @@ pub struct AudioEngine {
     crossfade_committed_generation: i64,
     crossfade_active: bool,
     crossfade_progress: f64,
+    crossfade_machine: Option<CrossfadeMachine>,
+    /// Epoch-ms monotonic window (`reconcile_until_ms`) during which freshly
+    /// started DirectSound playback reconciles its actual LibVLC volume.
+    reconcile_start: Option<(u64, Instant)>,
     // Remembered equalizer settings, applied to future players as well.
     equalizer_preset: Option<String>,
     equalizer_bands: Option<[f32; 10]>,
@@ -293,6 +319,8 @@ impl AudioEngine {
             crossfade_committed_generation: -1,
             crossfade_active: false,
             crossfade_progress: 0.0,
+            crossfade_machine: None,
+            reconcile_start: None,
             equalizer_preset: None,
             equalizer_bands: None,
             equalizer_preamp: NEUTRAL_EQUALIZER_PREAMP,
@@ -455,6 +483,8 @@ impl AudioEngine {
             get_sym!(lib, b"libvlc_media_player_get_state");
         let fn_audio_set_volume: unsafe extern "C" fn(*mut c_void, i32) -> i32 =
             get_sym!(lib, b"libvlc_audio_set_volume");
+        let fn_audio_get_volume: unsafe extern "C" fn(*mut c_void) -> i32 =
+            get_sym!(lib, b"libvlc_audio_get_volume");
         let fn_audio_output_set: Option<
             unsafe extern "C" fn(*mut c_void, *const c_char) -> i32,
         > = lib
@@ -482,9 +512,13 @@ impl AudioEngine {
             get_sym!(lib, b"libvlc_audio_equalizer_new");
         let fn_equalizer_new_from_preset: unsafe extern "C" fn(u32) -> *mut c_void =
             get_sym!(lib, b"libvlc_audio_equalizer_new_from_preset");
-        let fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32) =
+        let fn_equalizer_get_preamp: unsafe extern "C" fn(*mut c_void) -> f32 =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_preamp");
+        let fn_equalizer_set_preamp: unsafe extern "C" fn(*mut c_void, f32) -> i32 =
             get_sym!(lib, b"libvlc_audio_equalizer_set_preamp");
-        let fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32) =
+        let fn_equalizer_get_amp: unsafe extern "C" fn(*mut c_void, u32) -> f32 =
+            get_sym!(lib, b"libvlc_audio_equalizer_get_amp_at_index");
+        let fn_equalizer_set_amp: unsafe extern "C" fn(*mut c_void, f32, u32) -> i32 =
             get_sym!(lib, b"libvlc_audio_equalizer_set_amp_at_index");
         let fn_equalizer_release: unsafe extern "C" fn(*mut c_void) =
             get_sym!(lib, b"libvlc_audio_equalizer_release");
@@ -542,6 +576,7 @@ impl AudioEngine {
                 fn_player_is_playing,
                 fn_player_get_state,
                 fn_audio_set_volume,
+                fn_audio_get_volume,
                 fn_audio_output_set,
                 fn_audio_output_device_set,
                 fn_event_manager,
@@ -550,7 +585,9 @@ impl AudioEngine {
                 fn_event_type_name,
                 fn_equalizer_new,
                 fn_equalizer_new_from_preset,
+                fn_equalizer_get_preamp,
                 fn_equalizer_set_preamp,
+                fn_equalizer_get_amp,
                 fn_equalizer_set_amp,
                 fn_equalizer_release,
                 fn_player_set_equalizer,
@@ -565,16 +602,16 @@ impl AudioEngine {
     }
 
     /// Applies the DirectSound output/device selection to a freshly created
-    /// player, mirroring PlaybackService.ConfigureAudioOutputCore.
+    /// player, mirroring PlaybackService.ConfigureAudioOutputCore (device before output).
     unsafe fn apply_audio_output(vlc: &VlcContext, player: *mut c_void, device: &str) {
-        if let Some(output_set) = vlc.fn_audio_output_set {
-            let name = CString::new("directsound").unwrap();
-            let _ = (output_set)(player, name.as_ptr());
-        }
         if let Some(device_set) = vlc.fn_audio_output_device_set {
             let module = CString::new("directx").unwrap();
             let device = CString::new(device).unwrap_or_default();
             (device_set)(player, module.as_ptr(), device.as_ptr());
+        }
+        if let Some(output_set) = vlc.fn_audio_output_set {
+            let name = CString::new("directsound").unwrap();
+            let _ = (output_set)(player, name.as_ptr());
         }
     }
 
@@ -688,6 +725,7 @@ impl AudioEngine {
 
             self.current_path = Some(path_str);
             self.status = PlaybackStatus::Playing;
+            self.reconcile_start = Some((generation, Instant::now()));
             return Ok(());
         }
 
@@ -792,6 +830,7 @@ impl AudioEngine {
         } else {
             PlaybackStatus::Paused
         };
+        self.reconcile_start = Some((generation, Instant::now()));
         Ok(())
     }
 
@@ -1046,24 +1085,39 @@ impl AudioEngine {
         self.equalizer_preamp
     }
 
-    /// Consumes the queued EndReached flag of the active player (swap to false).
+    /// Consumes the queued EndReached flag of the active player when it
+    /// belongs to the current media generation (suppresses stale ends while
+    /// a crossfade is advancing `media_generation`).
     pub fn take_end_reached(&self) -> bool {
         self.poll_state();
         if let Some(ref vlc) = self.vlc {
             if let Some(ref active) = vlc.active {
+                if active.flags.generation.load(Ordering::SeqCst) != self.media_generation {
+                    return false;
+                }
                 return active.flags.take_end_reached();
             }
+        }
+        if self.fallback_flags.generation.load(Ordering::SeqCst) != self.media_generation {
+            return false;
         }
         self.fallback_flags.take_end_reached()
     }
 
-    /// Consumes the queued EncounteredError flag of the active player.
+    /// Consumes the queued EncounteredError flag of the active player when it
+    /// belongs to the current media generation.
     pub fn take_encountered_error(&self) -> bool {
         self.poll_state();
         if let Some(ref vlc) = self.vlc {
             if let Some(ref active) = vlc.active {
+                if active.flags.generation.load(Ordering::SeqCst) != self.media_generation {
+                    return false;
+                }
                 return active.flags.take_encountered_error();
             }
+        }
+        if self.fallback_flags.generation.load(Ordering::SeqCst) != self.media_generation {
+            return false;
         }
         self.fallback_flags.take_encountered_error()
     }
@@ -1152,6 +1206,65 @@ impl AudioEngine {
             }
         }
         names
+    }
+
+    /// Returns `(bands, preamp)` for a built-in preset name: prefers canonical
+    /// overrides if defined (using neutral 12.0412 preamp), otherwise queries
+    /// LibVLC's built-in equalizer preset at its matching index.
+    pub fn preset_curve(&self, preset_name: &str) -> Option<([f32; 10], f32)> {
+        if let Some(gains) = super::equalizer::canonical_preset_by_name(preset_name) {
+            let preamp = self
+                .vlc
+                .as_ref()
+                .and_then(|vlc| unsafe { Self::exact_vlc_preset_preamp(vlc, preset_name) })
+                .unwrap_or(NEUTRAL_EQUALIZER_PREAMP);
+            return Some((gains, preamp));
+        }
+        let vlc = self.vlc.as_ref()?;
+        let index = Self::find_vlc_preset_index(vlc, preset_name)?;
+        unsafe {
+            let eq = (vlc.fn_equalizer_new_from_preset)(index);
+            if eq.is_null() {
+                return None;
+            }
+            let preamp = (vlc.fn_equalizer_get_preamp)(eq);
+            let mut bands = [0.0f32; 10];
+            let count = (vlc.fn_equalizer_band_count)().min(10);
+            for i in 0..count {
+                let raw = (vlc.fn_equalizer_get_amp)(eq, i);
+                let rounded = (raw * 10.0).round() / 10.0;
+                bands[i as usize] = if rounded == 0.0 { 0.0 } else { rounded };
+            }
+            (vlc.fn_equalizer_release)(eq);
+            let rounded_preamp = (preamp * 10000.0).round() / 10000.0;
+            Some((bands, rounded_preamp))
+        }
+    }
+
+    unsafe fn exact_vlc_preset_preamp(vlc: &VlcContext, preset_name: &str) -> Option<f32> {
+        let index = Self::find_vlc_preset_index(vlc, preset_name)?;
+        let eq = (vlc.fn_equalizer_new_from_preset)(index);
+        if eq.is_null() {
+            return None;
+        }
+        let preamp = (vlc.fn_equalizer_get_preamp)(eq);
+        (vlc.fn_equalizer_release)(eq);
+        Some(preamp)
+    }
+
+    fn find_vlc_preset_index(vlc: &VlcContext, preset_name: &str) -> Option<u32> {
+        let count = unsafe { (vlc.fn_equalizer_preset_count)() };
+        for index in 0..count {
+            let name_ptr = unsafe { (vlc.fn_equalizer_preset_name)(index) };
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name = unsafe { CStr::from_ptr(name_ptr).to_string_lossy() };
+            if name.eq_ignore_ascii_case(preset_name) {
+                return Some(index);
+            }
+        }
+        None
     }
 
     /// Port of `PlaybackService.EqualizerBands` semantics, as raw
@@ -1331,12 +1444,45 @@ impl AudioEngine {
     // Crossfade
     // ------------------------------------------------------------------
 
-    /// Port of `PlaybackService.CrossfadeToAsync`, polled synchronously on the
-    /// calling thread (the crossfade runs on the playback thread in the app):
-    /// open-wait (20 ms polls, 5 s timeout), hold at the start of the incoming
-    /// track, resume-wait (3 s), then a ramp with equal-power cube-law gains.
-    /// On completion the outgoing player is stopped and active/spare swap.
-    pub fn begin_crossfade(&mut self, next_path: &str, fade_ms: u64) -> CrossfadeOutcome {
+    /// Ensures freshly opened DirectSound streams pick up the configured
+    /// playback volume once VLC creates the audio output after `play()`.
+    pub fn reconcile_start_volume(&mut self) {
+        let Some((generation, started_at)) = self.reconcile_start else {
+            return;
+        };
+        if self.crossfade_active || generation != self.media_generation || started_at.elapsed() > Duration::from_secs(3) {
+            self.reconcile_start = None;
+            return;
+        }
+        let Some(ref vlc) = self.vlc else {
+            self.reconcile_start = None;
+            return;
+        };
+        let Some(ref active) = vlc.active else {
+            self.reconcile_start = None;
+            return;
+        };
+        let desired = self.volume as i32;
+        unsafe {
+            let playing = (vlc.fn_player_is_playing)(active.player) != 0;
+            if !playing {
+                return;
+            }
+            let current = (vlc.fn_audio_get_volume)(active.player);
+            if current != desired {
+                let _ = (vlc.fn_audio_set_volume)(active.player, desired);
+            }
+            let time = (vlc.fn_player_get_time)(active.player);
+            if started_at.elapsed() >= Duration::from_millis(120) && time > 0 && (vlc.fn_audio_get_volume)(active.player) == desired {
+                self.reconcile_start = None;
+            }
+        }
+    }
+
+    /// Initializes a non-blocking crossfade into `next_path` and returns
+    /// `CrossfadeOutcome::InProgress` immediately. Drive it forward every
+    /// ~20 ms via `poll_crossfade()`.
+    pub fn start_crossfade(&mut self, next_path: &str, fade_ms: u64) -> CrossfadeOutcome {
         if fade_ms == 0 {
             return CrossfadeOutcome::Rejected;
         }
@@ -1344,17 +1490,14 @@ impl AudioEngine {
             return CrossfadeOutcome::Rejected;
         }
 
-        // C# cancels any pending fade before preparing the next one.
         self.cancel_crossfade_core();
 
         let remaining = self.remaining_playback_ms(fade_ms);
-        let mut fade_ms = fade_ms.min(remaining);
-        if fade_ms == 0 {
-            // The outgoing tail is gone; a plain start is the faithful result.
+        let fade_window = fade_ms.min(remaining);
+        if fade_window == 0 {
             return CrossfadeOutcome::Rejected;
         }
 
-        // Prepare the incoming player on a spare slot at volume zero.
         let eq_preset = self.equalizer_preset.clone();
         let eq_bands = self.equalizer_bands;
         let eq_preamp = self.equalizer_preamp;
@@ -1363,8 +1506,6 @@ impl AudioEngine {
                 return CrossfadeOutcome::Rejected;
             };
             unsafe {
-                // A leftover spare cannot be reused because its media belongs
-                // to a completed swap; release it.
                 vlc.spare = None;
                 let media = match Self::create_media(vlc, next_path) {
                     Ok(media) => media,
@@ -1383,7 +1524,7 @@ impl AudioEngine {
                 handle.flags.generation.store(self.media_generation, Ordering::SeqCst);
                 (vlc.fn_player_stop)(handle.player);
                 Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
-                (vlc.fn_audio_set_volume)(handle.player, 0);
+                let _ = (vlc.fn_audio_set_volume)(handle.player, 0);
                 (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
                 if (vlc.fn_player_play)(handle.player) != 0 {
@@ -1399,136 +1540,192 @@ impl AudioEngine {
         }
         self.crossfade_active = true;
         self.crossfade_progress = 0.0;
-        let started_generation = self.media_generation;
+        self.reconcile_start = None;
+        self.crossfade_machine = Some(CrossfadeMachine {
+            next_path: next_path.to_string(),
+            requested_fade_ms: fade_ms,
+            fade_ms: fade_window,
+            started_generation: self.media_generation,
+            stage: CrossfadeStage::Opening {
+                started_at: Instant::now(),
+            },
+        });
+        CrossfadeOutcome::InProgress
+    }
 
-        // Phase 1: Play() only schedules opening/decoding. Keep the outgoing
-        // song at full volume until the incoming playback clock advances.
-        let opening = Instant::now();
-        loop {
-            std::thread::sleep(Duration::from_millis(20));
-            if !self.crossfade_active {
-                return CrossfadeOutcome::Canceled;
-            }
-            let (playing, time, failed) = self.spare_playback_snapshot();
-            if playing && time > 0 {
-                break;
-            }
-            if failed || opening.elapsed() > Duration::from_secs(5) {
-                self.cancel_crossfade_core();
-                return CrossfadeOutcome::Failed(
-                    "The incoming crossfade track did not become ready.".into(),
-                );
-            }
-        }
-
-        // Phase 2: hold the decoded track at its beginning until the requested
-        // fade window actually starts.
-        {
-            let Some(vlc) = self.vlc.as_ref() else {
-                return CrossfadeOutcome::Canceled;
-            };
-            let Some(ref spare) = vlc.spare else {
-                return CrossfadeOutcome::Canceled;
-            };
-            unsafe {
-                (vlc.fn_player_set_pause)(spare.player, 1);
-                (vlc.fn_player_set_time)(spare.player, 0);
-            }
-        }
-        loop {
-            std::thread::sleep(Duration::from_millis(20));
-            if !self.crossfade_active {
-                return CrossfadeOutcome::Canceled;
-            }
-            let remaining = self.remaining_playback_ms(fade_ms);
-            if remaining <= fade_ms {
-                break;
-            }
-        }
-        {
-            let Some(vlc) = self.vlc.as_ref() else {
-                return CrossfadeOutcome::Canceled;
-            };
-            let Some(ref spare) = vlc.spare else {
-                return CrossfadeOutcome::Canceled;
-            };
-            unsafe {
-                (vlc.fn_player_set_pause)(spare.player, 0);
-            }
+    /// Advances an in-progress non-blocking crossfade by one tick. Returns
+    /// `None` while still progressing, or the terminal `CrossfadeOutcome` when done.
+    pub fn poll_crossfade(&mut self) -> Option<CrossfadeOutcome> {
+        let mut machine = self.crossfade_machine.take()?;
+        if !self.crossfade_active {
+            return Some(CrossfadeOutcome::Canceled);
         }
 
-        // Phase 3: wait for the prepared track to actually resume.
-        let resumed = Instant::now();
-        loop {
-            std::thread::sleep(Duration::from_millis(20));
-            if !self.crossfade_active {
-                return CrossfadeOutcome::Canceled;
-            }
-            let (playing, time, failed) = self.spare_playback_snapshot();
-            if playing && time > 0 {
-                let remaining = self.remaining_playback_ms(fade_ms);
-                // If opening consumed the entire tail, ramp the new stream in
-                // briefly; never stretch an overlap beyond the outgoing audio.
-                fade_ms = if remaining > 0 {
-                    fade_ms.min(remaining)
+        match machine.stage {
+            CrossfadeStage::Opening { started_at } => {
+                if let Some(ref vlc) = self.vlc {
+                    if let Some(ref spare) = vlc.spare {
+                        unsafe {
+                            let _ = (vlc.fn_audio_set_volume)(spare.player, 0);
+                        }
+                    }
+                }
+                let (playing, time, failed) = self.spare_playback_snapshot();
+                if playing && time > 0 {
+                    let remaining = self.remaining_playback_ms(machine.requested_fade_ms);
+                    if remaining > machine.requested_fade_ms + 30 {
+                        if let Some(vlc) = self.vlc.as_ref() {
+                            if let Some(ref spare) = vlc.spare {
+                                unsafe {
+                                    (vlc.fn_player_set_pause)(spare.player, 1);
+                                    (vlc.fn_player_set_time)(spare.player, 0);
+                                    let _ = (vlc.fn_audio_set_volume)(spare.player, 0);
+                                }
+                            } else {
+                                return Some(CrossfadeOutcome::Canceled);
+                            }
+                        } else {
+                            return Some(CrossfadeOutcome::Canceled);
+                        }
+                        machine.stage = CrossfadeStage::Holding;
+                    } else {
+                        machine.fade_ms = if remaining > 0 {
+                            machine.requested_fade_ms.min(remaining)
+                        } else {
+                            machine.requested_fade_ms.min(200)
+                        };
+                        machine.stage = CrossfadeStage::Ramping {
+                            ramp_start: Instant::now(),
+                        };
+                    }
+                    self.crossfade_machine = Some(machine);
+                    None
+                } else if failed || started_at.elapsed() > Duration::from_secs(5) {
+                    self.cancel_crossfade_core();
+                    Some(CrossfadeOutcome::Failed(
+                        "The incoming crossfade track did not become ready.".into(),
+                    ))
                 } else {
-                    fade_ms.min(200)
+                    self.crossfade_machine = Some(machine);
+                    None
+                }
+            }
+            CrossfadeStage::Holding => {
+                if let Some(ref vlc) = self.vlc {
+                    if let Some(ref spare) = vlc.spare {
+                        unsafe {
+                            let _ = (vlc.fn_audio_set_volume)(spare.player, 0);
+                        }
+                    }
+                }
+                let remaining = self.remaining_playback_ms(machine.requested_fade_ms);
+                if remaining <= machine.requested_fade_ms {
+                    if let Some(vlc) = self.vlc.as_ref() {
+                        if let Some(ref spare) = vlc.spare {
+                            unsafe {
+                                let _ = (vlc.fn_audio_set_volume)(spare.player, 0);
+                                (vlc.fn_player_set_pause)(spare.player, 0);
+                            }
+                        } else {
+                            return Some(CrossfadeOutcome::Canceled);
+                        }
+                    } else {
+                        return Some(CrossfadeOutcome::Canceled);
+                    }
+                    machine.stage = CrossfadeStage::Resuming {
+                        resumed_at: Instant::now(),
+                    };
+                }
+                self.crossfade_machine = Some(machine);
+                None
+            }
+            CrossfadeStage::Resuming { resumed_at } => {
+                if let Some(ref vlc) = self.vlc {
+                    if let Some(ref spare) = vlc.spare {
+                        unsafe {
+                            let _ = (vlc.fn_audio_set_volume)(spare.player, 0);
+                        }
+                    }
+                }
+                let (playing, time, failed) = self.spare_playback_snapshot();
+                if playing && time > 0 {
+                    let remaining = self.remaining_playback_ms(machine.requested_fade_ms);
+                    machine.fade_ms = if remaining > 0 {
+                        machine.requested_fade_ms.min(remaining)
+                    } else {
+                        machine.requested_fade_ms.min(200)
+                    };
+                    machine.stage = CrossfadeStage::Ramping {
+                        ramp_start: Instant::now(),
+                    };
+                    self.crossfade_machine = Some(machine);
+                    None
+                } else if failed || resumed_at.elapsed() > Duration::from_secs(3) {
+                    self.cancel_crossfade_core();
+                    Some(CrossfadeOutcome::Failed(
+                        "The prepared crossfade track did not resume.".into(),
+                    ))
+                } else {
+                    self.crossfade_machine = Some(machine);
+                    None
+                }
+            }
+            CrossfadeStage::Ramping { ramp_start } => {
+                let elapsed = ramp_start.elapsed().as_secs_f64() * 1000.0;
+                self.crossfade_progress = if machine.fade_ms > 0 {
+                    (elapsed / machine.fade_ms as f64).clamp(0.0, 1.0)
+                } else {
+                    1.0
                 };
-                break;
-            }
-            if failed || resumed.elapsed() > Duration::from_secs(3) {
-                self.cancel_crossfade_core();
-                return CrossfadeOutcome::Failed(
-                    "The prepared crossfade track did not resume.".into(),
-                );
-            }
-        }
+                self.apply_crossfade_volume_core();
+                if self.crossfade_progress < 1.0 {
+                    self.crossfade_machine = Some(machine);
+                    return None;
+                }
 
-        // Phase 4: the ramp.
-        let ramp_start = Instant::now();
-        loop {
-            std::thread::sleep(Duration::from_millis(20));
-            if !self.crossfade_active {
-                return CrossfadeOutcome::Canceled;
-            }
-            let elapsed = ramp_start.elapsed().as_secs_f64() * 1000.0;
-            self.crossfade_progress = if fade_ms > 0 {
-                (elapsed / fade_ms as f64).clamp(0.0, 1.0)
-            } else {
-                1.0
-            };
-            self.apply_crossfade_volume_core();
-            if self.crossfade_progress >= 1.0 {
-                break;
-            }
-        }
+                let Some(ref mut vlc) = self.vlc else {
+                    return Some(CrossfadeOutcome::Canceled);
+                };
+                let Some(spare) = vlc.spare.take() else {
+                    return Some(CrossfadeOutcome::Canceled);
+                };
+                let Some(active) = vlc.active.take() else {
+                    vlc.spare = Some(spare);
+                    return Some(CrossfadeOutcome::Canceled);
+                };
+                unsafe {
+                    (vlc.fn_player_stop)(active.player);
+                }
+                drop(active);
+                unsafe {
+                    let _ = (vlc.fn_audio_set_volume)(spare.player, self.volume as i32);
+                }
+                spare.flags.end_reached.store(false, Ordering::SeqCst);
+                vlc.active = Some(spare);
 
-        // Commit: stop the outgoing player and swap active/spare.
-        let Some(ref mut vlc) = self.vlc else {
-            return CrossfadeOutcome::Canceled;
-        };
-        let Some(spare) = vlc.spare.take() else {
-            return CrossfadeOutcome::Canceled;
-        };
-        let Some(active) = vlc.active.take() else {
-            vlc.spare = Some(spare);
-            return CrossfadeOutcome::Canceled;
-        };
-        unsafe {
-            (vlc.fn_player_stop)(active.player);
+                self.current_path = Some(machine.next_path);
+                self.crossfade_committed_generation = machine.started_generation as i64;
+                self.crossfade_active = false;
+                self.crossfade_progress = 0.0;
+                self.status = PlaybackStatus::Playing;
+                self.reconcile_start = Some((machine.started_generation, Instant::now()));
+                Some(CrossfadeOutcome::Committed)
+            }
         }
-        drop(active);
-        unsafe {
-            (vlc.fn_audio_set_volume)(spare.player, self.volume as i32);
-        }
-        spare.flags.end_reached.store(false, Ordering::SeqCst);
-        vlc.active = Some(spare);
+    }
 
-        self.current_path = Some(next_path.to_string());
-        self.crossfade_committed_generation = started_generation as i64;
-        self.crossfade_active = false;
-        self.crossfade_progress = 0.0;
-        CrossfadeOutcome::Committed
+    /// Blocking convenience wrapper around `start_crossfade` + `poll_crossfade`
+    /// preserved for headless callers and synchronous tests.
+    pub fn begin_crossfade(&mut self, next_path: &str, fade_ms: u64) -> CrossfadeOutcome {
+        match self.start_crossfade(next_path, fade_ms) {
+            CrossfadeOutcome::InProgress => loop {
+                std::thread::sleep(Duration::from_millis(20));
+                if let Some(outcome) = self.poll_crossfade() {
+                    return outcome;
+                }
+            },
+            other => other,
+        }
     }
 
     /// Polls the spare player without touching Rust-owned state transitions:
@@ -1587,6 +1784,7 @@ impl AudioEngine {
         let fade_was_active = self.crossfade_active;
         self.crossfade_active = false;
         self.crossfade_progress = 0.0;
+        self.crossfade_machine = None;
 
         let Some(ref mut vlc) = self.vlc else { return };
         let generation = self.media_generation;
@@ -1715,9 +1913,94 @@ impl AudioEngine {
 mod tests {
     use super::*;
 
+    fn write_test_wav(path: &Path, duration_ms: u32) {
+        let sample_rate: u32 = 44100;
+        let channels: u16 = 2;
+        let bits_per_sample: u16 = 16;
+        let num_samples = (sample_rate * duration_ms) / 1000;
+        let data_bytes = num_samples * (channels as u32) * (bits_per_sample as u32 / 8);
+        let mut buf = Vec::with_capacity(44 + data_bytes as usize);
+        buf.extend_from_slice(b"RIFF");
+        buf.extend_from_slice(&(36 + data_bytes).to_le_bytes());
+        buf.extend_from_slice(b"WAVE");
+        buf.extend_from_slice(b"fmt ");
+        buf.extend_from_slice(&16u32.to_le_bytes());
+        buf.extend_from_slice(&1u16.to_le_bytes());
+        buf.extend_from_slice(&channels.to_le_bytes());
+        buf.extend_from_slice(&sample_rate.to_le_bytes());
+        let byte_rate = sample_rate * (channels as u32) * (bits_per_sample as u32 / 8);
+        buf.extend_from_slice(&byte_rate.to_le_bytes());
+        let block_align = channels * (bits_per_sample / 8);
+        buf.extend_from_slice(&block_align.to_le_bytes());
+        buf.extend_from_slice(&bits_per_sample.to_le_bytes());
+        buf.extend_from_slice(b"data");
+        buf.extend_from_slice(&data_bytes.to_le_bytes());
+        buf.resize(44 + data_bytes as usize, 0);
+        std::fs::write(path, &buf).unwrap();
+    }
+
     #[test]
     fn test_vlc_initializes() {
         let engine = AudioEngine::new();
         assert!(engine.vlc_is_available(), "AudioEngine must successfully initialize LibVLC");
+    }
+
+    #[test]
+    fn test_vlc_runtime_eq_and_dual_volume() {
+        let mut engine = AudioEngine::new();
+        assert!(engine.vlc_is_available());
+
+        // Check preset curves including VLC-only presets like Club
+        let club = engine.preset_curve("Club");
+        assert!(club.is_some(), "VLC Club preset should resolve bands and preamp");
+        let (club_bands, club_preamp) = club.unwrap();
+        println!("Club preamp={}, bands={:?}", club_preamp, club_bands);
+        assert!(club_bands.iter().any(|&v| v != 0.0));
+
+        let temp_dir = std::env::temp_dir();
+        let wav1 = temp_dir.join("mp_test_vlc_1.wav");
+        let wav2 = temp_dir.join("mp_test_vlc_2.wav");
+        write_test_wav(&wav1, 4000);
+        write_test_wav(&wav2, 4000);
+
+        engine.set_volume(75).unwrap();
+        engine.apply_equalizer(Some("Rock"), Some([4.5, 3.0, 2.0, 0.0, -1.0, -0.5, 1.5, 3.0, 4.0, 4.5]), 12.0);
+        engine.play_track(&wav1).unwrap();
+
+        std::thread::sleep(Duration::from_millis(250));
+        let vlc = engine.vlc.as_ref().unwrap();
+        let active_player = vlc.active.as_ref().unwrap().player;
+        let vol_after_play = unsafe { (vlc.fn_audio_get_volume)(active_player) };
+        let playing = unsafe { (vlc.fn_player_is_playing)(active_player) };
+        let time_ms = unsafe { (vlc.fn_player_get_time)(active_player) };
+        let eq_ret = unsafe {
+            let eq = (vlc.fn_equalizer_new)();
+            (vlc.fn_equalizer_set_preamp)(eq, 12.0);
+            (vlc.fn_equalizer_set_amp)(eq, 6.0, 0);
+            let rc = (vlc.fn_player_set_equalizer)(active_player, eq);
+            (vlc.fn_equalizer_release)(eq);
+            rc
+        };
+        println!(
+            "active: playing={}, time={}ms, vol_after_play={}, eq_ret={}",
+            playing, time_ms, vol_after_play, eq_ret
+        );
+        assert_eq!(eq_ret, 0, "libvlc_media_player_set_equalizer must succeed");
+
+        // Now test setting volume after start if needed
+        unsafe {
+            let set_rc = (vlc.fn_audio_set_volume)(active_player, 75);
+            std::thread::sleep(Duration::from_millis(60));
+            let vol_reconciled = (vlc.fn_audio_get_volume)(active_player);
+            println!("after explicit set(75): rc={}, get_volume={}", set_rc, vol_reconciled);
+        }
+
+        // Now run a short 800ms crossfade
+        let out = engine.begin_crossfade(&wav2.to_string_lossy(), 800);
+        println!("crossfade outcome: {:?}", out);
+
+        let _ = engine.stop();
+        let _ = std::fs::remove_file(&wav1);
+        let _ = std::fs::remove_file(&wav2);
     }
 }

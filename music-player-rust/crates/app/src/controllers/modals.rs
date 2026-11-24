@@ -168,8 +168,12 @@ impl App {
             }
             5 => self.toggle_favorite(&id),
             6 => {
-                self.ui.global::<State>().set_modal(ss("rating"));
-                self.ui.global::<State>().set_rate_value(0);
+                let current_rating = self
+                    .track_by_id(&id)
+                    .map(|t| t.rating as i32)
+                    .unwrap_or(0);
+                self.ui.global::<State>().set_rate_value(current_rating);
+                self.open_modal("rating");
             }
             8 => self.set_view("Lyrics", "", "", ""),
             9 => self.open_find_lyrics(&id),
@@ -180,7 +184,6 @@ impl App {
             11 => self.open_tags(&id),
             12 => {
                 if let Some(t) = self.track_by_id(&id) {
-                    self.confirm_action = Some(ConfirmAction::RestoreBackup(String::new()));
                     let backups = TagEditor::new(tag_backups_dir()).list_backups(&t.path);
                     let choices: Vec<SharedString> = backups
                         .iter()
@@ -192,11 +195,17 @@ impl App {
                             .map(|b| b.backup_path.clone())
                             .unwrap_or_default(),
                     ));
-                    let state = self.ui.global::<State>();
-                    state.set_confirm_message(ss("Restore the most recent tag backup?"));
-                    state.set_confirm_has_choices(false);
-                    state.set_confirm_choices(ui_model(choices).into());
-                    state.set_modal(ss("confirm"));
+                    {
+                        let state = self.ui.global::<State>();
+                        state.set_confirm_message(ss("Restore the most recent tag backup?"));
+                        state.set_confirm_has_choices(false);
+                        state.set_confirm_choices(ui_model(choices).into());
+                        state.set_confirm_danger(true);
+                    }
+                    self.open_modal("confirm");
+                    self.ui
+                        .global::<State>()
+                        .set_modal_title(ss("Restore previous tags?"));
                 }
             }
             13 => self.open_details(&id),
@@ -226,13 +235,13 @@ impl App {
             "folders" => "Library folders",
             "exclusions" => "Scan exclusions",
             "add-to-playlist" => "Add to playlist",
-            "new-playlist" => "Create playlist",
+            "new-playlist" => "New playlist",
             "rename-playlist" => "Rename playlist",
             "save-preset" => "Save equalizer preset",
             "confirm" => "Confirm",
             "rating" => "Set rating",
             "duplicate-locations" => "Duplicate locations",
-            "reset" => "Reset settings",
+            "reset" => "Reset UI settings",
             "update" => "Update available",
             _ => name,
         };
@@ -241,14 +250,23 @@ impl App {
             state.set_reset_appearance(true);
             state.set_reset_playback(true);
             state.set_reset_library(true);
+        } else if name == "new-playlist" || name == "save-preset" {
+            state.set_modal_text(ss(""));
+        } else if name == "rename-playlist" {
+            let current = state.get_playlist_name().to_string();
+            state.set_modal_text(ss(current));
         }
         state.set_modal(ss(name));
         state.set_modal_title(ss(title));
     }
 
     pub(crate) fn close_modal(&mut self) {
-        self.ui.global::<State>().set_modal(ss(""));
+        let state = self.ui.global::<State>();
+        state.set_modal(ss(""));
+        state.set_confirm_danger(false);
+        state.set_confirm_has_choices(false);
         self.confirm_action = None;
+        self.edit_target = None;
     }
 
     pub(crate) fn open_details(&mut self, id: &str) {
@@ -617,6 +635,7 @@ impl App {
             let _ = write_sidecar(&path, &text);
         }
         let _ = self.store.update_track_lyrics_status(&path, true);
+        self.lyrics_cache.remove(&path);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }
@@ -626,24 +645,41 @@ impl App {
 
     pub(crate) fn open_edit_lyrics(&mut self) {
         let Some(path) = self
-            .edit_target
+            .lyrics_target
             .clone()
-            .or_else(|| self.lyrics_target.clone())
             .or_else(|| self.current.as_ref().map(|t| t.path.clone()))
         else {
             return;
         };
         self.edit_target = Some(path.clone());
-        let (text, source) = if let Some(sidecar) = read_sidecar(&path) {
-            (sidecar, "sidecar file")
-        } else if let Some(embedded) = self
-            .metadata_engine
-            .read_metadata(Path::new(&path), None)
-            .ok()
-            .and_then(|t| t.lyrics)
-            .filter(|l| !l.trim().is_empty())
-        {
-            (embedded, "embedded tags")
+        let sidecar = read_sidecar(&path);
+        let sidecar_timed = sidecar
+            .as_deref()
+            .map(|s| !parse_lrc(s).lines.is_empty())
+            .unwrap_or(false);
+        let embedded = if sidecar_timed {
+            None
+        } else {
+            self.metadata_engine
+                .read_metadata(Path::new(&path), None)
+                .ok()
+                .and_then(|t| t.lyrics)
+                .filter(|l| !l.trim().is_empty())
+        };
+        let embedded_timed = embedded
+            .as_deref()
+            .map(|s| !parse_lrc(s).lines.is_empty())
+            .unwrap_or(false);
+        let (text, source) = if sidecar_timed {
+            (sidecar.unwrap(), "sidecar file")
+        } else if embedded_timed {
+            (embedded.unwrap(), "embedded tags")
+        } else if let Some(s) = sidecar {
+            (s, "sidecar file")
+        } else if let Some(e) = embedded {
+            (e, "embedded tags")
+        } else if let Some(raw) = &self.lyrics_raw {
+            (raw.clone(), "currently loaded lyrics")
         } else if let Some(doc) = &self.lyrics_doc {
             (
                 music_player_core::lyrics::format_lrc(doc),
@@ -705,6 +741,7 @@ impl App {
         }
         let has_lyrics = !text.trim().is_empty();
         let _ = self.store.update_track_lyrics_status(&path, has_lyrics);
+        self.lyrics_cache.remove(&path);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }
@@ -729,6 +766,7 @@ impl App {
             },
         );
         let _ = self.store.update_track_lyrics_status(&path, false);
+        self.lyrics_cache.insert(path.clone(), (Instant::now(), None));
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }
@@ -750,7 +788,11 @@ impl App {
                 if time < 0 {
                     time = 0;
                 }
+                let state = self.ui.global::<State>();
+                state.set_lyrics_scroll_paused(false);
+                state.set_lyrics_scroll_nonce(state.get_lyrics_scroll_nonce() + 1);
                 let _ = self.engine.seek(time as u64);
+                self.update_lyrics_position(time as u64);
             }
         }
     }

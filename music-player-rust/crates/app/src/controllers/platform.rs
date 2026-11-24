@@ -229,6 +229,11 @@ impl App {
                 self.play_external_files(&payload.paths);
             }
         }
+        if self.crossfade_in_progress {
+            self.poll_crossfade();
+        } else {
+            self.engine.reconcile_start_volume();
+        }
         let mut position = self.engine.position_ms().max(0);
         let duration = self.engine.duration_ms().max(0);
 
@@ -340,7 +345,7 @@ impl App {
         // Debounced equalizer persist (700 ms).
         if self.eq_dirty && self.last_vol_debounce.elapsed() >= Duration::from_millis(700) {
             self.settings
-                .set_eq_state(&self.coordinator_eq_name(), self.eq_bands, self.eq_preamp);
+                .set_eq_state(&self.eq_preset, self.eq_bands, self.eq_preamp);
             self.eq_dirty = false;
         }
 

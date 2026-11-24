@@ -66,16 +66,20 @@ impl App {
             if self.lyrics_cache.contains_key(path) {
                 continue;
             }
-            if let Some(sidecar) = read_sidecar(path) {
-                let doc = parse_lrc(&sidecar);
-                let timed = !doc.lines.is_empty();
+            let sidecar_raw = read_sidecar(path);
+            let sidecar_timed = sidecar_raw
+                .as_deref()
+                .map(|s| !parse_lrc(s).lines.is_empty())
+                .unwrap_or(false);
+            if sidecar_timed {
+                let raw = sidecar_raw.unwrap();
                 self.lyrics_cache.insert(
                     path.clone(),
                     (
                         Instant::now(),
                         Some(music_player_core::lyrics::LyricsMatch {
-                            raw: sidecar,
-                            timed,
+                            raw,
+                            timed: true,
                             score: 1.0,
                             result: music_player_core::lyrics::LyricsSearchResult::default(),
                         }),
@@ -83,30 +87,46 @@ impl App {
                 );
                 continue;
             }
-            if let Some(embedded) = self
+            let embedded_raw = self
                 .metadata_engine
                 .read_metadata(Path::new(path), None)
                 .ok()
                 .and_then(|t| t.lyrics)
-            {
-                let doc = parse_lrc(&embedded);
-                let timed = !doc.lines.is_empty();
+                .filter(|l| !l.trim().is_empty());
+            let embedded_timed = embedded_raw
+                .as_deref()
+                .map(|s| !parse_lrc(s).lines.is_empty())
+                .unwrap_or(false);
+            if let Some((raw, timed)) = if embedded_timed {
+                embedded_raw.map(|r| (r, true))
+            } else if let Some(s) = sidecar_raw {
+                Some((s, false))
+            } else {
+                embedded_raw.map(|r| (r, false))
+            } {
                 self.lyrics_cache.insert(
                     path.clone(),
                     (
                         Instant::now(),
                         Some(music_player_core::lyrics::LyricsMatch {
-                            raw: embedded,
+                            raw,
                             timed,
                             score: 1.0,
                             result: music_player_core::lyrics::LyricsSearchResult::default(),
                         }),
                     ),
                 );
-                continue;
+                if timed {
+                    continue;
+                }
             }
             if auto_load {
+                let key = path.to_lowercase();
+                if self.lyrics_in_flight.contains(&key) {
+                    continue;
+                }
                 if let Some(track) = self.track_cache.get(path).cloned() {
+                    self.lyrics_in_flight.insert(key);
                     let tx = self.prefetch_lyrics_tx.clone();
                     let t_path = path.clone();
                     let t_title = track.title.clone();
@@ -138,6 +158,7 @@ impl App {
     }
 
     pub(crate) fn play_track(&mut self, track: Track, reset_queue: bool, index: Option<usize>) {
+        self.cancel_crossfade();
         let resolver = self.resolver();
         let result =
             self.coordinator
@@ -153,6 +174,11 @@ impl App {
                 let Some(path) = result.track_path.clone() else {
                     return;
                 };
+                self.crossfade_timer.stop();
+                self.crossfade_target_path = None;
+                self.crossfade_in_progress = false;
+                self.crossfade_failure_source = None;
+                self.crossfade_source_index = None;
                 if self.availability.mark_available(&path) {
                     self.refresh_view();
                 }
@@ -168,9 +194,6 @@ impl App {
                     return;
                 }
                 self.listening.reset_for_track();
-                self.crossfade_in_progress = false;
-                self.crossfade_failure_source = None;
-                self.crossfade_source_index = None;
                 if let Some(track) = self.resolve_track(&path) {
                     self.update_current_track(&track);
                 }
@@ -201,55 +224,28 @@ impl App {
             }
             K::CrossfadeRequested => {
                 if let Some(request) = result.crossfade {
+                    let path = result.track_path.clone().unwrap_or_default();
                     self.crossfade_source_index = Some(request.source_index);
                     self.crossfade_in_progress = true;
-                    let path = result.track_path.clone().unwrap_or_default();
-                    let title = file_stem(&path);
-                    match self.engine.begin_crossfade(&path, request.duration_ms) {
-                        CrossfadeOutcome::Committed => {
-                            self.crossfade_in_progress = false;
-                            self.crossfade_source_index = None;
-                            self.crossfade_failure_source = None;
-                            if let Some(track) = self.store.get_track(&path).ok().flatten() {
-                                self.update_current_track(&track);
-                            }
-                            self.listening.reset_for_track();
-                        }
-                        CrossfadeOutcome::Canceled => {
-                            self.cancel_crossfade();
-                        }
-                        CrossfadeOutcome::Rejected => {
-                            // Plain start when the engine cannot fade.
-                            self.crossfade_in_progress = false;
-                            if let Err(err) = self.engine.play_track(&path) {
-                                self.show_notice(
-                                    format!("Could not play {}. See Settings → Open log folder for details.", title),
-                                    NoticeSeverity::Error,
-                                );
-                                LocalAppLog::shared().error(
-                                    "playback",
-                                    "crossfade fallback failed",
-                                    Some(&err),
-                                );
-                            } else if let Some(track) = self.store.get_track(&path).ok().flatten() {
-                                self.update_current_track(&track);
-                                self.listening.reset_for_track();
-                            }
-                        }
-                        CrossfadeOutcome::Failed(message) => {
-                            self.crossfade_in_progress = false;
-                            self.crossfade_failure_source =
-                                self.current.as_ref().map(|t| t.path.clone());
-                            self.restore_crossfade_queue_index();
-                            self.show_notice(
-                                format!("Could not start {} during crossfade. Playback will continue; see the local log for details.", title),
-                                NoticeSeverity::Error,
+                    self.crossfade_target_path = Some(path.clone());
+                    let outcome = self.engine.start_crossfade(&path, request.duration_ms);
+                    match outcome {
+                        CrossfadeOutcome::InProgress => {
+                            self.crossfade_timer.start(
+                                TimerMode::Repeated,
+                                Duration::from_millis(20),
+                                || {
+                                    crate::with_app(|app| {
+                                        app.poll_crossfade();
+                                    });
+                                },
                             );
-                            LocalAppLog::shared().error("playback", &message, None);
+                            self.publish_playback();
+                        }
+                        other => {
+                            self.finish_crossfade_outcome(other, &path);
                         }
                     }
-                    self.publish_queue(true);
-                    self.publish_playback();
                 }
             }
             K::StopPlayback => {
@@ -320,7 +316,78 @@ impl App {
         }
     }
 
+    pub(crate) fn poll_crossfade(&mut self) {
+        let Some(outcome) = self.engine.poll_crossfade() else {
+            return;
+        };
+        let path = self.crossfade_target_path.clone().unwrap_or_default();
+        self.finish_crossfade_outcome(outcome, &path);
+    }
+
+    fn finish_crossfade_outcome(&mut self, outcome: CrossfadeOutcome, path: &str) {
+        self.crossfade_timer.stop();
+        self.crossfade_target_path = None;
+        let title = file_stem(path);
+        match outcome {
+            CrossfadeOutcome::InProgress => {}
+            CrossfadeOutcome::Committed => {
+                self.crossfade_in_progress = false;
+                self.crossfade_source_index = None;
+                self.crossfade_failure_source = None;
+                self.listening.reset_for_track();
+                if let Some(track) = self.resolve_track(path) {
+                    self.update_current_track(&track);
+                }
+                self.prefetch_upcoming_tracks();
+                self.save_session();
+            }
+            CrossfadeOutcome::Canceled => {
+                self.cancel_crossfade();
+            }
+            CrossfadeOutcome::Rejected => {
+                self.crossfade_in_progress = false;
+                self.crossfade_source_index = None;
+                if let Err(err) = self.engine.play_track(path) {
+                    self.show_notice(
+                        format!(
+                            "Could not play {}. See Settings → Open log folder for details.",
+                            title
+                        ),
+                        NoticeSeverity::Error,
+                    );
+                    LocalAppLog::shared().error(
+                        "playback",
+                        "crossfade fallback failed",
+                        Some(&err),
+                    );
+                } else if let Some(track) = self.resolve_track(path) {
+                    self.update_current_track(&track);
+                    self.listening.reset_for_track();
+                    self.prefetch_upcoming_tracks();
+                    self.save_session();
+                }
+            }
+            CrossfadeOutcome::Failed(message) => {
+                self.crossfade_in_progress = false;
+                self.crossfade_failure_source = self.current.as_ref().map(|t| t.path.clone());
+                self.restore_crossfade_queue_index();
+                self.show_notice(
+                    format!(
+                        "Could not start {} during crossfade. Playback will continue; see the local log for details.",
+                        title
+                    ),
+                    NoticeSeverity::Error,
+                );
+                LocalAppLog::shared().error("playback", &message, None);
+            }
+        }
+        self.publish_queue(true);
+        self.publish_playback();
+    }
+
     pub(crate) fn cancel_crossfade(&mut self) {
+        self.crossfade_timer.stop();
+        self.crossfade_target_path = None;
         if !self.crossfade_in_progress {
             return;
         }
@@ -580,31 +647,80 @@ impl App {
     }
 
     pub(crate) fn apply_equalizer(&mut self) {
-        let preset = self.coordinator_eq_name();
-        let name = if preset == "Off" {
-            None
+        let preset = self.eq_preset.as_str();
+        if preset == "Off" || preset.is_empty() {
+            self.engine
+                .apply_equalizer(None, None, NEUTRAL_EQUALIZER_PREAMP);
+        } else if preset.eq_ignore_ascii_case("Custom")
+            || self.settings.saved_eq_preset(preset).is_some()
+        {
+            self.engine
+                .apply_equalizer(None, Some(self.eq_bands), self.eq_preamp);
         } else {
-            Some(preset.as_str())
-        };
-        self.engine
-            .apply_equalizer(name, Some(self.eq_bands), self.eq_preamp);
+            self.engine
+                .apply_equalizer(Some(preset), Some(self.eq_bands), self.eq_preamp);
+        }
     }
 
     pub(crate) fn set_eq_preset(&mut self, name: &str) {
+        let name = name.trim();
         if name == "Off" {
             self.eq_bands = [0.0; 10];
             self.eq_preamp = NEUTRAL_EQUALIZER_PREAMP;
+        } else if name.eq_ignore_ascii_case("Custom") {
+            // Preserve current slider curves when switching explicitly to Custom.
         } else if let Some((bands, preamp)) = self.settings.saved_eq_preset(name) {
             self.eq_bands = bands;
             self.eq_preamp = preamp;
-        } else if let Some(gains) = music_player_core::canonical_preset_by_name(name) {
-            self.eq_bands = gains;
+        } else if let Some((bands, preamp)) = self.engine.preset_curve(name) {
+            self.eq_bands = bands;
+            self.eq_preamp = preamp;
         }
+        self.eq_preset = name.to_string();
+        self.eq_dirty = false;
         self.settings
             .set_eq_state(name, self.eq_bands, self.eq_preamp);
         self.ui.global::<State>().set_eq_preset(ss(name));
         self.apply_equalizer();
-        self.publish_eq();
+        self.publish_eq_sliders();
+    }
+
+    pub(crate) fn set_eq_band(&mut self, index: usize, value: f32) {
+        if index >= self.eq_bands.len() || !value.is_finite() {
+            return;
+        }
+        let clamped = ((value * 10.0).round() / 10.0).clamp(-20.0, 20.0);
+        self.eq_bands[index] = if clamped == 0.0 { 0.0 } else { clamped };
+        if self.eq_preset != "Custom" {
+            self.eq_preset = "Custom".into();
+            self.ui.global::<State>().set_eq_preset(ss("Custom"));
+        }
+        self.eq_dirty = true;
+        self.last_vol_debounce = Instant::now();
+        self.apply_equalizer();
+        use slint::Model;
+        let bands = self.ui.global::<State>().get_eq_bands();
+        if let Some(mut row) = bands.row_data(index) {
+            row.value = self.eq_bands[index];
+            bands.set_row_data(index, row);
+        } else {
+            self.publish_eq_sliders();
+        }
+    }
+
+    pub(crate) fn set_eq_preamp(&mut self, value: f32) {
+        if !value.is_finite() {
+            return;
+        }
+        self.eq_preamp = value.clamp(-20.0, 20.0);
+        if self.eq_preset != "Custom" {
+            self.eq_preset = "Custom".into();
+            self.ui.global::<State>().set_eq_preset(ss("Custom"));
+        }
+        self.eq_dirty = true;
+        self.last_vol_debounce = Instant::now();
+        self.apply_equalizer();
+        self.ui.global::<State>().set_eq_preamp(self.eq_preamp);
     }
 
     pub(crate) fn clear_queue(&mut self) {

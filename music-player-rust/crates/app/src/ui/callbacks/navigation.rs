@@ -44,6 +44,12 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 })
                 .unwrap_or(0);
             native_io::save_window_placement(hwnd, &app.store);
+            if app.os_attached {
+                use slint::winit_030::WinitWindowAccessor;
+                app.ui.window().with_winit_window(|win| {
+                    app.ui.global::<State>().set_window_maximized(win.is_maximized());
+                });
+            }
         });
     }
     {

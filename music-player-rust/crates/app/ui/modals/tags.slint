@@ -1,127 +1,154 @@
 import { State, Actions } from "../state.slint";
-import { Palette, IcBtn, TextBtn, SectionTitle } from "../widgets.slint";
-import { LineEdit, ScrollView } from "std-widgets.slint";
-import { ModalField, ModalFooter } from "common.slint";
+import { Palette, IcBtn, ActionBtn } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { ModalField, ModalInput, ModalFooterBar } from "common.slint";
 
 export component TagsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
-        spacing: 10px;
+        spacing: 0px;
 
-        HorizontalLayout {
-            spacing: 10px;
-            ModalField { horizontal-stretch: 1; label: "Title"; text: State.tags-title; changed(v) => { State.tags-title = v; } }
-            ModalField { horizontal-stretch: 1; label: "Artist"; text: State.tags-artist; changed(v) => { State.tags-artist = v; } }
-        }
-        HorizontalLayout {
-            spacing: 10px;
-            ModalField { horizontal-stretch: 1; label: "Album"; text: State.tags-album; changed(v) => { State.tags-album = v; } }
-            ModalField { horizontal-stretch: 1; label: "Album artist"; text: State.tags-album-artist; changed(v) => { State.tags-album-artist = v; } }
-        }
-        HorizontalLayout {
-            spacing: 10px;
-            ModalField { horizontal-stretch: 1; label: "Genre"; text: State.tags-genre; changed(v) => { State.tags-genre = v; } }
-            ModalField { horizontal-stretch: 1; label: "Year"; text: State.tags-year; changed(v) => { State.tags-year = v; } }
-            ModalField { horizontal-stretch: 1; label: "Track number"; text: State.tags-track; changed(v) => { State.tags-track = v; } }
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            TextBtn {
-                label: State.tags-has-artwork ? "Replace artwork…" : "Add artwork…";
-                clicked => { Actions.pick-artwork(); }
-            }
-            Text {
-                text: State.tags-artwork-name;
-                color: Palette.muted;
-                font-size: 10px;
-                vertical-alignment: center;
-                overflow: elide;
-                horizontal-stretch: 1;
-            }
-        }
-
-        SectionTitle { text: "Additional format-specific fields"; text-color: Palette.muted; font-size: 11px; letter-spacing: 0px; }
         ScrollView {
-            height: 110px;
+            vertical-stretch: 1;
             VerticalLayout {
-                spacing: 6px;
-                for field[index] in State.tags-custom : HorizontalLayout {
-                    spacing: 8px;
-                    height: 30px;
-                    LineEdit {
-                        width: 140px;
-                        height: 26px;
-                        text: field.key;
-                        edited(v) => { Actions.tags-custom-key-changed(index, v); }
-                    }
-                    LineEdit {
-                        horizontal-stretch: 1;
-                        height: 26px;
-                        text: field.value;
-                        edited(v) => { Actions.tags-custom-value-changed(index, v); }
-                    }
-                    IcBtn {
-                        icon: @image-url("../../assets/icons/close.svg");
-                        icon-size: 11px;
-                        width: 24px;
-                        height: 24px;
-                        tint: Palette.muted-2;
-                        hover-tint: #ff5b74;
-                        clicked => { Actions.tags-remove-custom(index); }
-                    }
-                }
-                TextBtn {
-                    label: "Add field…";
-                    width: 120px;
-                    height: 28px;
-                    clicked => { Actions.tags-add-custom-field("FIELD", ""); }
-                }
-            }
-        }
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-top: 14px;
+                padding-bottom: 14px;
+                spacing: 12px;
 
-        SectionTitle { text: "Additional standard fields"; text-color: Palette.muted; font-size: 11px; letter-spacing: 0px; }
-        ScrollView {
-            height: 100px;
-            VerticalLayout {
-                spacing: 6px;
-                for field[index] in State.tags-additional : HorizontalLayout {
-                    spacing: 8px;
-                    height: 30px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    ModalField { horizontal-stretch: 1; label: "Title"; text: State.tags-title; changed(v) => { State.tags-title = v; } }
+                    ModalField { horizontal-stretch: 1; label: "Artist"; text: State.tags-artist; changed(v) => { State.tags-artist = v; } }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    ModalField { horizontal-stretch: 1; label: "Album"; text: State.tags-album; changed(v) => { State.tags-album = v; } }
+                    ModalField { horizontal-stretch: 1; label: "Album artist"; text: State.tags-album-artist; changed(v) => { State.tags-album-artist = v; } }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    ModalField { horizontal-stretch: 1; label: "Genre"; text: State.tags-genre; changed(v) => { State.tags-genre = v; } }
+                    ModalField { horizontal-stretch: 1; label: "Year"; text: State.tags-year; changed(v) => { State.tags-year = v; } }
+                    ModalField { horizontal-stretch: 1; label: "Track number"; text: State.tags-track; changed(v) => { State.tags-track = v; } }
+                }
+
+                // Artwork picker row (`.toolbar`)
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    ActionBtn {
+                        label: State.tags-has-artwork ? "Choose artwork…" : "Choose artwork…";
+                        clicked => { Actions.pick-artwork(); }
+                    }
                     Text {
-                        text: field.key;
+                        text: State.tags-artwork-name;
                         color: Palette.muted;
-                        font-size: 10px;
-                        width: 140px;
+                        font-size: 11px;
                         vertical-alignment: center;
                         overflow: elide;
-                    }
-                    LineEdit {
                         horizontal-stretch: 1;
-                        height: 26px;
-                        text: field.value;
-                        edited(v) => { Actions.tags-field-changed(index, v); }
+                    }
+                }
+
+                // Format-specific custom fields section
+                VerticalLayout {
+                    spacing: 8px;
+                    Rectangle { height: 1px; background: Palette.border; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Additional format-specific fields";
+                            color: Palette.text;
+                            font-size: 11px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        ActionBtn {
+                            label: "+ Add field";
+                            clicked => { Actions.tags-add-custom-field("FIELD", ""); }
+                        }
+                    }
+                    for field[index] in State.tags-custom : HorizontalLayout {
+                        spacing: 8px;
+                        alignment: center;
+                        ModalInput {
+                            width: 150px;
+                            height: 32px;
+                            text: field.key;
+                            placeholder: "Field name";
+                            edited(v) => { Actions.tags-custom-key-changed(index, v); }
+                        }
+                        ModalInput {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            text: field.value;
+                            placeholder: "Value";
+                            edited(v) => { Actions.tags-custom-value-changed(index, v); }
+                        }
+                        IcBtn {
+                            icon: @image-url("../../assets/icons/close.svg");
+                            icon-size: 11px;
+                            width: 28px;
+                            height: 28px;
+                            tint: Palette.muted-2;
+                            hover-tint: #ff5b74;
+                            clicked => { Actions.tags-remove-custom(index); }
+                        }
+                    }
+                }
+
+                // Additional standard fields section
+                if State.tags-additional.length > 0 : VerticalLayout {
+                    spacing: 8px;
+                    Rectangle { height: 1px; background: Palette.border; }
+                    Text {
+                        text: "Additional standard fields";
+                        color: Palette.text;
+                        font-size: 11px;
+                        font-weight: 700;
+                    }
+                    for field[index] in State.tags-additional : HorizontalLayout {
+                        spacing: 10px;
+                        alignment: center;
+                        Text {
+                            text: field.key;
+                            color: Palette.muted;
+                            font-size: 11px;
+                            width: 150px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        ModalInput {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            text: field.value;
+                            edited(v) => { Actions.tags-field-changed(index, v); }
+                        }
                     }
                 }
             }
         }
 
-        ModalFooter {
-            note: State.tags-format-note;
-            // The footer doubles as the action row: swap Cancel for Save.
-            TextBtn {
+        ModalFooterBar {
+            Text {
+                text: State.tags-format-note != ""
+                    ? "\{State.tags-format-note} · Saving creates a recoverable backup."
+                    : "Audio tags · Saving creates a recoverable backup.";
+                color: Palette.muted-2;
+                font-size: 10px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            ActionBtn {
                 label: "Cancel";
-                y: 9px;
-                x: parent.width - self.width - 140px;
                 clicked => { Actions.close-modal(); }
             }
-            TextBtn {
+            ActionBtn {
                 label: "Save tags";
                 primary: true;
-                width: 110px;
-                y: 9px;
-                x: parent.width - self.width - 18px;
                 clicked => { Actions.save-tags(); }
             }
         }
@@ -130,87 +157,162 @@ export component TagsModal inherits Rectangle {
 
 export component DetailsModal inherits Rectangle {
     VerticalLayout {
-        padding-left: 18px;
-        padding-right: 18px;
-        spacing: 12px;
+        spacing: 0px;
 
         ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 12px;
-                for row in State.detail-rows : HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: row.label;
-                        color: Palette.muted-2;
-                        font-size: 11px;
-                        width: 120px;
-                        vertical-alignment: center;
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-top: 10px;
+                padding-bottom: 14px;
+                spacing: 0px;
+
+                // Primary `<dl class="details">` rows
+                for row in State.detail-rows : Rectangle {
+                    min-height: 34px;
+                    HorizontalLayout {
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 16px;
+                        Text {
+                            text: row.label;
+                            color: Palette.muted;
+                            font-size: 11px;
+                            width: 120px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: row.value != "" ? row.value : "—";
+                            color: Palette.text;
+                            font-size: 11px;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
                     }
+                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Palette.border; }
+                }
+
+                if State.detail-additional.length > 0 : VerticalLayout {
+                    padding-top: 16px;
+                    padding-bottom: 4px;
                     Text {
-                        text: row.value;
-                        color: Palette.text-subtle;
-                        font-size: 11px;
-                        horizontal-stretch: 1;
-                        overflow: elide;
-                        vertical-alignment: center;
+                        text: "Additional standard tags";
+                        color: Palette.text;
+                        font-size: 12px;
+                        font-weight: 700;
                     }
                 }
-                if State.detail-additional.length > 0 : SectionTitle { text: "Additional standard tags"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
-                for row in State.detail-additional : HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: row.label;
-                        color: Palette.muted-2;
-                        font-size: 11px;
-                        width: 120px;
-                        vertical-alignment: center;
+                for row in State.detail-additional : Rectangle {
+                    min-height: 34px;
+                    HorizontalLayout {
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 16px;
+                        Text {
+                            text: row.label;
+                            color: Palette.muted;
+                            font-size: 11px;
+                            width: 140px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.value != "" ? row.value : "—";
+                            color: Palette.text;
+                            font-size: 11px;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
                     }
+                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Palette.border; }
+                }
+
+                if State.detail-custom.length > 0 : VerticalLayout {
+                    padding-top: 16px;
+                    padding-bottom: 4px;
                     Text {
-                        text: row.value;
-                        color: Palette.text-subtle;
-                        font-size: 11px;
-                        horizontal-stretch: 1;
-                        overflow: elide;
-                        vertical-alignment: center;
+                        text: "Custom tags";
+                        color: Palette.text;
+                        font-size: 12px;
+                        font-weight: 700;
                     }
                 }
-                if State.detail-custom.length > 0 : SectionTitle { text: "Custom tags"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
-                for row in State.detail-custom : HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: row.label;
-                        color: Palette.muted-2;
-                        font-size: 11px;
-                        width: 120px;
-                        vertical-alignment: center;
+                for row in State.detail-custom : Rectangle {
+                    min-height: 34px;
+                    HorizontalLayout {
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        spacing: 16px;
+                        Text {
+                            text: row.label;
+                            color: Palette.muted;
+                            font-size: 11px;
+                            width: 140px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.value != "" ? row.value : "—";
+                            color: Palette.text;
+                            font-size: 11px;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
                     }
+                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Palette.border; }
+                }
+
+                VerticalLayout {
+                    padding-top: 16px;
+                    padding-bottom: 4px;
                     Text {
-                        text: row.value;
-                        color: Palette.text-subtle;
-                        font-size: 11px;
-                        horizontal-stretch: 1;
-                        overflow: elide;
-                        vertical-alignment: center;
+                        text: "Recent tag backups";
+                        color: Palette.text;
+                        font-size: 12px;
+                        font-weight: 700;
                     }
                 }
-                if State.detail-backups.length > 0 : SectionTitle { text: "Recent tag backups"; text-color: Palette.muted; font-size: 13px; letter-spacing: 0px; }
-                for backup in State.detail-backups : HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: backup.label;
-                        color: Palette.muted;
-                        font-size: 10px;
-                        horizontal-stretch: 1;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    TextBtn {
-                        label: "Restore";
-                        height: 26px;
-                        clicked => { Actions.confirm-restore-backup(backup.label); }
-                    }
+                if State.detail-backups.length == 0 : Text {
+                    text: "No tag backups.";
+                    color: Palette.muted;
+                    font-size: 11px;
                 }
+                for backup in State.detail-backups : Rectangle {
+                    min-height: 40px;
+                    HorizontalLayout {
+                        padding-top: 6px;
+                        padding-bottom: 6px;
+                        spacing: 12px;
+                        Text {
+                            text: backup.label;
+                            color: Palette.muted;
+                            font-size: 11px;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        ActionBtn {
+                            label: "Restore";
+                            clicked => { Actions.confirm-restore-backup(backup.label); }
+                        }
+                    }
+                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Palette.border; }
+                }
+            }
+        }
+
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Close";
+                clicked => { Actions.close-modal(); }
             }
         }
     }

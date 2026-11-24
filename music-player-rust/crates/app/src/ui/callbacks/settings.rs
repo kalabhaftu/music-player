@@ -208,8 +208,55 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_minimize_window(move || {
-            // Wave 5 wires the Win32 show-state call; hiding is the safe fallback.
-            let _ = a.borrow().ui.hide();
+            use slint::winit_030::WinitWindowAccessor;
+            let app = a.borrow();
+            if app.ui.window().with_winit_window(|win| win.set_minimized(true)).is_none() {
+                app.ui.window().set_minimized(true);
+            }
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_toggle_maximize_window(move || {
+            use slint::winit_030::WinitWindowAccessor;
+            let app = a.borrow();
+            app.ui.window().with_winit_window(|win| {
+                let next = !win.is_maximized();
+                win.set_maximized(next);
+                app.ui.global::<State>().set_window_maximized(next);
+            });
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_drag_window(move || {
+            use slint::winit_030::WinitWindowAccessor;
+            let app = a.borrow();
+            app.ui.window().with_winit_window(|win| {
+                let _ = win.drag_window();
+            });
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_drag_resize_window(move |dir| {
+            use slint::winit_030::winit::window::ResizeDirection;
+            use slint::winit_030::WinitWindowAccessor;
+            let direction = match dir.as_str() {
+                "n" => ResizeDirection::North,
+                "s" => ResizeDirection::South,
+                "e" => ResizeDirection::East,
+                "w" => ResizeDirection::West,
+                "nw" => ResizeDirection::NorthWest,
+                "ne" => ResizeDirection::NorthEast,
+                "sw" => ResizeDirection::SouthWest,
+                "se" => ResizeDirection::SouthEast,
+                _ => return,
+            };
+            let app = a.borrow();
+            app.ui.window().with_winit_window(|win| {
+                let _ = win.drag_resize_window(direction);
+            });
         });
     }
     {
@@ -284,21 +331,25 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             state.set_immersive_player_open(true);
             state.set_immersive_lyrics_open(false);
             drop(state);
+            app.sync_window_mode();
             app.publish_appearance();
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive_player(move || {
+            use slint::winit_030::WinitWindowAccessor;
             let app = a.borrow();
             if app.ui.window().is_fullscreen() {
                 app.ui.window().set_fullscreen(false);
+                app.ui.window().with_winit_window(|win| win.set_fullscreen(None));
             }
             let state = app.ui.global::<State>();
             state.set_immersive_fullscreen(false);
             state.set_immersive_player_open(false);
             state.set_immersive_lyrics_open(false);
             drop(state);
+            app.sync_window_mode();
             app.publish_appearance();
         });
     }
@@ -306,12 +357,17 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>()
             .on_toggle_immersive_fullscreen(move || {
+                use slint::winit_030::WinitWindowAccessor;
                 let app = a.borrow();
                 let fullscreen = !app.ui.window().is_fullscreen();
                 app.ui.window().set_fullscreen(fullscreen);
-                app.ui
-                    .global::<State>()
-                    .set_immersive_fullscreen(fullscreen);
+                if !fullscreen {
+                    app.ui.window().with_winit_window(|win| win.set_fullscreen(None));
+                }
+                app.sync_window_mode();
+                if !fullscreen {
+                    app.publish_appearance();
+                }
             });
     }
     {

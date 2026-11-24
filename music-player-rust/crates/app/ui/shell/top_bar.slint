@@ -1,5 +1,5 @@
 import { State, Actions } from "../state.slint";
-import { Palette, IcBtn, TextBtn } from "../widgets.slint";
+import { Palette, IcBtn, TextBtn, DelayedTooltip } from "../widgets.slint";
 
 // ---- Top bar -----------------------------------------------------------------
 export component TopBar inherits Rectangle {
@@ -34,6 +34,7 @@ export component TopBar inherits Rectangle {
                 icon-size: 16px;
                 tint: Palette.muted;
                 rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: State.navigation-collapsed ? "Show sidebar" : "Hide sidebar";
                 clicked => { Actions.toggle-sidebar(); }
             }
         }
@@ -46,6 +47,7 @@ export component TopBar inherits Rectangle {
                 icon-size: 16px;
                 tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
                 rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Back (Alt+Left)";
                 clicked => { if (State.can-go-back) { Actions.go-back(); } }
             }
         }
@@ -59,6 +61,7 @@ export component TopBar inherits Rectangle {
                 icon-size: 16px;
                 tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
                 rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Forward (Alt+Right)";
                 clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
             }
         }
@@ -154,6 +157,7 @@ export component TopBar inherits Rectangle {
                             tint: Palette.muted-2;
                             width: 22px;
                             height: 22px;
+                            tooltip: "Clear search";
                             clicked => { Actions.search-input(""); }
                         }
                     }
@@ -166,7 +170,7 @@ export component TopBar inherits Rectangle {
 
         if State.scan-active || State.scan-paused : VerticalLayout {
             alignment: center;
-            Rectangle {
+            scan-btn := Rectangle {
                 width: State.window-width <= 650 ? 28px : 32px;
                 height: State.window-width <= 650 ? 28px : 32px;
                 border-radius: self.width / 2;
@@ -206,6 +210,15 @@ export component TopBar inherits Rectangle {
                     horizontal-alignment: center;
                 }
                 scan-area := TouchArea { clicked => { Actions.toggle-scan-details(); } }
+                DelayedTooltip {
+                    text: State.scan-paused ? "Scan paused — click for details" : "Scanning library — click for details";
+                    active: scan-area.has-hover;
+                    pressed: scan-area.pressed;
+                    anchor-x: scan-btn.absolute-position.x;
+                    anchor-y: scan-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
             }
         }
 
@@ -219,6 +232,7 @@ export component TopBar inherits Rectangle {
                 icon-size: 16px;
                 tint: State.right-panel-open ? State.accent : Palette.muted;
                 rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: State.right-panel-open ? "Hide Now Playing panel" : "Show Now Playing panel";
                 clicked => { Actions.toggle-right-panel(); }
             }
         }
@@ -231,6 +245,7 @@ export component TopBar inherits Rectangle {
                 icon-size: 16px;
                 tint: State.tools-menu-open ? Palette.text : Palette.muted;
                 rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Tools and settings";
                 clicked => { Actions.toggle-tools-menu(); }
             }
         }

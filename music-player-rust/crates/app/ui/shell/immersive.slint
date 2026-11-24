@@ -1,64 +1,73 @@
 import { State, Actions } from "../state.slint";
-import { Palette, IcBtn, TextBtn, PlayerSlider } from "../widgets.slint";
+import { Palette, IcBtn, PlayerSlider, DelayedTooltip, SyncedLyricsList } from "../widgets.slint";
 
 export component ImmersivePlayerOverlay inherits Rectangle {
-    property <bool> show-lyrics: State.immersive-lyrics-open && State.has-lyrics && State.lyrics-lines.length > 0;
+    property <bool> show-lyrics: State.immersive-lyrics-open;
+    property <bool> narrow-layout: root.width <= 800px;
+    property <bool> short-height: root.height <= 650px;
+    property <bool> medium-height: root.height <= 800px;
+    property <length> pad-top: root.height <= 800px ? 48px : clamp(root.height * 0.07, 56px, 78px);
+    property <length> pad-bottom: root.height <= 800px ? 12px : clamp(root.height * 0.025, 16px, 26px);
+    property <length> pad-x: root.width <= 600px ? 20px : clamp(root.width * 0.04, 24px, 64px);
+    property <length> content-gap: root.height <= 800px ? 10px : clamp(root.height * 0.016, 12px, 18px);
+
     background: #10110f;
     animate background { duration: 400ms; easing: ease-in-out; }
     clip: true;
 
+    // Blurred cover backdrop matching WebUI CSS: blur(20px) brightness(.72) saturate(1.25) transform: scale(1.18)
     if State.current-has-cover : Image {
         source: State.current-blurred-backdrop;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        width: parent.width * 1.15;
-        height: parent.height * 1.15;
+        width: parent.width * 1.18;
+        height: parent.height * 1.18;
         image-fit: ImageFit.cover;
-        opacity: 0.92;
+        opacity: 1.0;
     }
+    // Vignette + subtle top/bottom dark gradient matching .immersive-art-backdrop::after
     Rectangle {
         width: 100%;
         height: 100%;
-        background: @linear-gradient(180deg, #00000028 0%, #00000055 50%, #10110fa0 100%);
+        background: @linear-gradient(180deg, #00000038 0%, #00000050 55%, #00000094 100%);
     }
-    Rectangle {
+
+    // Hover-reveal / clear top bar (.immersive-topbar)
+    top-area := Rectangle {
+        x: 0px;
+        y: 0px;
+        z: 10;
         width: 100%;
-        height: 100%;
-        background: State.accent.with-alpha(0.12);
-        animate background { duration: 400ms; easing: ease-in-out; }
-    }
+        height: root.width <= 600px ? 52px : 60px;
 
-    VerticalLayout {
-        padding-left: 28px;
-        padding-right: 28px;
-        padding-top: 14px;
-        padding-bottom: 22px;
-        spacing: 12px;
+        HorizontalLayout {
+            padding-left: root.width <= 600px ? 16px : 28px;
+            padding-right: root.width <= 600px ? 16px : 28px;
+            spacing: 16px;
+            alignment: space-between;
 
-        top-area := Rectangle {
-            height: 48px;
-            top-hover := TouchArea { }
+            Text {
+                text: "NOW PLAYING";
+                color: #ffffffa8;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1.7px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
             HorizontalLayout {
-                spacing: 12px;
-                Text {
-                    text: "NOW PLAYING";
-                    color: #ffffffb0;
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 1.5px;
-                    horizontal-stretch: 1;
-                    vertical-alignment: center;
-                }
-                HorizontalLayout {
-                    spacing: 12px;
-                    opacity: (top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.85;
-                    animate opacity { duration: 180ms; }
+                spacing: 10px;
+                alignment: end;
 
-                    Rectangle {
+                VerticalLayout {
+                    alignment: center;
+                    fs-btn := Rectangle {
                         width: 36px;
                         height: 36px;
                         border-radius: 18px;
-                        background: fs-ta.has-hover ? #ffffff2a : #00000052;
+                        background: fs-ta.has-hover ? #0000008c : #00000052;
                         animate background { duration: 150ms; }
                         fs-ta := TouchArea {
                             mouse-cursor: pointer;
@@ -72,28 +81,43 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
+                        DelayedTooltip {
+                            text: State.immersive-fullscreen ? "Exit fullscreen (F11)" : "Fullscreen (F11)";
+                            active: fs-ta.has-hover;
+                            pressed: fs-ta.pressed;
+                            anchor-x: fs-btn.absolute-position.x;
+                            anchor-y: fs-btn.absolute-position.y;
+                            anchor-width: parent.width;
+                            anchor-height: parent.height;
+                        }
                     }
-                    Rectangle {
-                        width: close-row.preferred-width + 24px;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    close-btn := Rectangle {
+                        width: close-row.preferred-width;
                         height: 36px;
                         border-radius: 18px;
-                        background: close-ta.has-hover ? #ffffff2a : #00000052;
+                        background: close-ta.has-hover ? #0000008c : #00000052;
                         animate background { duration: 150ms; }
                         close-ta := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { Actions.close-immersive-player(); }
                         }
                         close-row := HorizontalLayout {
-                            padding-left: 12px;
-                            padding-right: 14px;
+                            padding-left: 13px;
+                            padding-right: 15px;
                             spacing: 8px;
                             alignment: center;
-                            Image {
-                                source: @image-url("../../assets/icons/close.svg");
-                                width: 14px;
-                                height: 14px;
-                                colorize: #ffffff;
-                                y: (parent.height - self.height) / 2;
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    source: @image-url("../../assets/icons/close.svg");
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: #ffffff;
+                                }
                             }
                             Text {
                                 text: "Close";
@@ -103,160 +127,149 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 vertical-alignment: center;
                             }
                         }
+                        DelayedTooltip {
+                            text: "Exit immersive view (Esc)";
+                            active: close-ta.has-hover;
+                            pressed: close-ta.pressed;
+                            anchor-x: close-btn.absolute-position.x;
+                            anchor-y: close-btn.absolute-position.y;
+                            anchor-width: parent.width;
+                            anchor-height: parent.height;
+                        }
                     }
                 }
             }
         }
+    }
 
-        stage-area := Rectangle {
-            vertical-stretch: 1;
+    // Centered max-1440px content container (.immersive-content)
+    content-frame := Rectangle {
+        width: min(parent.width, 1440px);
+        height: 100%;
+        x: (parent.width - self.width) / 2;
+        y: 0px;
+
+        VerticalLayout {
             width: 100%;
+            height: 100%;
+            padding-top: root.pad-top;
+            padding-bottom: root.pad-bottom;
+            padding-left: root.pad-x;
+            padding-right: root.pad-x;
+            spacing: root.content-gap;
 
-            if !root.show-lyrics : VerticalLayout {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                width: clamp(min(State.window-height * 0.52 * 1px, State.window-width * 0.44 * 1px), 280px, 540px);
-                spacing: 16px;
-                alignment: center;
+            // Main center stage (.immersive-stage) — fills remaining height, never overflows into timeline
+            stage-area := Rectangle {
+                vertical-stretch: 1;
+                min-height: 120px;
+                width: 100%;
+                clip: true;
 
-                Rectangle {
-                    width: parent.width;
-                    height: self.width;
-                    border-radius: 16px;
-                    clip: true;
-                    background: State.current-badge-bg;
-                    border-width: 1px;
-                    border-color: #ffffff1c;
-                    if State.current-has-cover : Image {
-                        source: State.current-cover;
-                        width: parent.width;
-                        height: parent.height;
-                        image-fit: ImageFit.cover;
-                    }
-                    if !State.current-has-cover : Text {
-                        text: State.current-initials;
-                        color: #ffffffcc;
-                        font-size: 64px;
-                        font-weight: 900;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                    }
-                }
+                property <length> meta-reserve: root.short-height ? 76px : 88px;
+                property <length> solo-art-size: clamp(
+                    min(
+                        max(72px, self.height - meta-reserve - 8px),
+                        min(self.width, root.width * 0.60, root.short-height ? 300px : (root.medium-height ? 400px : 440px))
+                    ),
+                    72px,
+                    440px
+                );
+                property <length> solo-col-width: min(self.width, max(solo-art-size, 280px), 480px);
 
-                HorizontalLayout {
-                    width: parent.width;
-                    spacing: 12px;
+                property <length> split-gap: clamp(root.width * 0.025, 16px, 38px);
+                property <length> split-left-max: (self.width - split-gap) * 0.46;
+                property <length> split-art-size: clamp(
+                    min(
+                        max(72px, self.height - meta-reserve - 8px),
+                        min(split-left-max, root.short-height ? 260px : (root.medium-height ? 340px : 380px))
+                    ),
+                    72px,
+                    380px
+                );
+                property <length> split-col-width: min(split-left-max, max(split-art-size, 240px), 460px);
+
+                // Mode 1: Lyrics closed -> dead-center art + title/artist/heart directly beneath
+                if !root.show-lyrics : HorizontalLayout {
+                    width: 100%;
+                    height: 100%;
                     alignment: center;
 
                     VerticalLayout {
-                        horizontal-stretch: 1;
-                        min-width: 0px;
-                        spacing: 4px;
-                        Text {
-                            text: State.has-track ? State.current-title : "Nothing playing";
-                            color: #ffffff;
-                            font-size: 24px;
-                            font-weight: 800;
-                            letter-spacing: -0.5px;
-                            overflow: elide;
-                        }
-                        Text {
-                            text: State.has-track ? State.current-artist : "Choose a song from your library";
-                            color: #ffffffb3;
-                            font-size: 14px;
-                            overflow: elide;
-                        }
-                    }
-
-                    if State.has-track : IcBtn {
-                        icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
-                        tint: State.current-favorite ? State.accent : #ffffffb3;
-                        icon-size: 20px;
-                        width: 40px;
-                        height: 40px;
-                        clicked => {
-                            State.current-favorite = !State.current-favorite;
-                            Actions.toggle-favorite(State.current-id);
-                        }
-                    }
-                }
-            }
-
-            if root.show-lyrics : HorizontalLayout {
-                width: 100%;
-                height: 100%;
-                alignment: center;
-                padding-left: 20px;
-                padding-right: 20px;
-                spacing: 40px;
-
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    alignment: center;
-
-                    HorizontalLayout {
+                        width: stage-area.solo-col-width;
+                        height: 100%;
                         alignment: center;
+                        spacing: root.short-height ? 10px : 14px;
 
-                        art-column := VerticalLayout {
+                        HorizontalLayout {
                             alignment: center;
-                            spacing: 16px;
-                            width: clamp(min(State.window-height * 0.38 * 1px, State.window-width * 0.36 * 1px), 240px, 420px);
-
                             Rectangle {
-                                width: parent.width;
+                                width: stage-area.solo-art-size;
                                 height: self.width;
-                                border-radius: 16px;
+                                border-radius: clamp(self.width * 0.055, 12px, 26px);
                                 clip: true;
                                 background: State.current-badge-bg;
                                 border-width: 1px;
-                                border-color: #ffffff1c;
+                                border-color: #ffffff1e;
+                                drop-shadow-offset-y: 16px;
+                                drop-shadow-blur: 48px;
+                                drop-shadow-color: #0000005c;
+
                                 if State.current-has-cover : Image {
                                     source: State.current-cover;
-                                    width: parent.width;
-                                    height: parent.height;
+                                    width: 100%;
+                                    height: 100%;
                                     image-fit: ImageFit.cover;
                                 }
                                 if !State.current-has-cover : Text {
+                                    width: 100%;
                                     text: State.current-initials;
                                     color: #ffffffcc;
-                                    font-size: 64px;
+                                    font-size: clamp(parent.width * 0.24, 24px, 72px);
                                     font-weight: 900;
                                     vertical-alignment: center;
                                     horizontal-alignment: center;
                                 }
                             }
+                        }
 
-                            HorizontalLayout {
-                                width: parent.width;
-                                spacing: 12px;
+                        HorizontalLayout {
+                            width: 100%;
+                            spacing: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                spacing: 3px;
                                 alignment: center;
-
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    min-width: 0px;
-                                    spacing: 4px;
-                                    Text {
-                                        text: State.has-track ? State.current-title : "Nothing playing";
-                                        color: #ffffff;
-                                        font-size: 22px;
-                                        font-weight: 800;
-                                        letter-spacing: -0.5px;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        text: State.has-track ? State.current-artist : "Choose a song from your library";
-                                        color: #ffffffb3;
-                                        font-size: 13px;
-                                        overflow: elide;
-                                    }
+                                Text {
+                                    width: 100%;
+                                    text: State.has-track ? State.current-title : "Nothing playing";
+                                    color: #ffffff;
+                                    font-size: root.short-height ? clamp(root.height * 0.036, 17px, 24px) : clamp(root.width * 0.024, 19px, 28px);
+                                    font-weight: 800;
+                                    letter-spacing: -0.5px;
+                                    overflow: elide;
                                 }
+                                Text {
+                                    width: 100%;
+                                    text: State.has-track ? State.current-artist : "Choose a song from your library";
+                                    color: #ffffffb8;
+                                    font-size: clamp(root.width * 0.012, 12px, 14px);
+                                    overflow: elide;
+                                }
+                            }
 
-                                if State.has-track : IcBtn {
+                            if State.has-track : VerticalLayout {
+                                alignment: center;
+                                IcBtn {
                                     icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
-                                    tint: State.current-favorite ? State.accent : #ffffffb3;
+                                    tint: State.current-favorite ? State.accent : #ffffffb8;
+                                    hover-tint: #ffffff;
                                     icon-size: 20px;
                                     width: 40px;
                                     height: 40px;
+                                    tooltip: State.current-favorite ? "Remove from Favorites" : "Add to Favorites";
                                     clicked => {
                                         State.current-favorite = !State.current-favorite;
                                         Actions.toggle-favorite(State.current-id);
@@ -267,145 +280,404 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     }
                 }
 
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    min-width: 240px;
+                // Mode 2: Lyrics open on wide viewport -> 2-column split matching WebUI CSS
+                if root.show-lyrics && !root.narrow-layout : HorizontalLayout {
+                    width: 100%;
                     height: 100%;
-                    spacing: 8px;
-                    HorizontalLayout {
-                        height: 38px;
+                    alignment: center;
+                    spacing: stage-area.split-gap;
+
+                    VerticalLayout {
+                        width: stage-area.split-col-width;
+                        height: 100%;
                         alignment: center;
-                        Text {
-                            text: State.lyrics-source == "sidecar" ? "Lyrics · Sidecar" : (State.lyrics-source == "embedded" ? "Lyrics · Embedded" : "Lyrics");
-                            color: #ffffff;
-                            font-size: 13px;
-                            font-weight: 750;
-                            letter-spacing: 0.1px;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                        }
-                        if State.lyrics-scroll-paused : TextBtn {
-                            label: "Resume";
-                            clicked => { Actions.lyrics-scroll-changed(false); }
-                        }
-                        IcBtn {
-                            icon: @image-url("../../assets/icons/close.svg");
-                            icon-size: 14px;
-                            width: 32px;
-                            height: 32px;
-                            tint: #d0d2ce;
-                            clicked => { Actions.toggle-immersive-lyrics(); }
-                        }
-                    }
-                    lyrics-scroll-area := Rectangle {
-                        vertical-stretch: 1;
-                        clip: true;
+                        spacing: root.short-height ? 10px : 14px;
 
-                        TouchArea {
-                            scroll-event(event) => {
-                                if (event.delta-y != 0px) {
-                                    State.lyrics-scroll-paused = true;
-                                    Actions.lyrics-scroll-changed(true);
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: stage-area.split-art-size;
+                                height: self.width;
+                                border-radius: clamp(self.width * 0.055, 12px, 24px);
+                                clip: true;
+                                background: State.current-badge-bg;
+                                border-width: 1px;
+                                border-color: #ffffff1e;
+                                drop-shadow-offset-y: 16px;
+                                drop-shadow-blur: 44px;
+                                drop-shadow-color: #0000005c;
+
+                                if State.current-has-cover : Image {
+                                    source: State.current-cover;
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: ImageFit.cover;
                                 }
-                                reject
-                            }
-                        }
-
-                        immersive-lyrics-flickable := Flickable {
-                            content-y: (State.lyrics-scroll-nonce * 0px) + (State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 44px + 120px));
-                            animate content-y { duration: 250ms; easing: ease-out; }
-                            VerticalLayout {
-                                width: 100%;
-                                padding-top: 140px;
-                                padding-bottom: 220px;
-                                spacing: 4px;
-                                for line[index] in State.lyrics-lines : Rectangle {
-                                    border-radius: 8px;
-                                    background: line-ta.has-hover && State.lyrics-timed ? #ffffff18 : transparent;
-                                    animate background { duration: 120ms; }
-
-                                    line-ta := TouchArea {
-                                        mouse-cursor: State.lyrics-timed ? pointer : default;
-                                        clicked => { if (State.lyrics-timed && State.seek-from-lyrics) { Actions.seek-to-lyric(index); } }
-                                    }
-
-                                    VerticalLayout {
-                                        padding-left: 16px;
-                                        padding-right: 16px;
-                                        padding-top: line.is-active ? 12px : 6px;
-                                        padding-bottom: line.is-active ? 12px : 6px;
-                                        alignment: center;
-                                        Text {
-                                            width: 100%;
-                                            text: line.text;
-                                            color: line.is-active ? #ffffff : (line-ta.has-hover ? #ffffff : (line.is-past ? #a4a8a18c : #e3e4df8c));
-                                            font-size: line.is-active ? 28px : 18px;
-                                            font-weight: line.is-active ? 850 : 550;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                            wrap: word-wrap;
-                                            animate color { duration: 120ms; }
-                                        }
-                                    }
-                                }
-                                if State.lyrics-lines.length == 0 : Text {
-                                    text: "No lyrics loaded. Use the Lyrics view to search or edit this track.";
-                                    color: #d0d2ce;
-                                    font-size: 13px;
-                                    wrap: word-wrap;
+                                if !State.current-has-cover : Text {
+                                    width: 100%;
+                                    text: State.current-initials;
+                                    color: #ffffffcc;
+                                    font-size: clamp(parent.width * 0.24, 24px, 64px);
+                                    font-weight: 900;
+                                    vertical-alignment: center;
                                     horizontal-alignment: center;
                                 }
                             }
                         }
 
-                        if State.lyrics-scroll-paused : Rectangle {
-                            x: parent.width - 52px;
-                            y: parent.height - 52px;
-                            width: 38px;
-                            height: 38px;
-                            border-radius: 19px;
-                            border-width: 1px;
-                            border-color: resume-ta.has-hover ? State.accent : State.accent.with-alpha(0.6);
-                            background: resume-ta.has-hover ? #2a312cf0 : #181c19f0;
-                            drop-shadow-offset-x: 0px;
-                            drop-shadow-offset-y: 4px;
-                            drop-shadow-blur: 16px;
-                            drop-shadow-color: #00000070;
-                            animate background { duration: 120ms; }
-                            Image {
-                                source: @image-url("../../assets/icons/locate.svg");
-                                width: 18px;
-                                height: 18px;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2;
-                                colorize: State.accent;
+                        HorizontalLayout {
+                            width: 100%;
+                            spacing: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                spacing: 3px;
+                                alignment: center;
+                                Text {
+                                    width: 100%;
+                                    text: State.has-track ? State.current-title : "Nothing playing";
+                                    color: #ffffff;
+                                    font-size: clamp(root.width * 0.02, 18px, 25px);
+                                    font-weight: 800;
+                                    letter-spacing: -0.5px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    width: 100%;
+                                    text: State.has-track ? State.current-artist : "Choose a song from your library";
+                                    color: #ffffffb8;
+                                    font-size: clamp(root.width * 0.012, 12px, 14px);
+                                    overflow: elide;
+                                }
                             }
-                            resume-ta := TouchArea {
-                                mouse-cursor: pointer;
+
+                            if State.has-track : VerticalLayout {
+                                alignment: center;
+                                IcBtn {
+                                    icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                                    tint: State.current-favorite ? State.accent : #ffffffb8;
+                                    hover-tint: #ffffff;
+                                    icon-size: 20px;
+                                    width: 40px;
+                                    height: 40px;
+                                    tooltip: State.current-favorite ? "Remove from Favorites" : "Add to Favorites";
+                                    clicked => {
+                                        State.current-favorite = !State.current-favorite;
+                                        Actions.toggle-favorite(State.current-id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Right lyrics panel (.immersive-lyrics)
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        min-width: 240px;
+                        height: min(stage-area.height, root.height * 0.72, 720px);
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            height: 40px;
+                            spacing: 12px;
+                            HorizontalLayout {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                spacing: 7px;
+                                alignment: start;
+                                Text {
+                                    text: "Lyrics";
+                                    color: #fffffff5;
+                                    font-size: 13px;
+                                    font-weight: 750;
+                                    letter-spacing: 0.1px;
+                                    vertical-alignment: center;
+                                }
+                                if State.lyrics-source != "" && State.lyrics-source != "none" : Text {
+                                    text: State.lyrics-source == "sidecar" ? "Sidecar" : (State.lyrics-source == "embedded" ? "Embedded" : "LRCLIB (online)");
+                                    color: #ffffffa8;
+                                    font-size: 10px;
+                                    font-weight: 500;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                lc-btn := Rectangle {
+                                    width: 36px;
+                                    height: 36px;
+                                    border-radius: 18px;
+                                    background: lc-ta.has-hover ? #ffffff29 : #ffffff14;
+                                    animate background { duration: 140ms; }
+                                    lc-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { Actions.toggle-immersive-lyrics(); }
+                                    }
+                                    Image {
+                                        source: @image-url("../../assets/icons/close.svg");
+                                        width: 13px;
+                                        height: 13px;
+                                        colorize: lc-ta.has-hover ? #ffffff : #ffffffcc;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                    DelayedTooltip {
+                                        text: "Close lyrics";
+                                        active: lc-ta.has-hover;
+                                        pressed: lc-ta.pressed;
+                                        anchor-x: lc-btn.absolute-position.x;
+                                        anchor-y: lc-btn.absolute-position.y;
+                                        anchor-width: parent.width;
+                                        anchor-height: parent.height;
+                                    }
+                                }
+                            }
+                        }
+
+                        lyrics-scroll-area := Rectangle {
+                            vertical-stretch: 1;
+                            min-height: 0px;
+                            clip: true;
+
+                            if State.has-lyrics && State.lyrics-lines.length > 0 : SyncedLyricsList {
+                                width: 100%;
+                                height: 100%;
+                                top-pad: max(40px, lyrics-scroll-area.height * 0.30);
+                                bottom-pad: max(120px, lyrics-scroll-area.height * 0.45);
+                                side-pad: 14px;
+                                max-line-width: 1000px;
+                                active-font-size: clamp(root.width * 0.024, 22px, 28px);
+                                inactive-font-size: clamp(root.width * 0.016, 16px, 21px);
+                                active-font-weight: 800;
+                                inactive-font-weight: 600;
+                                active-pad-v: 13px;
+                                inactive-pad-v: 9px;
+                                active-color: #ffffff;
+                                inactive-color: #ffffffb3;
+                                inactive-opacity: 0.44;
+                                hover-bg: #ffffff18;
+                                resume-bg: #181c19f0;
+                            }
+
+                            if !State.has-lyrics || State.lyrics-lines.length == 0 : VerticalLayout {
+                                width: 100%;
+                                height: 100%;
+                                alignment: center;
+                                padding: 22px;
+                                spacing: 8px;
+                                Text {
+                                    text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics loaded";
+                                    color: #fffffff0;
+                                    font-size: 16px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                }
+                                Text {
+                                    width: 100%;
+                                    text: State.lyrics-searching ? "Searching LRCLIB for synced lyrics." : "Open Lyrics to edit or search manually.";
+                                    color: #ffffffb3;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Mode 3: Lyrics open on narrow viewport (<= 800px) -> stacked column matching CSS @media (max-width:800px)
+                if root.show-lyrics && root.narrow-layout : VerticalLayout {
+                    width: 100%;
+                    height: 100%;
+                    spacing: 12px;
+
+                    property <length> stacked-art: clamp(min(stage-area.height * 0.28, stage-area.width * 0.34, 160px), 64px, 160px);
+
+                    HorizontalLayout {
+                        spacing: 14px;
+                        alignment: start;
+
+                        Rectangle {
+                            width: stacked-art;
+                            height: self.width;
+                            border-radius: 14px;
+                            clip: true;
+                            background: State.current-badge-bg;
+                            border-width: 1px;
+                            border-color: #ffffff1e;
+                            if State.current-has-cover : Image {
+                                source: State.current-cover;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: ImageFit.cover;
+                            }
+                            if !State.current-has-cover : Text {
+                                width: 100%;
+                                text: State.current-initials;
+                                color: #ffffffcc;
+                                font-size: clamp(parent.width * 0.3, 18px, 42px);
+                                font-weight: 900;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            alignment: center;
+                            spacing: 4px;
+                            Text {
+                                width: 100%;
+                                text: State.has-track ? State.current-title : "Nothing playing";
+                                color: #ffffff;
+                                font-size: clamp(root.width * 0.036, 17px, 24px);
+                                font-weight: 800;
+                                overflow: elide;
+                            }
+                            Text {
+                                width: 100%;
+                                text: State.has-track ? State.current-artist : "Choose a song";
+                                color: #ffffffb8;
+                                font-size: 13px;
+                                overflow: elide;
+                            }
+                        }
+
+                        if State.has-track : VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                                tint: State.current-favorite ? State.accent : #ffffffb8;
+                                hover-tint: #ffffff;
+                                icon-size: 18px;
+                                width: 36px;
+                                height: 36px;
+                                tooltip: State.current-favorite ? "Remove from Favorites" : "Add to Favorites";
                                 clicked => {
-                                    State.lyrics-scroll-paused = false;
-                                    Actions.lyrics-scroll-changed(false);
+                                    State.current-favorite = !State.current-favorite;
+                                    Actions.toggle-favorite(State.current-id);
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        vertical-stretch: 1;
+                        min-height: 80px;
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            height: 36px;
+                            Text {
+                                text: "Lyrics";
+                                color: #fffffff5;
+                                font-size: 13px;
+                                font-weight: 750;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                            Rectangle {
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 16px;
+                                background: #ffffff14;
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Actions.toggle-immersive-lyrics(); }
+                                }
+                                Image {
+                                    source: @image-url("../../assets/icons/close.svg");
+                                    width: 12px;
+                                    height: 12px;
+                                    colorize: #ffffffcc;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+                            }
+                        }
+
+                        narrow-lyrics-area := Rectangle {
+                            vertical-stretch: 1;
+                            clip: true;
+
+                            if State.has-lyrics && State.lyrics-lines.length > 0 : SyncedLyricsList {
+                                width: 100%;
+                                height: 100%;
+                                top-pad: 24px;
+                                bottom-pad: 64px;
+                                side-pad: 8px;
+                                max-line-width: 1000px;
+                                active-font-size: 22px;
+                                inactive-font-size: 15px;
+                                active-font-weight: 800;
+                                inactive-font-weight: 600;
+                                active-pad-v: 10px;
+                                inactive-pad-v: 8px;
+                                active-color: #ffffff;
+                                inactive-color: #ffffff99;
+                                inactive-opacity: 0.48;
+                                hover-bg: #ffffff18;
+                                resume-bg: #181c19f0;
+                            }
+
+                            if !State.has-lyrics || State.lyrics-lines.length == 0 : VerticalLayout {
+                                width: 100%;
+                                height: 100%;
+                                alignment: center;
+                                Text {
+                                    text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics loaded";
+                                    color: #ffffffb8;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        VerticalLayout {
-            spacing: 12px;
-            alignment: center;
-            width: 100%;
-
+            // Timeline (.immersive-timeline)
             VerticalLayout {
                 width: 100%;
                 spacing: 6px;
                 HorizontalLayout {
-                    Text { text: State.current-time; color: #ffffffb0; font-size: 12px; font-weight: 550; horizontal-stretch: 1; }
-                    Text { text: State.total-time; color: #ffffffb0; font-size: 12px; font-weight: 550; horizontal-alignment: right; }
+                    Text { text: State.current-time; color: #ffffffad; font-size: 12px; font-weight: 550; horizontal-stretch: 1; vertical-alignment: center; }
+                    imm-rt-btn := Rectangle {
+                        width: imm-rt-label.preferred-width + 8px;
+                        height: 22px;
+                        border-radius: 4px;
+                        background: imm-rt-ta.has-hover ? #ffffff1c : transparent;
+                        imm-rt-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.toggle-remaining-time(); }
+                        }
+                        imm-rt-label := Text {
+                            x: 4px;
+                            height: parent.height;
+                            text: State.total-time;
+                            color: imm-rt-ta.has-hover ? #ffffff : #ffffffad;
+                            font-size: 12px;
+                            font-weight: 550;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                        DelayedTooltip {
+                            text: State.show-remaining-time ? "Remaining time — click for duration" : "Total duration — click for remaining";
+                            active: imm-rt-ta.has-hover;
+                            pressed: imm-rt-ta.pressed;
+                            anchor-x: imm-rt-btn.absolute-position.x;
+                            anchor-y: imm-rt-btn.absolute-position.y;
+                            anchor-width: parent.width;
+                            anchor-height: parent.height;
+                        }
+                    }
                 }
                 PlayerSlider {
+                    width: 100%;
                     commit-on-release: true;
                     minimum: 0.0;
                     maximum: 1.0;
@@ -427,71 +699,109 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 }
             }
 
+            // Main playback controls (.immersive-controls)
             HorizontalLayout {
-                height: 70px;
-                spacing: 36px;
+                height: root.medium-height ? 62px : 70px;
+                spacing: clamp(root.width * 0.055, 24px, 54px);
                 alignment: center;
-                IcBtn {
-                    icon: @image-url("../../assets/icons/skip-back.svg");
-                    icon-size: 24px;
-                    width: 48px;
-                    height: 48px;
-                    tint: #f3f4f0;
-                    clicked => { Actions.previous(); }
-                }
-                Rectangle {
-                    width: 70px;
-                    height: 70px;
-                    border-radius: 35px;
-                    background: play-ta.has-hover ? #f0f0f0 : #ffffff;
-                    animate background { duration: 120ms; }
-                    Image {
-                        source: State.is-playing ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
-                        width: 28px;
-                        height: 28px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        colorize: #161714;
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/skip-back.svg");
+                        icon-size: 24px;
+                        width: 48px;
+                        height: 48px;
+                        tint: #ffffffd1;
+                        hover-tint: #ffffff;
+                        tooltip: "Previous Track (Ctrl+Left)";
+                        clicked => { Actions.previous(); }
                     }
-                    play-ta := TouchArea { clicked => { Actions.toggle-play(); } }
                 }
-                IcBtn {
-                    icon: @image-url("../../assets/icons/skip-forward.svg");
-                    icon-size: 24px;
-                    width: 48px;
-                    height: 48px;
-                    tint: #f3f4f0;
-                    clicked => { Actions.next(); }
+                VerticalLayout {
+                    alignment: center;
+                    imm-play-btn := Rectangle {
+                        width: root.medium-height ? 62px : 70px;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: play-ta.has-hover ? #ffffff : #ffffffed;
+                        animate background { duration: 120ms; }
+                        Image {
+                            source: State.is-playing ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                            width: 28px;
+                            height: 28px;
+                            x: (parent.width - self.width) / 2 + (State.is-playing ? 0px : 2px);
+                            y: (parent.height - self.height) / 2;
+                            colorize: #161714;
+                        }
+                        play-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.toggle-play(); }
+                        }
+                        DelayedTooltip {
+                            text: State.is-playing ? "Pause (Space)" : "Play (Space)";
+                            active: play-ta.has-hover;
+                            pressed: play-ta.pressed;
+                            anchor-x: imm-play-btn.absolute-position.x;
+                            anchor-y: imm-play-btn.absolute-position.y;
+                            anchor-width: parent.width;
+                            anchor-height: parent.height;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/skip-forward.svg");
+                        icon-size: 24px;
+                        width: 48px;
+                        height: 48px;
+                        tint: #ffffffd1;
+                        hover-tint: #ffffff;
+                        tooltip: "Next Track (Ctrl+Right)";
+                        clicked => { Actions.next(); }
+                    }
                 }
             }
 
+            // Bottom shortcuts (.immersive-shortcuts)
             HorizontalLayout {
-                height: 44px;
-                spacing: 30px;
+                height: root.short-height ? 36px : 44px;
+                spacing: root.short-height ? 18px : 30px;
                 alignment: center;
                 IcBtn {
                     icon: @image-url("../../assets/icons/equalizer.svg");
                     icon-size: 20px;
-                    width: 44px;
-                    height: 44px;
-                    tint: #d0d2ce;
+                    width: root.short-height ? 36px : 44px;
+                    height: self.width;
+                    tint: #ffffffb3;
+                    hover-tint: #ffffff;
+                    tooltip: "Equalizer";
                     clicked => { Actions.toggle-immersive("Audio"); }
                 }
-                IcBtn {
-                    icon: @image-url("../../assets/icons/lyrics.svg");
-                    icon-size: 20px;
-                    width: 44px;
-                    height: 44px;
-                    active: root.show-lyrics;
-                    tint: root.show-lyrics ? #ffffff : #d0d2ce;
-                    clicked => { Actions.toggle-immersive-lyrics(); }
+                Rectangle {
+                    width: root.short-height ? 36px : 44px;
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: root.show-lyrics ? #ffffff24 : transparent;
+                    IcBtn {
+                        width: 100%;
+                        height: 100%;
+                        icon: @image-url("../../assets/icons/lyrics.svg");
+                        icon-size: 20px;
+                        tint: root.show-lyrics ? #ffffff : #ffffffb3;
+                        hover-tint: #ffffff;
+                        tooltip: "Lyrics";
+                        clicked => { Actions.toggle-immersive-lyrics(); }
+                    }
                 }
                 IcBtn {
                     icon: @image-url("../../assets/icons/queue.svg");
                     icon-size: 20px;
-                    width: 44px;
-                    height: 44px;
-                    tint: #d0d2ce;
+                    width: root.short-height ? 36px : 44px;
+                    height: self.width;
+                    tint: #ffffffb3;
+                    hover-tint: #ffffff;
+                    tooltip: "Queue";
                     clicked => { Actions.toggle-immersive("Queue"); }
                 }
             }

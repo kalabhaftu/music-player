@@ -79,7 +79,7 @@ component SettingComboRow inherits Rectangle {
         VerticalLayout {
             alignment: center;
             CustomSelect {
-                width: clamp(State.content-avail-width * 0.35, 130px, 240px);
+                width: clamp(State.content-avail-width * 0.35, 140px, 220px);
                 options: root.options;
                 current-value: root.value;
                 selected(value) => { root.changed(value); }
@@ -448,6 +448,7 @@ export component SettingsView inherits Rectangle {
             background: Palette.raised;
             clip: true;
             settings-scroll := ScrollView {
+                content-width: self.visible-width;
                 content-y: State.settings-section == "Library" ? -(appearance-section.height + 24px) :
                            State.settings-section == "Playback" ? -(appearance-section.height + library-section.height + 48px) :
                            State.settings-section == "Advanced" ? -(appearance-section.height + library-section.height + playback-section.height + 72px) :
@@ -455,7 +456,7 @@ export component SettingsView inherits Rectangle {
                            0px;
                 animate content-y { duration: 250ms; easing: ease-out; }
                 VerticalLayout {
-                    width: parent.width;
+                    width: settings-scroll.visible-width;
                     padding: 20px;
                     spacing: 24px;
 

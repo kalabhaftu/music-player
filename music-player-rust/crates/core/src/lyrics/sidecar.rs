@@ -13,11 +13,10 @@ pub fn has_sidecar<P: AsRef<Path>>(track_path: P) -> bool {
 
 pub fn read_sidecar<P: AsRef<Path>>(track_path: P) -> Option<String> {
     let p = sidecar_path(track_path);
-    if p.exists() {
-        fs::read_to_string(p).ok()
-    } else {
-        None
+    if !p.exists() {
+        return None;
     }
+    fs::read_to_string(p).ok().filter(|s| !s.trim().is_empty())
 }
 
 pub fn write_sidecar<P: AsRef<Path>>(track_path: P, content: &str) -> std::io::Result<()> {

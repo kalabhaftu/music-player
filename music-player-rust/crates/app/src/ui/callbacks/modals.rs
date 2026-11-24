@@ -98,7 +98,11 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 app.ui
                     .global::<State>()
                     .set_confirm_message(ss(format!("Restore tag backup {}?", file_name(&label))));
+                app.ui.global::<State>().set_confirm_danger(true);
                 app.open_modal("confirm");
+                app.ui
+                    .global::<State>()
+                    .set_modal_title(ss("Restore previous tags?"));
             });
     }
     {
@@ -156,8 +160,10 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.confirm_action = Some(ConfirmAction::RemoveLyrics);
             app.ui
                 .global::<State>()
-                .set_confirm_message(ss("Remove the current lyrics?"));
+                .set_confirm_message(ss("Remove lyrics from the audio file, sidecar, and library?"));
+            app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
+            app.ui.global::<State>().set_modal_title(ss("Remove lyrics?"));
         });
     }
     {
@@ -205,6 +211,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 .set_confirm_message(ss("Delete this playlist? The tracks stay in your library."));
             app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
+            app.ui
+                .global::<State>()
+                .set_modal_title(ss("Delete playlist?"));
         });
     }
     {
@@ -347,9 +356,12 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.confirm_action = Some(ConfirmAction::RemoveRoot(path.to_string()));
             app.ui
                 .global::<State>()
-                .set_confirm_message(ss(format!("Remove {} from the library?", path)));
+                .set_confirm_message(ss(format!("Stop scanning {} and remove its unshared tracks from the index? Music files and playlist entries remain.", path)));
             app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
+            app.ui
+                .global::<State>()
+                .set_modal_title(ss("Remove folder?"));
         });
     }
     {

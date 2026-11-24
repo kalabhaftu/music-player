@@ -63,11 +63,14 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             let mut app = a.borrow_mut();
             app.confirm_action = Some(ConfirmAction::RemoveRoot(path.to_string()));
             app.ui.global::<State>().set_confirm_message(ss(format!(
-                "Remove {} from the library? Indexed tracks under this folder will be removed.",
+                "Stop scanning {} and remove its unshared tracks from the index? Music files and playlist entries remain.",
                 path
             )));
             app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
+            app.ui
+                .global::<State>()
+                .set_modal_title(ss("Remove folder?"));
         });
     }
     {

@@ -38,7 +38,7 @@ export component SongsView inherits Rectangle {
             alignment: end;
             Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
             CustomSelect {
-                width: 95px;
+                width: 140px;
                 options: State.view == "Videos"
                     ? ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating", "Type"]
                     : ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
@@ -73,11 +73,12 @@ export component GridView inherits Rectangle {
     in property <bool> round: false;
     in property <string> empty-text: "Nothing here yet.";
 
-    ScrollView {
+    grid-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: grid-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;
@@ -116,16 +117,17 @@ export component ArtistsView inherits GridView {
 }
 
 export component FoldersView inherits Rectangle {
-    ScrollView {
+    folders-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: folders-sv.visible-width;
+            padding-left: folders-sv.visible-width <= 460px ? 14px : 24px;
+            padding-right: folders-sv.visible-width <= 460px ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;
 
-            if State.content-width <= 600 : VerticalLayout {
+            if folders-sv.visible-width <= 600px : VerticalLayout {
                 spacing: 10px;
                 Text {
                     text: "Folders";
@@ -134,7 +136,7 @@ export component FoldersView inherits Rectangle {
                     font-weight: 700;
                     letter-spacing: -0.65px;
                 }
-                if State.content-width <= 480 : VerticalLayout {
+                if folders-sv.visible-width <= 480px : VerticalLayout {
                     spacing: 6px;
                     HorizontalLayout {
                         spacing: 6px;
@@ -158,7 +160,7 @@ export component FoldersView inherits Rectangle {
                         }
                     }
                 }
-                if State.content-width > 480 : HorizontalLayout {
+                if folders-sv.visible-width > 480px : HorizontalLayout {
                     spacing: 6px;
                     ActionBtn {
                         label: "＋ Add folder";
@@ -177,11 +179,12 @@ export component FoldersView inherits Rectangle {
                     }
                 }
             }
-            if State.content-width > 600 : HorizontalLayout {
+            if folders-sv.visible-width > 600px : HorizontalLayout {
                 spacing: 12px;
                 VerticalLayout {
                     spacing: 5px;
                     horizontal-stretch: 1;
+                    min-width: 0px;
                     Text {
                         text: "Folders";
                         color: Palette.text;
@@ -391,13 +394,14 @@ export component DetailView inherits Rectangle {
     in property <string> eyebrow: "";
     in property <string> empty-text: "No tracks.";
 
-    ScrollView {
+    detail-sv := ScrollView {
         vertical-stretch: 1;
+        content-width: self.visible-width;
 
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: detail-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 24px;

@@ -95,6 +95,29 @@ impl App {
         }
     }
 
+    /// Synchronizes native OS window decorations across Normal, Windowed Immersive,
+    /// and Fullscreen Immersive modes. Must only be invoked once the winit window exists
+    /// (after the event loop has started).
+    pub(crate) fn sync_window_mode(&self) {
+        use slint::winit_030::WinitWindowAccessor;
+        if !self.ui.window().has_winit_window() {
+            return;
+        }
+        let state = self.ui.global::<State>();
+        let immersive_open = state.get_immersive_player_open();
+        let fullscreen = self.ui.window().is_fullscreen();
+        state.set_immersive_fullscreen(fullscreen);
+        let target_decorations = !immersive_open;
+
+        self.ui.window().with_winit_window(|win| {
+            // Avoid touching decorations while in OS fullscreen; fullscreen itself hides chrome.
+            if !fullscreen {
+                win.set_decorations(target_decorations);
+            }
+            state.set_window_maximized(win.is_maximized());
+        });
+    }
+
     // ---- State publication --------------------------------------------------
 
     pub(crate) fn publish_playback(&mut self) {
@@ -146,10 +169,15 @@ impl App {
             0.0
         };
         let state = self.ui.global::<State>();
+        let show_remaining = state.get_show_remaining_time();
         state.set_is_playing(playing);
         state.set_progress(progress);
         state.set_current_time(ss(fmt_time(display_position)));
-        state.set_total_time(ss(fmt_time(duration)));
+        state.set_total_time(ss(fmt_right_time(
+            display_position,
+            duration,
+            show_remaining,
+        )));
         state.set_has_track(self.current.is_some());
         state.set_crossfading(self.crossfade_in_progress);
         state.set_shuffle(self.coordinator.queue().shuffle);
@@ -230,7 +258,6 @@ impl App {
         state.set_current_has_cover(has_cover);
         state.set_current_initials(ss(initials(&track.title)));
         state.set_current_badge_bg(badge_color(slot));
-        state.set_immersive_lyrics_open(false);
         drop(state);
         self.publish_appearance();
         self.publish_info(&track);
@@ -711,6 +738,7 @@ impl App {
         state.set_auto_open_side_panel(s.bool_or(k::AUTO_OPEN_PANEL, true));
         state.set_auto_load_lyrics(s.bool_or(k::AUTO_LOAD_LYRICS, true));
         state.set_seek_from_lyrics(s.bool_or(k::SEEK_FROM_LYRICS, true));
+        state.set_show_remaining_time(s.bool_or(k::SHOW_REMAINING_TIME, false));
         state.set_show_list_artwork(s.bool_or(k::SHOW_ARTWORK, true));
         state.set_show_list_artist(s.bool_or(k::SHOW_ARTIST, true));
         state.set_show_list_album(s.bool_or(k::SHOW_ALBUM, true));
@@ -818,36 +846,47 @@ impl App {
     }
 
     pub(crate) fn coordinator_eq_name(&self) -> String {
-        self.ui.global::<State>().get_eq_preset().to_string()
+        self.eq_preset.clone()
     }
 
-    pub(crate) fn publish_eq(&mut self) {
-        let current_preset = self.settings.eq_current();
-        if current_preset == "Off" {
-            self.eq_bands = [0.0; 10];
-            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
-        }
-        let labels: Vec<String> = EQUALIZER_BANDS
+    pub(crate) fn publish_eq_sliders(&self) {
+        let bands: Vec<EqBandItem> = EQUALIZER_BANDS
             .iter()
-            .map(|f| {
-                if *f >= 1000 {
+            .zip(self.eq_bands.iter())
+            .map(|(f, value)| {
+                let label = if *f >= 1000 {
                     format!("{}k", f / 1000)
                 } else {
                     f.to_string()
+                };
+                EqBandItem {
+                    label: ss(label),
+                    value: *value,
                 }
             })
             .collect();
-        let bands: Vec<EqBandItem> = labels
-            .iter()
-            .zip(self.eq_bands.iter())
-            .map(|(label, value)| EqBandItem {
-                label: ss(label),
-                value: *value,
-            })
-            .collect();
-        let mut presets: Vec<String> = vec!["Off".into()];
-        presets.extend(self.engine.built_in_preset_names());
-        presets.extend(self.settings.saved_eq_preset_names());
+        let state = self.ui.global::<State>();
+        state.set_eq_preset(ss(&self.eq_preset));
+        state.set_eq_bands(ui_model(bands).into());
+        state.set_eq_preamp(self.eq_preamp);
+    }
+
+    pub(crate) fn publish_eq(&mut self) {
+        if self.eq_preset == "Off" {
+            self.eq_bands = [0.0; 10];
+            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
+        }
+        let mut presets: Vec<String> = vec!["Off".into(), "Custom".into()];
+        for p in self.engine.built_in_preset_names() {
+            if !presets.iter().any(|existing| existing.eq_ignore_ascii_case(&p)) {
+                presets.push(p);
+            }
+        }
+        for p in self.settings.saved_eq_preset_names() {
+            if !presets.iter().any(|existing| existing.eq_ignore_ascii_case(&p)) {
+                presets.push(p);
+            }
+        }
         let mut devices: Vec<String> = vec!["System default".into()];
         self.audio_devices = os_shell::audio_output_devices();
         for device in &self.audio_devices {
@@ -878,10 +917,8 @@ impl App {
             let _ = self.engine.set_audio_output_device("");
             selected_name = "System default".into();
         }
+        self.publish_eq_sliders();
         let state = self.ui.global::<State>();
-        state.set_eq_preset(ss(&current_preset));
-        state.set_eq_bands(ui_model(bands).into());
-        state.set_eq_preamp(self.eq_preamp);
         state.set_eq_presets(ui_model(presets.into_iter().map(ss).collect::<Vec<_>>()).into());
         state.set_output_devices(ui_model(devices.into_iter().map(ss).collect::<Vec<_>>()).into());
         state.set_output_device(ss(selected_name));
@@ -1726,25 +1763,46 @@ impl App {
     pub(crate) fn load_lyrics(&mut self, track: &Track) {
         self.lyrics_target = Some(track.path.clone());
         self.lyrics_doc = None;
+        self.lyrics_raw = None;
         self.lyrics_timed = false;
         self.lyrics_active = -1;
         self.auto_lyrics_rx = None;
 
-        let (text, source) = if let Some(sidecar) = read_sidecar(&track.path) {
-            (Some(sidecar), "sidecar")
-        } else if let Some(embedded) = self
-            .metadata_engine
-            .read_metadata(Path::new(&track.path), None)
-            .ok()
-            .and_then(|t| t.lyrics)
-        {
-            (Some(embedded), "embedded")
+        // Match LyricsFiles.cs: check sidecar and embedded; timed beats untimed!
+        let sidecar = read_sidecar(&track.path);
+        let sidecar_timed = sidecar
+            .as_deref()
+            .map(|s| !parse_lrc(s).lines.is_empty())
+            .unwrap_or(false);
+        let embedded = if sidecar_timed {
+            None
+        } else {
+            self.metadata_engine
+                .read_metadata(Path::new(&track.path), None)
+                .ok()
+                .and_then(|t| t.lyrics)
+                .filter(|l| !l.trim().is_empty())
+        };
+        let embedded_timed = embedded
+            .as_deref()
+            .map(|s| !parse_lrc(s).lines.is_empty())
+            .unwrap_or(false);
+
+        let (text, source) = if sidecar_timed {
+            (sidecar, "sidecar")
+        } else if embedded_timed {
+            (embedded, "embedded")
+        } else if sidecar.is_some() {
+            (sidecar, "sidecar")
+        } else if embedded.is_some() {
+            (embedded, "embedded")
         } else {
             (None, "none")
         };
         let mut lines = Vec::new();
         let has_text = text.is_some();
         if let Some(ref text_val) = text {
+            self.lyrics_raw = Some(text_val.clone());
             let doc = parse_lrc(text_val);
             self.lyrics_timed = !doc.lines.is_empty();
             for line in &doc.lines {
@@ -1778,6 +1836,7 @@ impl App {
         state.set_has_lyrics(has_local_lyrics);
         state.set_lyrics_source(ss(source));
         state.set_lyrics_timed(self.lyrics_timed);
+        state.set_lyrics_scroll_paused(false);
         state.set_lyrics_active_line(-1);
 
         // If local lyrics are already timed, no need to query online.
@@ -1795,42 +1854,16 @@ impl App {
 
         // Check in-memory cache
         let now = Instant::now();
-        if let Some((cached_at, cached_match)) = self.lyrics_cache.get(&track.path) {
+        if let Some((cached_at, cached_match)) = self.lyrics_cache.get(&track.path).cloned() {
             let duration = if cached_match.as_ref().map(|m| m.timed).unwrap_or(false) {
                 std::time::Duration::from_secs(30 * 60)
             } else {
                 std::time::Duration::from_secs(5 * 60)
             };
-            if now.duration_since(*cached_at) < duration {
+            if now.duration_since(cached_at) < duration {
                 if let Some(matched) = cached_match {
                     if !has_local_lyrics || matched.timed {
-                        let doc = parse_lrc(&matched.raw);
-                        self.lyrics_timed = matched.timed;
-                        let mut l_lines = Vec::new();
-                        for line in &doc.lines {
-                            l_lines.push(LyricLineItem {
-                                text: ss(&line.text),
-                                is_active: false,
-                                is_past: false,
-                                is_upcoming: true,
-                            });
-                        }
-                        if !self.lyrics_timed {
-                            for plain in matched.raw.lines().filter(|l| !l.trim().is_empty()) {
-                                l_lines.push(LyricLineItem {
-                                    text: ss(plain),
-                                    is_active: false,
-                                    is_past: false,
-                                    is_upcoming: true,
-                                });
-                            }
-                        }
-                        self.lyrics_doc = Some(doc);
-                        state.set_lyrics_lines(ui_model(l_lines).into());
-                        state.set_has_lyrics(true);
-                        state.set_lyrics_source(ss("lrclib"));
-                        state.set_lyrics_timed(matched.timed);
-                        state.set_lyrics_searching(false);
+                        self.apply_online_lyrics_match(&matched, &track.path, false);
                         return;
                     }
                 } else if !has_local_lyrics {
@@ -1840,7 +1873,15 @@ impl App {
             }
         }
 
+        let key = track.path.to_lowercase();
+        if self.lyrics_in_flight.contains(&key) {
+            // Prefetch already running for this track; poll_lyrics_search will apply it when done.
+            state.set_lyrics_searching(true);
+            return;
+        }
+
         // Spawning background fetch for LRCLIB lyrics
+        self.lyrics_in_flight.insert(key);
         state.set_lyrics_searching(true);
         let track_path = track.path.clone();
         let track_title = track.title.clone();
@@ -1866,6 +1907,70 @@ impl App {
                 });
             });
         });
+    }
+
+    fn apply_online_lyrics_match(
+        &mut self,
+        matched: &music_player_core::lyrics::LyricsMatch,
+        path: &str,
+        persist: bool,
+    ) {
+        let doc = parse_lrc(&matched.raw);
+        self.lyrics_raw = Some(matched.raw.clone());
+        self.lyrics_timed = matched.timed;
+        let mut lines = Vec::new();
+        for line in &doc.lines {
+            lines.push(LyricLineItem {
+                text: ss(&line.text),
+                is_active: false,
+                is_past: false,
+                is_upcoming: true,
+            });
+        }
+        if !self.lyrics_timed {
+            for plain in matched.raw.lines().filter(|l| !l.trim().is_empty()) {
+                lines.push(LyricLineItem {
+                    text: ss(plain),
+                    is_active: false,
+                    is_past: false,
+                    is_upcoming: true,
+                });
+            }
+        }
+        self.lyrics_doc = Some(doc);
+        let state = self.ui.global::<State>();
+        state.set_lyrics_lines(ui_model(lines).into());
+        state.set_has_lyrics(true);
+        state.set_lyrics_source(ss("lrclib"));
+        state.set_lyrics_timed(matched.timed);
+        state.set_lyrics_searching(false);
+        state.set_lyrics_active_line(-1);
+
+        if persist {
+            let text_to_save = matched.raw.clone();
+            let track_path = path.to_string();
+            let store = self.store.clone();
+            std::thread::spawn(move || {
+                let stored = TagEditor::new(tag_backups_dir())
+                    .save(
+                        &track_path,
+                        &TagEdit {
+                            lyrics: Some(text_to_save.clone()),
+                            ..TagEdit::default()
+                        },
+                    )
+                    .is_ok();
+                if !stored {
+                    let _ = write_sidecar(&track_path, &text_to_save);
+                }
+                let _ = store.update_track_lyrics_status(&track_path, true);
+            });
+        }
+
+        let position_ms = self.engine.position_ms();
+        if position_ms > 0 {
+            self.update_lyrics_position(position_ms);
+        }
     }
 
     pub(crate) fn update_lyrics_position(&mut self, position_ms: u64) {
@@ -1899,10 +2004,17 @@ impl App {
             .collect();
         let state = self.ui.global::<State>();
         state.set_lyrics_lines(ui_model(lines).into());
-        if !state.get_lyrics_scroll_paused() {
-            state.set_lyrics_active_line(active);
-        }
+        state.set_lyrics_active_line(active);
         let _ = timed;
+    }
+
+    pub(crate) fn apply_seek_preview(&mut self, target_ms: u64, duration_ms: u64) {
+        self.seek_preview_ms = Some(target_ms);
+        let state = self.ui.global::<State>();
+        let show_remaining = state.get_show_remaining_time();
+        state.set_progress((target_ms as f32 / duration_ms as f32).clamp(0.0, 1.0));
+        state.set_current_time(ss(fmt_time(target_ms)));
+        state.set_total_time(ss(fmt_right_time(target_ms, duration_ms, show_remaining)));
     }
 
     pub(crate) fn poll_lyrics_search(&mut self) {
@@ -1912,7 +2024,24 @@ impl App {
                 let state = self.ui.global::<State>();
                 state.set_lyrics_searching(false);
                 match result {
-                    Ok(results) => {
+                    Ok(mut results) => {
+                        results.retain(|r| {
+                            r.synced_lyrics.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+                                || r.plain_lyrics.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+                        });
+                        results.sort_by(|a, b| {
+                            let a_timed = a
+                                .synced_lyrics
+                                .as_deref()
+                                .map(|s| !parse_lrc(s.trim()).lines.is_empty())
+                                .unwrap_or(false);
+                            let b_timed = b
+                                .synced_lyrics
+                                .as_deref()
+                                .map(|s| !parse_lrc(s.trim()).lines.is_empty())
+                                .unwrap_or(false);
+                            b_timed.cmp(&a_timed)
+                        });
                         state.set_lyrics_search_status(ss(if results.is_empty() {
                             "No matching lyrics were found."
                         } else {
@@ -1920,17 +2049,34 @@ impl App {
                         }));
                         let items: Vec<LyricResultItem> = results
                             .iter()
-                            .map(|r| LyricResultItem {
-                                title: ss(&r.track_name),
-                                artist: ss(&r.artist_name),
-                                badge: ss(if r.synced_lyrics.is_some() {
-                                    "Timed"
+                            .map(|r| {
+                                let artist = if r.artist_name.trim().is_empty() {
+                                    "Unknown artist"
                                 } else {
-                                    "Plain"
-                                }),
-                                timed: r.synced_lyrics.is_some(),
-                                synced_id: ss(r.id.to_string()),
-                                plain_id: ss(r.id.to_string()),
+                                    r.artist_name.trim()
+                                };
+                                let duration_badge = if r.duration > 0.0 {
+                                    format!(" · {}", fmt_time((r.duration * 1000.0) as u64))
+                                } else {
+                                    String::new()
+                                };
+                                let subtitle = match r.album_name.as_deref().map(str::trim) {
+                                    Some(album) if !album.is_empty() => format!("{} · {}{}", artist, album, duration_badge),
+                                    _ => format!("{}{}", artist, duration_badge),
+                                };
+                                let is_timed = r
+                                    .synced_lyrics
+                                    .as_deref()
+                                    .map(|s| !parse_lrc(s.trim()).lines.is_empty())
+                                    .unwrap_or(false);
+                                LyricResultItem {
+                                    title: ss(if r.track_name.trim().is_empty() { "Untitled" } else { &r.track_name }),
+                                    artist: ss(&subtitle),
+                                    badge: ss(if is_timed { "Timed" } else { "Plain" }),
+                                    timed: is_timed,
+                                    synced_id: ss(r.id.to_string()),
+                                    plain_id: ss(r.id.to_string()),
+                                }
                             })
                             .collect();
                         state.set_lyrics_results(ui_model(items).into());
@@ -1942,12 +2088,21 @@ impl App {
         }
 
         while let Ok((path, matched)) = self.prefetch_lyrics_rx.try_recv() {
-            self.lyrics_cache.insert(path, (Instant::now(), matched));
+            self.lyrics_in_flight.remove(&path.to_lowercase());
+            self.lyrics_cache.insert(path.clone(), (Instant::now(), matched.clone()));
+            if self.lyrics_target.as_deref() == Some(&path) && !self.lyrics_timed {
+                if let Some(m) = matched {
+                    self.apply_online_lyrics_match(&m, &path, true);
+                } else {
+                    self.ui.global::<State>().set_lyrics_searching(false);
+                }
+            }
         }
 
         if let Some(rx) = &self.auto_lyrics_rx {
             if let Ok((path, result)) = rx.try_recv() {
                 self.auto_lyrics_rx = None;
+                self.lyrics_in_flight.remove(&path.to_lowercase());
                 let matched_opt = result.as_ref().ok().cloned().flatten();
                 self.lyrics_cache
                     .insert(path.clone(), (Instant::now(), matched_opt.clone()));
@@ -1958,61 +2113,8 @@ impl App {
                     state.set_lyrics_searching(false);
 
                     if let Some(matched) = matched_opt {
-                        // If we already have timed local lyrics, do not overwrite
                         if !self.lyrics_timed {
-                            let doc = parse_lrc(&matched.raw);
-                            self.lyrics_timed = matched.timed;
-                            let mut lines = Vec::new();
-                            for line in &doc.lines {
-                                lines.push(LyricLineItem {
-                                    text: ss(&line.text),
-                                    is_active: false,
-                                    is_past: false,
-                                    is_upcoming: true,
-                                });
-                            }
-                            if !self.lyrics_timed {
-                                for plain in matched.raw.lines().filter(|l| !l.trim().is_empty()) {
-                                    lines.push(LyricLineItem {
-                                        text: ss(plain),
-                                        is_active: false,
-                                        is_past: false,
-                                        is_upcoming: true,
-                                    });
-                                }
-                            }
-                            self.lyrics_doc = Some(doc);
-                            state.set_lyrics_lines(ui_model(lines).into());
-                            state.set_has_lyrics(true);
-                            state.set_lyrics_source(ss("lrclib"));
-                            state.set_lyrics_timed(matched.timed);
-                            state.set_lyrics_active_line(-1);
-
-                            // Persist fetched lyrics: embed first, fallback to sidecar
-                            let text_to_save = matched.raw.clone();
-                            let track_path = path.clone();
-                            let store = self.store.clone();
-                            std::thread::spawn(move || {
-                                let stored = TagEditor::new(tag_backups_dir())
-                                    .save(
-                                        &track_path,
-                                        &TagEdit {
-                                            lyrics: Some(text_to_save.clone()),
-                                            ..TagEdit::default()
-                                        },
-                                    )
-                                    .is_ok();
-                                if !stored {
-                                    let _ = write_sidecar(&track_path, &text_to_save);
-                                }
-                                let _ = store.update_track_lyrics_status(&track_path, true);
-                            });
-
-                            // Sync position if audio is currently playing this track
-                            let position_ms = self.engine.position_ms();
-                            if position_ms > 0 {
-                                self.update_lyrics_position(position_ms);
-                            }
+                            self.apply_online_lyrics_match(&matched, &path, true);
                         }
                     } else if !state.get_has_lyrics() {
                         state.set_has_lyrics(false);
@@ -2438,5 +2540,26 @@ impl App {
         });
         self.settings
             .set_raw(LAST_VIEW_CONTEXT, &payload.to_string());
+    }
+}
+
+pub(crate) fn fmt_right_time(position_ms: u64, duration_ms: u64, show_remaining: bool) -> String {
+    if show_remaining && duration_ms > 0 {
+        format!("-{}", fmt_time(duration_ms.saturating_sub(position_ms)))
+    } else {
+        fmt_time(duration_ms)
+    }
+}
+
+#[cfg(test)]
+mod right_time_tests {
+    use super::fmt_right_time;
+
+    #[test]
+    fn formats_total_and_remaining_time() {
+        assert_eq!(fmt_right_time(38_000, 225_000, false), "3:45");
+        assert_eq!(fmt_right_time(38_000, 225_000, true), "-3:07");
+        assert_eq!(fmt_right_time(250_000, 225_000, true), "-0:00");
+        assert_eq!(fmt_right_time(10_000, 0, true), "0:00");
     }
 }

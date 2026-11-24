@@ -233,11 +233,12 @@ export component PlaylistsList inherits Rectangle {
 }
 
 export component PlaylistsView inherits Rectangle {
-    ScrollView {
+    pls-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: pls-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;
@@ -312,11 +313,12 @@ export component PlaylistsView inherits Rectangle {
 
 // ---- Playlist detail ---------------------------------------------------------
 export component PlaylistView inherits Rectangle {
-    ScrollView {
+    pl-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: pl-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;

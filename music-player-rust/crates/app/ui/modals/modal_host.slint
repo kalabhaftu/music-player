@@ -9,19 +9,32 @@ import { ConfirmModal, RatingModal, ResetModal, UpdateModal } from "dialogs.slin
 export component ModalHost inherits Rectangle {
     background: #00000094;
 
-    // Body per modal kind, sized by the header.
+    property <bool> is-scrollable-modal:
+        State.modal == "edit-lyrics"
+        || State.modal == "find-lyrics"
+        || State.modal == "tags"
+        || State.modal == "details"
+        || State.modal == "folders"
+        || State.modal == "exclusions"
+        || State.modal == "duplicate-locations"
+        || State.modal == "add-to-playlist";
+
     in property <length> modal-width:
         State.modal == "edit-lyrics" ? min(680px, root.width - 32px) :
         State.modal == "find-lyrics" ? min(580px, root.width - 32px) :
-        State.modal == "tags" || State.modal == "details" ? min(640px, root.width - 32px) :
-        State.modal == "folders" || State.modal == "exclusions" ? min(560px, root.width - 32px) :
-        min(460px, root.width - 32px);
-    in property <length> modal-height:
-        State.modal == "edit-lyrics" ? min(540px, root.height - 40px) :
-        State.modal == "find-lyrics" ? min(500px, root.height - 40px) :
-        State.modal == "tags" ? min(540px, root.height - 40px) :
-        State.modal == "folders" || State.modal == "exclusions" ? min(480px, root.height - 40px) :
-        min(400px, root.height - 40px);
+        State.modal == "tags" || State.modal == "details" ? min(580px, root.width - 32px) :
+        State.modal == "folders" || State.modal == "exclusions" || State.modal == "duplicate-locations" ? min(560px, root.width - 32px) :
+        min(520px, root.width - 32px);
+
+    in property <length> scrollable-height:
+        State.modal == "edit-lyrics" ? min(580px, root.height - 40px) :
+        State.modal == "find-lyrics" ? min(520px, root.height - 40px) :
+        State.modal == "tags" ? min(590px, root.height - 40px) :
+        State.modal == "details" ? min(560px, root.height - 40px) :
+        State.modal == "exclusions" ? min(560px, root.height - 40px) :
+        State.modal == "folders" ? min(440px, root.height - 40px) :
+        State.modal == "add-to-playlist" ? min(400px, root.height - 40px) :
+        min(420px, root.height - 40px);
 
     TouchArea {
         clicked => { Actions.close-modal(); }
@@ -29,42 +42,53 @@ export component ModalHost inherits Rectangle {
 
     Rectangle {
         width: root.modal-width;
-        height: root.modal-height;
+        height: root.is-scrollable-modal ? root.scrollable-height : min(modal-layout.preferred-height, root.height - 40px);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         border-radius: 13px;
         background: Palette.panel;
         border-width: 1px;
         border-color: Palette.border;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 20px;
+        drop-shadow-blur: 60px;
+        drop-shadow-color: #00000073;
         clip: true;
 
-        VerticalLayout {
-            // Header
+        // Absorb clicks on the modal surface so they don't bubble to the backdrop close handler.
+        TouchArea { }
+
+        modal-layout := VerticalLayout {
+            // WebUI `.modal header`: padding 11px 14px, 1px bottom border, 14px title + close icon
             HorizontalLayout {
                 height: 48px;
-                padding-left: 18px;
+                padding-left: 14px;
                 padding-right: 12px;
+                spacing: 8px;
                 Text {
                     text: State.modal-title;
                     color: Palette.text;
                     font-size: 14px;
-                    font-weight: 750;
+                    font-weight: 700;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                     overflow: elide;
                 }
-                IcBtn {
-                    icon: @image-url("../../assets/icons/close.svg");
-                    icon-size: 13px;
-                    tint: Palette.muted-2;
-                    clicked => { Actions.close-modal(); }
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/close.svg");
+                        icon-size: 13px;
+                        tint: Palette.muted-2;
+                        clicked => { Actions.close-modal(); }
+                    }
                 }
             }
             Rectangle { height: 1px; background: Palette.border; }
 
-            // Body
+            // Body + footer (each modal includes its own `ModalFooterBar` at the bottom)
             Rectangle {
-                vertical-stretch: 1;
+                vertical-stretch: root.is-scrollable-modal ? 1 : 0;
                 if State.modal == "tags" : TagsModal { }
                 if State.modal == "details" : DetailsModal { }
                 if State.modal == "find-lyrics" : FindLyricsModal { }
@@ -72,9 +96,9 @@ export component ModalHost inherits Rectangle {
                 if State.modal == "folders" : FoldersModal { }
                 if State.modal == "exclusions" : ExclusionsModal { }
                 if State.modal == "add-to-playlist" : AddToPlaylistModal { }
-                if State.modal == "new-playlist" : NameModal { placeholder: "Playlist name"; action: "Create"; submit(text) => { Actions.create-playlist(text); } }
-                if State.modal == "rename-playlist" : NameModal { placeholder: "New name"; action: "Rename"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
-                if State.modal == "save-preset" : NameModal { placeholder: "Preset name"; action: "Save"; submit(text) => { Actions.save-eq-preset(text); } }
+                if State.modal == "new-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Create playlist"; submit(text) => { Actions.create-playlist(text); } }
+                if State.modal == "rename-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Save"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
+                if State.modal == "save-preset" : NameModal { field-label: "Preset name"; placeholder: "Preset name"; action: "Save preset"; submit(text) => { Actions.save-eq-preset(text); } }
                 if State.modal == "confirm" : ConfirmModal { }
                 if State.modal == "rating" : RatingModal { }
                 if State.modal == "duplicate-locations" : LocationsModal { }

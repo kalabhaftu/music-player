@@ -216,11 +216,12 @@ export component HomeEmptyState inherits Rectangle {
 }
 
 export component HomeView inherits Rectangle {
-    ScrollView {
+    home-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: home-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 24px;

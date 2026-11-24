@@ -23,6 +23,7 @@ pub mod keys {
     pub const AUTO_LOAD_LYRICS: &str = "auto-load-lyrics";
     pub const SEEK_FROM_LYRICS: &str = "seek-from-lyrics";
     pub const SHOW_ARTWORK: &str = "show-list-artwork";
+    pub const SHOW_REMAINING_TIME: &str = "show-remaining-time";
     pub const SHOW_ARTIST: &str = "show-list-artist";
     pub const SHOW_ALBUM: &str = "show-list-album";
     pub const SHOW_ADDED: &str = "show-list-added";

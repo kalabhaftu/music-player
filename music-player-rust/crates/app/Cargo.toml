@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 music-player-core = { path = "../core" }
-slint = { version = "1.18.1", features = ["raw-window-handle-06"] }
+slint = { version = "1.18.1", features = ["raw-window-handle-06", "unstable-winit-030"] }
 raw-window-handle = "0.6.2"
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png"] }
 directories = "=6.0.0"

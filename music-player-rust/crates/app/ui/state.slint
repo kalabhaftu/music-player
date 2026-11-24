@@ -227,6 +227,7 @@ export global State {
     in-out property <bool> immersive-player-open: false;
     in-out property <bool> immersive-fullscreen: false;
     in-out property <bool> immersive-lyrics-open: false;
+    in-out property <bool> window-maximized: false;
     in-out property <bool> transparent-window: false;
     in-out property <int> window-transparency: 0;
     in-out property <string> accent-color: "#b7ff2d";
@@ -243,6 +244,7 @@ export global State {
     in-out property <bool> auto-open-side-panel: true;
     in-out property <bool> auto-load-lyrics: true;
     in-out property <bool> seek-from-lyrics: true;
+    in-out property <bool> show-remaining-time: false;
     in-out property <bool> show-list-artwork: true;
     in-out property <bool> show-list-artist: true;
     in-out property <bool> show-list-album: true;
@@ -259,7 +261,7 @@ export global State {
         - (State.navigation-collapsed ? 0 : State.navigation-width)
         - (State.right-panel-open ? State.right-panel-width : 0);
     out property <length> card-gap: clamp(State.browse-width * 0.05px, 10px, 20px);
-    out property <length> content-avail-width: max(260px, (State.content-width * 1px) - (State.window-width <= 650 ? 24px : 48px));
+    out property <length> content-avail-width: max(140px, (State.content-width * 1px) - (State.window-width <= 650 ? 40px : 64px));
     out property <int> card-columns: max(1, Math.floor((State.content-avail-width + State.card-gap) / (130px + State.card-gap)));
     out property <length> card-width: (State.content-avail-width - (State.card-columns - 1) * State.card-gap) / max(1, State.card-columns);
     out property <int> folder-columns: max(1, Math.floor((State.content-avail-width + 12px) / (310px + 12px)));
@@ -466,6 +468,9 @@ export global Actions {
     // ---- Window ----
     callback close-window();
     callback minimize-window();
+    callback toggle-maximize-window();
+    callback drag-window();
+    callback drag-resize-window(string);
     callback toggle-immersive(string);
     callback close-immersive();
     callback open-immersive-player();
@@ -479,6 +484,7 @@ export global Actions {
     callback set-right-tab(string);
     callback ui-ready();
     callback set-volume-muted();
+    callback toggle-remaining-time();
     callback close-notice();
     callback save-lyrics-modal();
     callback window-resized(int, int);

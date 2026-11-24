@@ -1,6 +1,6 @@
 import { State, Actions } from "../state.slint";
 import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
-import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, VerticalEqSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect } from "../widgets.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, VerticalEqSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect, SyncedLyricsList } from "../widgets.slint";
 import { ScrollView, ListView } from "std-widgets.slint";
 
 // ---- Queue ------------------------------------------------------------------
@@ -171,11 +171,12 @@ component QueueRow inherits Rectangle {
 }
 
 export component QueueView inherits Rectangle {
-    ScrollView {
+    queue-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: queue-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 0px;
@@ -235,11 +236,12 @@ export component QueueView inherits Rectangle {
 
 // ---- Now Playing --------------------------------------------------------------
 export component NowPlayingView inherits Rectangle {
-    ScrollView {
+    now-sv := ScrollView {
+        content-width: self.visible-width;
         VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
+            width: now-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 24px;
@@ -278,14 +280,14 @@ export component NowPlayingView inherits Rectangle {
 
 // ---- Lyrics ------------------------------------------------------------------
 export component LyricsView inherits Rectangle {
-    ScrollView {
-        VerticalLayout {
-            width: parent.width;
-            padding-left: 24px;
-            padding-right: 24px;
-            padding-top: 20px;
-            padding-bottom: 32px;
-            spacing: 0px;
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 16px;
+        spacing: 0px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -301,7 +303,7 @@ export component LyricsView inherits Rectangle {
                 }
                 Text {
                     text: State.has-track
-                        ? "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded in audio tags" : "LRCLIB (online)")) : "")
+                        ? "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" && State.lyrics-source != "none" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded in audio tags" : "LRCLIB (online)")) : "")
                         : "Choose a song to view lyrics.";
                     color: Palette.muted;
                     font-size: 12px;
@@ -321,82 +323,31 @@ export component LyricsView inherits Rectangle {
         Rectangle { height: 22px; }
 
         if !State.has-track : EmptyState {
+            vertical-stretch: 1;
             text: "No track selected";
             subtitle: "Lyrics appear here when a track is playing.";
         }
 
-        if State.has-track && State.has-lyrics : Rectangle {
+        if State.has-track && State.has-lyrics : SyncedLyricsList {
             vertical-stretch: 1;
-            clip: true;
-
-            TouchArea {
-                scroll-event(event) => {
-                    if (event.delta-y != 0px) {
-                        State.lyrics-scroll-paused = true;
-                        Actions.lyrics-scroll-changed(true);
-                    }
-                    reject
-                }
-            }
-
-            lyrics-flickable := Flickable {
-                content-y: (State.lyrics-scroll-nonce * 0px) + (State.lyrics-active-line < 0 ? 0px : min(0px, - State.lyrics-active-line * 64px + 140px));
-                animate content-y { duration: 250ms; easing: ease-out; }
-
-                VerticalLayout {
-                    for line[index] in State.lyrics-lines : TouchArea {
-                        height: 64px;
-                        clicked => {
-                            if (State.lyrics-timed && State.seek-from-lyrics) {
-                                Actions.seek-to-lyric(index);
-                            }
-                        }
-                        Text {
-                            text: line.text;
-                            color: line.is-active ? Palette.text : (line.is-past || line.is-upcoming ? Palette.muted : Palette.muted-2);
-                            font-size: line.is-active ? 23px : 20px;
-                            font-weight: 650;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                            x: max(12px, (parent.width - min(parent.width - 24px, 720px)) / 2);
-                            width: min(parent.width - 24px, 720px);
-                            wrap: word-wrap;
-                            animate color { duration: 200ms; }
-                        }
-                    }
-                }
-            }
-            if State.lyrics-scroll-paused : Rectangle {
-                x: parent.width - 62px;
-                y: parent.height - 62px;
-                width: 38px;
-                height: 38px;
-                border-radius: 19px;
-                border-width: 1px;
-                border-color: resume-ta.has-hover ? State.accent : State.accent.with-alpha(0.6);
-                background: resume-ta.has-hover ? Palette.hover : Palette.raised;
-                drop-shadow-offset-x: 0px;
-                drop-shadow-offset-y: 4px;
-                drop-shadow-blur: 16px;
-                drop-shadow-color: #00000060;
-                animate background { duration: 120ms; }
-                Image {
-                    source: @image-url("../../assets/icons/locate.svg");
-                    width: 18px;
-                    height: 18px;
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    colorize: State.accent;
-                }
-                resume-ta := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => {
-                        State.lyrics-scroll-paused = false;
-                        Actions.lyrics-scroll-changed(false);
-                    }
-                }
-            }
+            width: 100%;
+            top-pad: 100px;
+            bottom-pad: 220px;
+            side-pad: 12px;
+            max-line-width: 720px;
+            active-font-size: 27px;
+            inactive-font-size: 19px;
+            active-font-weight: 800;
+            inactive-font-weight: 600;
+            active-pad-v: 14px;
+            inactive-pad-v: 10px;
+            active-color: Palette.text;
+            inactive-color: Palette.muted;
+            inactive-opacity: 0.42;
+            hover-bg: #ffffff10;
+            resume-bg: Palette.raised;
         }
+
         if State.has-track && !State.has-lyrics : VerticalLayout {
             vertical-stretch: 1;
             alignment: center;
@@ -404,17 +355,22 @@ export component LyricsView inherits Rectangle {
             Text { text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics found"; color: Palette.text; font-size: 15px; font-weight: 750; horizontal-alignment: center; }
             Text { text: State.lyrics-searching ? "Searching LRCLIB for a match to this track." : "Lyrics saved in the audio file or beside it load automatically. You can also search online."; color: Palette.muted; font-size: 11px; horizontal-alignment: center; wrap: word-wrap; }
         }
-      }
     }
 }
 
 // ---- Audio (equalizer) --------------------------------------------------------
 export component AudioView inherits Rectangle {
-    ScrollView {
+    audio-scroll := ScrollView {
+        content-width: self.visible-width;
+
+        property <bool> compact: self.visible-width < 520px;
+        property <length> pad-x: self.visible-width < 460px ? 14px : 24px;
+        property <length> control-w: clamp(self.visible-width * 0.34, 150px, 220px);
+
         VerticalLayout {
-            width: parent.width;
-            padding-left: clamp(16px, State.window-width * 0.02 * 1px, 28px);
-            padding-right: clamp(16px, State.window-width * 0.02 * 1px, 28px);
+            width: audio-scroll.visible-width;
+            padding-left: audio-scroll.pad-x;
+            padding-right: audio-scroll.pad-x;
             padding-top: 20px;
             padding-bottom: 32px;
             spacing: 20px;
@@ -423,23 +379,52 @@ export component AudioView inherits Rectangle {
             VerticalLayout {
                 spacing: 5px;
                 Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
-                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; }
+                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
             }
 
             VerticalLayout {
-                spacing: 3px;
+                spacing: 8px;
                 SectionTitle { text: "Volume"; font-size: 15px; letter-spacing: 0px; }
-                HorizontalLayout {
-                    spacing: 10px;
+                if !audio-scroll.compact : HorizontalLayout {
+                    spacing: 12px;
                     VerticalLayout {
-                        width: clamp(State.window-width * 0.25 * 1px, 140px, 240px);
+                        width: 140px;
                         spacing: 3px;
                         Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
-                        Text { text: "Volume is shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                        Text { text: "Shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
                     }
-                    PlayerSlider {
+                    VerticalLayout {
+                        alignment: center;
                         horizontal-stretch: 1;
                         min-width: 60px;
+                        PlayerSlider {
+                            minimum: 0.0;
+                            maximum: 100.0;
+                            value: State.volume;
+                            fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            scroll-step: 4.0;
+                            changed(val) => { Actions.volume-changed(round(val)); }
+                        }
+                    }
+                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 36px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
+                    ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                }
+                if audio-scroll.compact : VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
+                            Text { text: "Shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                        }
+                        Text { text: "\{State.volume}%"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+                        ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                    }
+                    PlayerSlider {
+                        width: 100%;
                         minimum: 0.0;
                         maximum: 100.0;
                         value: State.volume;
@@ -448,31 +433,54 @@ export component AudioView inherits Rectangle {
                         scroll-step: 4.0;
                         changed(val) => { Actions.volume-changed(round(val)); }
                     }
-                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 36px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
-                    ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
                 }
             }
 
             VerticalLayout {
-                spacing: 3px;
+                spacing: 6px;
                 SectionTitle { text: "Audio output"; font-size: 15px; letter-spacing: 0px; }
-                Text { text: "Choose a connected Windows playback device."; color: Palette.muted; font-size: 10px; }
-                HorizontalLayout {
+                Text { width: 100%; text: "Choose a connected Windows playback device."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                if !audio-scroll.compact : HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
+                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
                     if State.output-devices.length > 0 : CustomSelect {
-                        horizontal-stretch: 1;
-                        min-width: 140px;
+                        width: audio-scroll.control-w;
                         options: State.output-devices;
                         current-value: State.output-device;
                         selected(value) => { Actions.set-output-device(value); }
                     }
                     if State.output-devices.length == 0 : Text {
-                        text: "No audio output devices are available. Connect a device and refresh.";
+                        text: "No audio output devices available.";
                         color: Palette.muted;
                         font-size: 10px;
                         horizontal-stretch: 1;
+                        min-width: 0px;
                         wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                    ActionBtn {
+                        label: "Refresh";
+                        clicked => { Actions.refresh-audio-devices(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if audio-scroll.compact : HorizontalLayout {
+                    spacing: 8px;
+                    if State.output-devices.length > 0 : CustomSelect {
+                        horizontal-stretch: 1;
+                        min-width: 120px;
+                        options: State.output-devices;
+                        current-value: State.output-device;
+                        selected(value) => { Actions.set-output-device(value); }
+                    }
+                    if State.output-devices.length == 0 : Text {
+                        text: "No audio output devices available.";
+                        color: Palette.muted;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
                     }
                     ActionBtn {
                         label: "Refresh";
@@ -482,72 +490,114 @@ export component AudioView inherits Rectangle {
             }
 
             VerticalLayout {
-                spacing: 3px;
+                spacing: 6px;
                 SectionTitle { text: "Playback transition"; font-size: 15px; letter-spacing: 0px; }
-                HorizontalLayout {
+                if !audio-scroll.compact : HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
                     CustomSelect {
-                        width: clamp(State.window-width * 0.20 * 1px, 130px, 180px);
+                        width: audio-scroll.control-w;
                         options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
                         current-value: State.crossfade-label;
                         selected(value) => { Actions.set-crossfade-label(value); }
                     }
-                    Text { text: "Blend into the next track."; color: Palette.muted; font-size: 10px; vertical-alignment: center; }
+                    Text { text: "Blend into the next track."; color: Palette.muted; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
+                }
+                if audio-scroll.compact : HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 72px; }
+                    CustomSelect {
+                        horizontal-stretch: 1;
+                        min-width: 120px;
+                        options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                        current-value: State.crossfade-label;
+                        selected(value) => { Actions.set-crossfade-label(value); }
+                    }
                 }
             }
 
             VerticalLayout {
-                spacing: 12px;
+                spacing: 10px;
                 SectionTitle { text: "10-band equalizer"; font-size: 15px; letter-spacing: 0px; }
-                HorizontalLayout {
+                if !audio-scroll.compact : HorizontalLayout {
                     spacing: 10px;
-                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: clamp(State.window-width * 0.12 * 1px, 70px, 120px); }
+                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
                     CustomSelect {
-                        width: clamp(State.window-width * 0.22 * 1px, 140px, 220px);
+                        width: audio-scroll.control-w;
                         options: State.eq-presets;
                         current-value: State.eq-preset;
                         selected(value) => { Actions.set-eq-preset(value); }
                     }
                     ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
                     ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Off"); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if audio-scroll.compact : VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 72px; }
+                        CustomSelect {
+                            horizontal-stretch: 1;
+                            min-width: 120px;
+                            options: State.eq-presets;
+                            current-value: State.eq-preset;
+                            selected(value) => { Actions.set-eq-preset(value); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
+                        ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Off"); } }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
                 }
 
                 Rectangle {
+                    width: 100%;
                     border-radius: 12px;
                     background: Palette.raised;
                     min-height: 290px;
                     HorizontalLayout {
-                        padding-top: 24px;
-                        padding-bottom: 24px;
-                        padding-left: clamp(8px, State.window-width * 0.015 * 1px, 24px);
-                        padding-right: clamp(8px, State.window-width * 0.015 * 1px, 24px);
-                        spacing: State.window-width <= 750 ? 4px : (State.window-width <= 950 ? 8px : 14px);
+                        width: 100%;
+                        padding-top: 22px;
+                        padding-bottom: 22px;
+                        padding-left: audio-scroll.visible-width < 460px ? 6px : 18px;
+                        padding-right: audio-scroll.visible-width < 460px ? 6px : 18px;
+                        spacing: audio-scroll.visible-width < 440px ? 2px : (audio-scroll.visible-width < 600px ? 5px : 10px);
                         alignment: center;
                         for band[index] in State.eq-bands : VerticalLayout {
                             horizontal-stretch: 1;
-                            min-width: 14px;
-                            max-width: 50px;
+                            min-width: 0px;
+                            max-width: 52px;
                             spacing: 10px;
                             alignment: center;
                             Text {
+                                width: 100%;
                                 text: band.label;
                                 color: Palette.muted;
-                                font-size: 11px;
+                                font-size: audio-scroll.visible-width < 440px ? 10px : 11px;
                                 font-weight: 700;
                                 horizontal-alignment: center;
                             }
-                            VerticalEqSlider {
-                                minimum: -20.0;
-                                maximum: 20.0;
-                                value: band.value;
-                                changed(val) => { Actions.set-eq-band(index, val); }
+                            HorizontalLayout {
+                                alignment: center;
+                                VerticalEqSlider {
+                                    minimum: -20.0;
+                                    maximum: 20.0;
+                                    value: band.value;
+                                    changed(val) => { Actions.set-eq-band(index, val); }
+                                }
                             }
                             Text {
-                                text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
+                                width: 100%;
+                                text: audio-scroll.visible-width < 460px
+                                    ? (band.value > 0.0 ? "+\{round(band.value * 10) / 10}" : "\{round(band.value * 10) / 10}")
+                                    : (band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB");
                                 color: Palette.text;
-                                font-size: 11px;
+                                font-size: audio-scroll.visible-width < 460px ? 9px : 11px;
                                 horizontal-alignment: center;
+                                overflow: elide;
                             }
                         }
                     }

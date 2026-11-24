@@ -1,5 +1,5 @@
 import { State, Actions } from "../state.slint";
-import { Palette, IcBtn, PlayerSlider } from "../widgets.slint";
+import { Palette, IcBtn, PlayerSlider, DelayedTooltip } from "../widgets.slint";
 
 // ---- Player bar ----------------------------------------------------------------
 export component PlayerBar inherits Rectangle {
@@ -15,9 +15,9 @@ export component PlayerBar inherits Rectangle {
         background: Palette.border;
     }
 
-    // Centered controls column: exactly dead-center in the window, never shifted by title length
+    // Centered controls column: dead-center in wide layouts, scaled smoothly at tighter widths
     center-col := VerticalLayout {
-        width: clamp(280px, State.window-width * 0.42 * 1px, 520px);
+        width: clamp(240px, State.window-width * 0.40 * 1px, 500px);
         x: (parent.width - self.width) / 2;
         y: 10px;
         height: parent.height - 20px;
@@ -47,7 +47,7 @@ export component PlayerBar inherits Rectangle {
                 tooltip: "Previous Track (Ctrl+Left)";
                 clicked => { Actions.previous(); }
             }
-            Rectangle {
+            play-btn := Rectangle {
                 width: State.window-width <= 650 ? 34px : 36px;
                 height: State.window-width <= 650 ? 34px : 36px;
                 border-radius: self.width / 2;
@@ -63,6 +63,15 @@ export component PlayerBar inherits Rectangle {
                     x: (parent.width - self.width) / 2 + (State.is-playing ? 0px : 1px);
                     y: (parent.height - self.height) / 2;
                     colorize: #0a0b0a;
+                }
+                DelayedTooltip {
+                    text: State.is-playing ? "Pause (Space)" : "Play (Space)";
+                    active: play-area.has-hover;
+                    pressed: play-area.pressed;
+                    anchor-x: play-btn.absolute-position.x;
+                    anchor-y: play-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
                 }
             }
             IcBtn {
@@ -105,7 +114,7 @@ export component PlayerBar inherits Rectangle {
                     }
                 }
             }
-            if State.window-width > 850 : Rectangle {
+            if State.window-width > 850 : ab-btn := Rectangle {
                 width: 44px;
                 height: 28px;
                 border-radius: 6px;
@@ -136,6 +145,15 @@ export component PlayerBar inherits Rectangle {
                     }
                 }
                 ab-area := TouchArea { clicked => { Actions.toggle-ab(); } }
+                DelayedTooltip {
+                    text: State.repeat-a != "" && State.repeat-b != "" ? "Clear A–B loop" : (State.repeat-a != "" ? "Set A–B loop end (B)" : "Set A–B loop start (A)");
+                    active: ab-area.has-hover;
+                    pressed: ab-area.pressed;
+                    anchor-x: ab-btn.absolute-position.x;
+                    anchor-y: ab-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
             }
         }
 
@@ -173,12 +191,34 @@ export component PlayerBar inherits Rectangle {
                     reject
                 }
             }
-            Text {
-                text: State.total-time;
-                color: #747b74;
-                font-size: State.window-width <= 650 ? 8px : 9px;
-                horizontal-alignment: left;
-                vertical-alignment: center;
+            rt-btn := Rectangle {
+                min-width: max(30px, rt-label.preferred-width + 6px);
+                height: 18px;
+                border-radius: 4px;
+                background: rt-ta.has-hover ? Palette.overlay : transparent;
+                rt-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Actions.toggle-remaining-time(); }
+                }
+                rt-label := Text {
+                    x: 3px;
+                    width: parent.width - 6px;
+                    height: parent.height;
+                    text: State.total-time;
+                    color: rt-ta.has-hover ? Palette.text : #747b74;
+                    font-size: State.window-width <= 650 ? 8px : 9px;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                }
+                DelayedTooltip {
+                    text: State.show-remaining-time ? "Remaining time — click for duration" : "Total duration — click for remaining";
+                    active: rt-ta.has-hover;
+                    pressed: rt-ta.pressed;
+                    anchor-x: rt-btn.absolute-position.x;
+                    anchor-y: rt-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
             }
         }
     }
@@ -251,6 +291,7 @@ export component PlayerBar inherits Rectangle {
                     icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
                     icon-size: 16px;
                     tint: State.current-favorite ? State.accent : Palette.icon-muted;
+                    tooltip: State.current-favorite ? "Remove from Favorites" : "Add to Favorites";
                     clicked => {
                         if (State.current-id != "") {
                             State.current-favorite = !State.current-favorite;
@@ -262,20 +303,20 @@ export component PlayerBar inherits Rectangle {
         }
     }
 
-    // Right column: secondary actions and volume
+    // Right column: secondary actions and volume (maintains consistent right padding at every width)
     right-col := VerticalLayout {
-        x: center-col.x + center-col.width + (State.window-width <= 650 ? 8px : 12px);
+        x: center-col.x + center-col.width + (State.window-width <= 650 ? 6px : 12px);
         y: 10px;
         width: max(0px, parent.width - self.x);
         height: parent.height - 20px;
         alignment: center;
 
         HorizontalLayout {
-            padding-right: State.window-width <= 650 ? 12px : 24px;
-            spacing: State.window-width <= 650 ? 2px : (State.window-width <= 900 ? 3px : 7px);
+            padding-right: State.window-width <= 650 ? 12px : 20px;
+            spacing: State.window-width <= 650 ? 2px : (State.window-width <= 1060 ? 4px : 7px);
             alignment: end;
 
-            if State.window-width > 850 : VerticalLayout {
+            if State.window-width > 940 : VerticalLayout {
                 alignment: center;
                 IcBtn {
                     width: 30px;
@@ -284,6 +325,7 @@ export component PlayerBar inherits Rectangle {
                     icon-size: 16px;
                     tint: Palette.icon-muted;
                     active: State.view == "Lyrics";
+                    tooltip: "Lyrics";
                     clicked => { Actions.set-view("Lyrics", "", "", ""); }
                 }
             }
@@ -296,10 +338,11 @@ export component PlayerBar inherits Rectangle {
                     icon-size: 16px;
                     tint: Palette.icon-muted;
                     active: State.view == "Queue";
+                    tooltip: "Queue";
                     clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
             }
-            if State.window-width > 850 : VerticalLayout {
+            if State.window-width > 940 : VerticalLayout {
                 alignment: center;
                 IcBtn {
                     width: 30px;
@@ -327,11 +370,11 @@ export component PlayerBar inherits Rectangle {
 
             // Volume control container (inline responsive matching WebUI)
             vol-box := Rectangle {
-                width: (State.window-width <= 650 ? 27px : 30px) + 7px + (State.window-width > 850 ? 88px : (State.window-width > 680 ? 64px : 45px));
+                width: (State.window-width <= 650 ? 27px : 30px) + 6px + (State.window-width > 1100 ? 88px : (State.window-width > 680 ? 66px : 44px));
                 height: 30px;
 
                 HorizontalLayout {
-                    spacing: 7px;
+                    spacing: 6px;
                     alignment: center;
 
                     VerticalLayout {
@@ -363,7 +406,7 @@ export component PlayerBar inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         PlayerSlider {
-                            width: State.window-width > 850 ? 88px : (State.window-width > 680 ? 64px : 45px);
+                            width: State.window-width > 1100 ? 88px : (State.window-width > 680 ? 66px : 44px);
                             height: 16px;
                             minimum: 0.0;
                             maximum: 100.0;

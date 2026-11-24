@@ -76,6 +76,68 @@ export global Palette {
     }
 }
 
+export component DelayedTooltip inherits Rectangle {
+    in property <string> text: "";
+    in property <bool> active: false;
+    in property <bool> pressed: false;
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> anchor-width: 0px;
+    in property <length> anchor-height: 0px;
+    in property <duration> delay: 500ms;
+
+    property <bool> shown: false;
+
+    delay-timer := Timer {
+        interval: root.delay;
+        running: root.active && !root.pressed && root.text != "" && !root.shown;
+        triggered => {
+            root.shown = true;
+        }
+    }
+
+    changed active => {
+        if (!self.active) {
+            root.shown = false;
+        }
+    }
+    changed pressed => {
+        if (self.pressed) {
+            root.shown = false;
+        }
+    }
+    changed text => {
+        if (self.text == "") {
+            root.shown = false;
+        }
+    }
+
+    visible: root.shown && root.text != "" && !root.pressed;
+    x: clamp((root.anchor-width - self.width) / 2, 4px - root.anchor-x, max(4px - root.anchor-x, (State.window-width * 1px) - self.width - 4px - root.anchor-x));
+    y: root.anchor-y < 36px ? root.anchor-height + 6px : -(self.height + 6px);
+    width: tt-layout.preferred-width;
+    height: tt-layout.preferred-height;
+    z: 1000;
+    background: Palette.panel-3;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Palette.border;
+    drop-shadow-blur: 6px;
+    drop-shadow-color: #00000048;
+
+    tt-layout := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        Text {
+            text: root.text;
+            color: Palette.text;
+            font-size: 11px;
+        }
+    }
+}
+
 export component IcBtn inherits Rectangle {
     in property <image> icon;
     in property <color> tint: Palette.muted;
@@ -115,27 +177,185 @@ export component IcBtn inherits Rectangle {
         animate colorize { duration: 100ms; }
     }
 
-    if root.tooltip != "" && area.has-hover: Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: -28px;
-        z: 1000;
-        background: Palette.panel-3;
-        border-radius: 4px;
-        border-width: 1px;
-        border-color: Palette.border;
-        drop-shadow-blur: 4px;
-        drop-shadow-color: #00000040;
+    DelayedTooltip {
+        text: root.tooltip;
+        active: area.has-hover && root.enabled;
+        pressed: area.pressed;
+        anchor-x: root.absolute-position.x;
+        anchor-y: root.absolute-position.y;
+        anchor-width: parent.width;
+        anchor-height: parent.height;
+    }
+}
 
-        HorizontalLayout {
-            padding-left: 6px;
-            padding-right: 6px;
-            padding-top: 2px;
-            padding-bottom: 2px;
-            Text {
-                text: root.tooltip;
-                color: Palette.text;
-                font-size: 11px;
+export component SyncedLyricsList inherits Rectangle {
+    in property <length> top-pad: 100px;
+    in property <length> bottom-pad: 220px;
+    in property <length> side-pad: 12px;
+    in property <length> max-line-width: 720px;
+    in property <length> active-font-size: 27px;
+    in property <length> inactive-font-size: 19px;
+    in property <int> active-font-weight: 800;
+    in property <int> inactive-font-weight: 600;
+    in property <length> active-pad-v: 14px;
+    in property <length> inactive-pad-v: 10px;
+    in property <color> active-color: Palette.text;
+    in property <color> inactive-color: Palette.muted;
+    in property <float> inactive-opacity: 0.42;
+    in property <color> hover-bg: #ffffff10;
+    in property <color> resume-bg: Palette.raised;
+
+    property <length> active-line-y: -1px;
+    property <length> active-line-h: 0px;
+    property <int> scroll-seq: State.lyrics-scroll-nonce * 100000 + State.lyrics-active-line;
+
+    function scroll-to-active() {
+        if (!State.lyrics-timed || State.lyrics-scroll-paused) {
+            return;
+        }
+        if (State.lyrics-active-line < 0) {
+            flickable.content-y = 0px;
+            return;
+        }
+        if (root.active-line-y < 0px) {
+            return;
+        }
+        let max-neg = min(0px, flickable.height - col.preferred-height);
+        let center-y = -(root.active-line-y + root.active-line-h / 2 - root.height / 2);
+        flickable.content-y = max(max-neg, min(0px, center-y));
+    }
+
+    changed active-line-y => { root.scroll-to-active(); }
+    changed scroll-seq => { root.scroll-to-active(); }
+    changed height => { root.scroll-to-active(); }
+
+    clip: true;
+
+    flickable := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: col.preferred-height;
+
+        flicked => {
+            if (State.lyrics-timed && !State.lyrics-scroll-paused) {
+                State.lyrics-scroll-paused = true;
+                Actions.lyrics-scroll-changed(true);
             }
+        }
+
+        col := VerticalLayout {
+            width: parent.width;
+            padding-top: root.top-pad;
+            padding-bottom: root.bottom-pad;
+            padding-left: root.side-pad;
+            padding-right: root.side-pad;
+            spacing: 4px;
+
+            for line[index] in State.lyrics-lines : line-box := Rectangle {
+                width: 100%;
+                border-radius: 12px;
+                background: line-ta.has-hover && State.lyrics-timed ? root.hover-bg : transparent;
+                animate background { duration: 120ms; }
+
+                property <bool> is-current: line.is-active;
+                property <length> box-y: self.y;
+                changed is-current => {
+                    if (self.is-current && self.y > 0px) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+                changed box-y => {
+                    if (self.is-current) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+                init => {
+                    if (self.is-current && self.y > 0px) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+
+                line-ta := TouchArea {
+                    mouse-cursor: State.lyrics-timed && State.seek-from-lyrics ? pointer : default;
+                    clicked => {
+                        if (State.lyrics-timed && State.seek-from-lyrics) {
+                            Actions.seek-to-lyric(index);
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    width: min(parent.width, root.max-line-width);
+                    x: max(0px, (parent.width - self.width) / 2);
+                    padding-top: line.is-active ? root.active-pad-v : root.inactive-pad-v;
+                    padding-bottom: line.is-active ? root.active-pad-v : root.inactive-pad-v;
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    alignment: center;
+
+                    Text {
+                        width: 100%;
+                        text: line.text;
+                        color: line.is-active ? root.active-color : root.inactive-color;
+                        opacity: line.is-active ? 1.0 : (line-ta.has-hover ? 0.9 : root.inactive-opacity);
+                        font-size: line.is-active ? root.active-font-size : root.inactive-font-size;
+                        font-weight: line.is-active ? root.active-font-weight : root.inactive-font-weight;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        animate color { duration: 220ms; }
+                        animate opacity { duration: 220ms; }
+                    }
+                }
+            }
+        }
+    }
+
+    if State.lyrics-scroll-paused && State.lyrics-timed : resume-btn := Rectangle {
+        x: parent.width - 52px;
+        y: parent.height - 52px;
+        width: 38px;
+        height: 38px;
+        border-radius: 19px;
+        border-width: 1px;
+        border-color: resume-ta.has-hover ? State.accent : State.accent.with-alpha(0.55);
+        background: resume-ta.has-hover ? State.accent : root.resume-bg;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: #00000073;
+        animate background { duration: 150ms; }
+
+        Image {
+            source: @image-url("../assets/icons/locate.svg");
+            width: 18px;
+            height: 18px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            colorize: resume-ta.has-hover ? Palette.accent-ink : State.accent;
+        }
+
+        resume-ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                State.lyrics-scroll-paused = false;
+                Actions.lyrics-scroll-changed(false);
+                root.scroll-to-active();
+            }
+        }
+
+        DelayedTooltip {
+            text: "Jump to current lyric";
+            active: resume-ta.has-hover;
+            pressed: resume-ta.pressed;
+            anchor-x: resume-btn.absolute-position.x;
+            anchor-y: resume-btn.absolute-position.y;
+            anchor-width: parent.width;
+            anchor-height: parent.height;
         }
     }
 }
@@ -273,14 +493,6 @@ export component VerticalEqSlider inherits Rectangle {
             }
             reject
         }
-        clicked => {
-            let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
-            let raw = root.minimum + frac * (root.maximum - root.minimum);
-            let stepped = round(raw / root.step) * root.step;
-            let next-val = clamp(stepped, root.minimum, root.maximum);
-            root.drag-value = next-val;
-            root.changed(next-val);
-        }
         pointer-event(event) => {
             if (event.kind == PointerEventKind.down) {
                 root.is-dragging = true;
@@ -395,26 +607,37 @@ export component CustomSelect inherits Rectangle {
     in-out property <string> current-value;
     in-out property <int> current-index: -1;
     in property <bool> enabled: true;
+    in property <length> max-popup-height: 280px;
     callback selected(string);
 
-    min-width: 75px;
-    height: 31px;
+    min-width: 90px;
+    height: 32px;
     border-radius: 8px;
     border-width: 1px;
-    border-color: Palette.border;
+    border-color: area.has-hover && root.enabled ? State.accent.with-alpha(0.45) : Palette.border;
     background: Palette.panel-2;
 
+    property <length> raw-list-h: max(38px, root.options.length * 30px + 8px);
+    property <length> desired-popup-h: min(root.max-popup-height, raw-list-h);
+    property <length> space-below: max(0px, State.window-height * 1px - (root.absolute-position.y + root.height) - 10px);
+    property <length> space-above: max(0px, root.absolute-position.y - 10px);
+    property <bool> open-upwards: space-below < min(desired-popup-h, 160px) && space-above > space-below;
+    property <length> avail-vertical: max(84px, open-upwards ? space-above : space-below);
+    property <length> final-popup-h: min(desired-popup-h, avail-vertical);
+    property <length> final-popup-w: min(max(root.width, 190px), max(120px, State.window-width * 1px - 24px));
+
     HorizontalLayout {
-        padding-left: 9px;
-        padding-right: 9px;
+        padding-left: 10px;
+        padding-right: 10px;
         alignment: center;
         spacing: 6px;
         Text {
             text: root.current-value;
             color: root.enabled ? Palette.text : Palette.muted;
-            font-size: 10px;
+            font-size: 11px;
             vertical-alignment: center;
             horizontal-stretch: 1;
+            min-width: 0px;
             overflow: elide;
         }
         VerticalLayout {
@@ -430,7 +653,7 @@ export component CustomSelect inherits Rectangle {
         }
     }
 
-    TouchArea {
+    area := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => {
@@ -443,39 +666,56 @@ export component CustomSelect inherits Rectangle {
     }
 
     popup := PopupWindow {
-        x: 0px;
-        y: parent.height + 2px;
-        width: parent.width;
+        x: max(12px - root.absolute-position.x, min(0px, (State.window-width * 1px - 12px) - (root.absolute-position.x + root.final-popup-w)));
+        y: root.open-upwards ? -(root.final-popup-h + 4px) : root.height + 4px;
+        width: root.final-popup-w;
+        height: root.final-popup-h;
         Rectangle {
+            width: 100%;
+            height: 100%;
             border-radius: 8px;
             border-width: 1px;
             border-color: Palette.border;
             background: Palette.panel-3;
-            VerticalLayout {
-                padding: 4px;
-                spacing: 2px;
-                for opt[idx] in root.options : Rectangle {
-                    height: 28px;
-                    border-radius: 6px;
-                    background: item-area.has-hover ? Palette.hover : (opt == root.current-value ? Palette.hover : transparent);
-                    item-area := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => {
-                            root.current-value = opt;
-                            root.current-index = idx;
-                            popup.close();
-                            root.selected(opt);
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000050;
+            clip: true;
+
+            popup-scroll := ScrollView {
+                width: 100%;
+                height: 100%;
+                content-width: self.visible-width;
+                content-height: opts-col.preferred-height;
+                opts-col := VerticalLayout {
+                    width: popup-scroll.visible-width;
+                    padding: 4px;
+                    spacing: 2px;
+                    for opt[idx] in root.options : Rectangle {
+                        height: 28px;
+                        border-radius: 6px;
+                        background: item-area.has-hover ? Palette.hover : (opt == root.current-value ? Palette.hover : transparent);
+                        item-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.current-value = opt;
+                                root.current-index = idx;
+                                popup.close();
+                                root.selected(opt);
+                            }
                         }
-                    }
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
-                        alignment: start;
-                        Text {
-                            text: opt;
-                            color: opt == root.current-value ? State.accent : Palette.text;
-                            font-size: 10px;
-                            vertical-alignment: center;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: start;
+                            Text {
+                                text: opt;
+                                color: opt == root.current-value ? State.accent : Palette.text;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                overflow: elide;
+                            }
                         }
                     }
                 }
@@ -919,10 +1159,12 @@ export component TrackTable inherits Rectangle {
             sort(column) => { root.sort(column); }
         }
 
-        if root.scrollable : ScrollView {
+        if root.scrollable : tt-sv := ScrollView {
             vertical-stretch: 1;
+            content-width: self.visible-width;
 
             VerticalLayout {
+                width: tt-sv.visible-width;
                 spacing: 0px;
                 alignment: start;
 
@@ -1237,9 +1479,11 @@ export component GroupGrid inherits Rectangle {
                 }
             }
         }
-        if root.items.length > 0 && root.scrollable : ScrollView {
+        if root.items.length > 0 && root.scrollable : gg-sv := ScrollView {
             vertical-stretch: 1;
+            content-width: self.visible-width;
             VerticalLayout {
+                width: gg-sv.visible-width;
                 spacing: 16px;
                 GridLayout {
                     width: 100%;
@@ -1517,12 +1761,16 @@ export component SectionTitle inherits Rectangle {
     in property <length> letter-spacing: -0.65px;
     height: font-size >= 19px ? 26px : (font-size >= 15px ? 18px : 15px);
     Text {
+        width: 100%;
+        height: 100%;
         text: root.text;
         color: root.text-color;
         font-size: root.font-size;
         font-weight: root.font-weight;
         letter-spacing: root.letter-spacing;
         vertical-alignment: center;
+        horizontal-alignment: left;
+        overflow: elide;
     }
 }
 

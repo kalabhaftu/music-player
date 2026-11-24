@@ -67,11 +67,12 @@ component SearchPagination inherits Rectangle {
 }
 
 export component SearchView inherits Rectangle {
-    ScrollView {
+    search-sv := ScrollView {
+      content-width: self.visible-width;
       VerticalLayout {
-        width: 100%;
-        padding-left: 24px;
-        padding-right: 24px;
+        width: search-sv.visible-width;
+        padding-left: State.window-width <= 650 ? 14px : 24px;
+        padding-right: State.window-width <= 650 ? 14px : 24px;
         padding-top: 20px;
         padding-bottom: 32px;
         spacing: 0px;

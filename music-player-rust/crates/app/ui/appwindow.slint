@@ -18,6 +18,7 @@ import { PlayerBar } from "shell/player_bar.slint";
 import { ContextMenuOverlay } from "shell/context_menu.slint";
 import { NoticeOverlay } from "shell/notice.slint";
 import { ImmersivePlayerOverlay } from "shell/immersive.slint";
+import { FramelessWindowChrome } from "shell/frameless_chrome.slint";
 
 // Export globals and DTO structs to the Rust host.
 export { State, Actions } from "state.slint";
@@ -248,6 +249,8 @@ export component AppWindow inherits Window {
             }
         }
     }
+
+    if State.immersive-player-open && !State.immersive-fullscreen : FramelessWindowChrome { width: 100%; height: 100%; }
 
     if State.tools-menu-open : ToolsMenuOverlay { width: 100%; height: 100%; }
     if State.context-visible : ContextMenuOverlay { width: 100%; height: 100%; }

@@ -140,10 +140,12 @@ pub(crate) struct App {
     pub(crate) prefetch_lyrics_tx: Sender<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
     pub(crate) prefetch_lyrics_rx: Receiver<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
     pub(crate) lyrics_cache: HashMap<String, (Instant, Option<music_player_core::lyrics::LyricsMatch>)>,
+    pub(crate) lyrics_in_flight: HashSet<String>,
     pub(crate) lyrics_results: Vec<LyricsSearchResult>,
     pub(crate) notice_timer: Timer,
     pub(crate) seek_wheel_timer: Timer,
     pub(crate) scan_timer: Timer,
+    pub(crate) crossfade_timer: Timer,
     pub(crate) seek_preview_ms: Option<u64>,
     pub(crate) current: Option<Track>,
     pub(crate) id_to_path: HashMap<String, String>,
@@ -153,6 +155,7 @@ pub(crate) struct App {
     pub(crate) crossfade_in_progress: bool,
     pub(crate) crossfade_source_index: Option<usize>,
     pub(crate) crossfade_failure_source: Option<String>,
+    pub(crate) crossfade_target_path: Option<String>,
     pub(crate) volume: u32,
     pub(crate) persisted_volume: i64,
     pub(crate) pending_volume: Option<u32>,
@@ -160,6 +163,7 @@ pub(crate) struct App {
     pub(crate) last_wal: Instant,
     pub(crate) last_vol_debounce: Instant,
     pub(crate) last_artwork_refresh: Instant,
+    pub(crate) eq_preset: String,
     pub(crate) eq_bands: [f32; 10],
     pub(crate) eq_preamp: f32,
     pub(crate) eq_dirty: bool,
@@ -178,6 +182,7 @@ pub(crate) struct App {
     pub(crate) tags_custom: Vec<(String, String)>,
     pub(crate) lyrics_target: Option<String>,
     pub(crate) lyrics_doc: Option<music_player_core::LyricsDocument>,
+    pub(crate) lyrics_raw: Option<String>,
     pub(crate) lyrics_timed: bool,
     pub(crate) lyrics_active: i32,
     pub(crate) edit_target: Option<String>,
@@ -227,18 +232,23 @@ impl App {
         let crossfade_ms = settings.crossfade_seconds() as u64 * 1000;
         let coordinator =
             PlaybackCoordinator::with_crossfade_ms(QueueCoordinator::new(), crossfade_ms);
-        let eq_preset = settings.eq_current();
-        let eq_bands = if eq_preset == "Off" {
-            [0.0; 10]
-        } else {
-            settings.eq_bands().unwrap_or([0.0; 10])
-        };
-        let eq_preamp = if eq_preset == "Off" {
-            NEUTRAL_EQUALIZER_PREAMP
-        } else {
-            settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP)
-        };
         let mut engine = music_player_core::AudioEngine::new();
+        let mut eq_preset = settings.eq_current();
+        if eq_preset.trim().is_empty() {
+            eq_preset = "Off".into();
+        }
+        let (eq_bands, eq_preamp) = if eq_preset == "Off" {
+            ([0.0; 10], NEUTRAL_EQUALIZER_PREAMP)
+        } else if let Some((bands, preamp)) = settings.saved_eq_preset(&eq_preset) {
+            (bands, preamp)
+        } else if let Some((bands, preamp)) = engine.preset_curve(&eq_preset) {
+            (bands, preamp)
+        } else {
+            (
+                settings.eq_bands().unwrap_or([0.0; 10]),
+                settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP),
+            )
+        };
         let selected_device = settings
             .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
             .unwrap_or_default();
@@ -246,6 +256,15 @@ impl App {
             let direct_sound =
                 os_shell::direct_sound_device_id(&selected_device).unwrap_or_default();
             let _ = engine.set_audio_output_device(&direct_sound);
+        }
+        if eq_preset == "Off" {
+            engine.apply_equalizer(None, None, NEUTRAL_EQUALIZER_PREAMP);
+        } else if eq_preset.eq_ignore_ascii_case("Custom")
+            || settings.saved_eq_preset(&eq_preset).is_some()
+        {
+            engine.apply_equalizer(None, Some(eq_bands), eq_preamp);
+        } else {
+            engine.apply_equalizer(Some(&eq_preset), Some(eq_bands), eq_preamp);
         }
         let now = Instant::now();
         let (prefetch_lyrics_tx, prefetch_lyrics_rx) = mpsc::channel();
@@ -278,10 +297,12 @@ impl App {
             prefetch_lyrics_tx,
             prefetch_lyrics_rx,
             lyrics_cache: HashMap::new(),
+            lyrics_in_flight: HashSet::new(),
             lyrics_results: Vec::new(),
             notice_timer: Timer::default(),
             seek_wheel_timer: Timer::default(),
             scan_timer: Timer::default(),
+            crossfade_timer: Timer::default(),
             seek_preview_ms: None,
             current: None,
             id_to_path: HashMap::new(),
@@ -291,6 +312,7 @@ impl App {
             crossfade_in_progress: false,
             crossfade_source_index: None,
             crossfade_failure_source: None,
+            crossfade_target_path: None,
             volume,
             persisted_volume,
             pending_volume: None,
@@ -298,6 +320,7 @@ impl App {
             last_wal: now,
             last_vol_debounce: now,
             last_artwork_refresh: now,
+            eq_preset,
             eq_bands,
             eq_preamp,
             eq_dirty: false,
@@ -316,6 +339,7 @@ impl App {
             tags_custom: Vec::new(),
             lyrics_target: None,
             lyrics_doc: None,
+            lyrics_raw: None,
             lyrics_timed: false,
             lyrics_active: -1,
             edit_target: None,
@@ -459,6 +483,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     {
         let mut app_borrow = app.borrow_mut();
         app_borrow.scan.cancel();
+        if app_borrow.eq_dirty {
+            app_borrow.settings.set_eq_state(
+                &app_borrow.eq_preset,
+                app_borrow.eq_bands,
+                app_borrow.eq_preamp,
+            );
+            app_borrow.eq_dirty = false;
+        }
         app_borrow.save_session();
     }
     APP_INSTANCE.with(|cell| *cell.borrow_mut() = None);
