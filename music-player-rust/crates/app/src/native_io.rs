@@ -520,6 +520,48 @@ pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     Some(image)
 }
 
+static BLURRED_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, slint::Image>>> =
+    std::sync::OnceLock::new();
+
+pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
+    if !path.is_file() {
+        return None;
+    }
+    let cache = BLURRED_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(image) = guard.get(path).cloned() {
+            return Some(image);
+        }
+    }
+
+    let bytes = std::fs::read(path).ok()?;
+    let decoded = image::load_from_memory(&bytes).ok()?;
+    let rgba = decoded.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let factor = (160.0 / (width.max(height) as f32)).clamp(0.0, 1.0);
+    let target_width = ((width as f32 * factor).round() as u32).max(1);
+    let target_height = ((height as f32 * factor).round() as u32).max(1);
+    let scaled = image::imageops::resize(
+        &rgba,
+        target_width,
+        target_height,
+        image::imageops::FilterType::Triangle,
+    );
+    let blurred = image::imageops::blur(&scaled, 14.0);
+    let (b_w, b_h) = blurred.dimensions();
+    let image = rgba_to_image(blurred.into_raw(), b_w, b_h);
+    if let Ok(mut guard) = cache.lock() {
+        if guard.len() >= 6 {
+            guard.clear();
+        }
+        guard.insert(path.to_path_buf(), image.clone());
+    }
+    Some(image)
+}
+
 pub use music_player_core::ArtworkPalette;
 
 static PALETTE_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, ArtworkPalette>>> =

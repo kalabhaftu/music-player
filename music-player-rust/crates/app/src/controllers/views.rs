@@ -184,12 +184,16 @@ impl App {
             } else if let Ok(Some(art)) = self.store.find_folder_artwork(&track.path) {
                 Some(art)
             } else {
-                let tags = music_player_core::read_tags(Path::new(&track.path));
-                tags.artwork_path
+                self.metadata_engine
+                    .read_metadata(Path::new(&track.path), Some(&artwork_cache_dir()))
+                    .ok()
+                    .and_then(|t| t.artwork_path)
             };
             if let Some(art) = found {
                 let _ = self.store.set_track_artwork(&track.path, Some(&art));
                 track.artwork_path = Some(art);
+                self.track_cache.insert(track.path.clone(), track.clone());
+                self.invalidate_view_caches();
             }
         }
 
@@ -209,6 +213,12 @@ impl App {
             .map(|image| (true, image))
             .unwrap_or((false, Image::default()));
         state.set_current_cover(cover);
+        let blurred = track
+            .artwork_path
+            .as_deref()
+            .and_then(|p| native_io::load_blurred_backdrop(Path::new(p)))
+            .unwrap_or_else(Image::default);
+        state.set_current_blurred_backdrop(blurred);
         let slot = gradient_slot(if track.album.is_empty() {
             &track.title
         } else {
@@ -225,7 +235,7 @@ impl App {
     }
 
     pub(crate) fn publish_info(&mut self, track: &Track) {
-        let details = inspect_file(Path::new(&track.path));
+        let details = self.metadata_engine.inspect_file(Path::new(&track.path)).ok();
         let state = self.ui.global::<State>();
         state.set_info_album(ss(&track.album));
         state.set_info_album_artist(ss(&track.album_artist));
@@ -1118,6 +1128,9 @@ impl App {
                     state.set_has_roots(!self.settings.library_roots().is_empty());
                     state.set_library_empty(*cached_total == 0);
                     state.set_page_loading(false);
+                    if view == "Home" {
+                        self.publish_home(&playing);
+                    }
                     return;
                 }
             }
@@ -1803,7 +1816,12 @@ impl App {
 
         let (text, source) = if let Some(sidecar) = read_sidecar(&track.path) {
             (Some(sidecar), "sidecar")
-        } else if let Some(embedded) = read_tags(&track.path).lyrics {
+        } else if let Some(embedded) = self
+            .metadata_engine
+            .read_metadata(Path::new(&track.path), None)
+            .ok()
+            .and_then(|t| t.lyrics)
+        {
             (Some(embedded), "embedded")
         } else {
             (None, "none")

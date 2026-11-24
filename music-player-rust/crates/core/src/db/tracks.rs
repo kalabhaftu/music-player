@@ -614,16 +614,16 @@ pub fn query_group_page(
     let (value_expr, artwork_expr, artist_expr, year_expr, where_name) = match column {
         "album" => (
             "t.album",
-            "MIN(t.artwork_path)",
+            "MAX(NULLIF(t.artwork_path, ''))",
             "MIN(t.artist)",
             "MIN(t.year)",
             "t.album",
         ),
-        "artist" => ("t.artist", "MIN(t.artwork_path)", "NULL", "0", "t.artist"),
-        "genre" => ("t.genre", "MIN(t.artwork_path)", "NULL", "0", "t.genre"),
+        "artist" => ("t.artist", "MAX(NULLIF(t.artwork_path, ''))", "NULL", "0", "t.artist"),
+        "genre" => ("t.genre", "MAX(NULLIF(t.artwork_path, ''))", "NULL", "0", "t.genre"),
         "folder" => (
             "musicplayer_directory(t.path)",
-            "MIN(t.artwork_path)",
+            "MAX(NULLIF(t.artwork_path, ''))",
             "NULL",
             "0",
             "musicplayer_directory(t.path)",

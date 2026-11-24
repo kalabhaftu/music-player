@@ -4,6 +4,7 @@ impl App {
     // ---- Startup (port of MainWindow.LibraryScan.StartStartupScanAsync) ---
 
     pub(crate) fn startup(&mut self) {
+        self.started = true;
         LocalAppLog::shared().info("startup", "Music Player starting");
         music_player_core::clean_stale_temp_files(&tag_backups_dir());
         self.publish_settings();
@@ -67,9 +68,7 @@ impl App {
                 }
                 let tags = engine
                     .read_metadata(Path::new(&path), Some(&cache))
-                    .unwrap_or_else(|_| {
-                        music_player_core::metadata::read_tags_in_cache(Path::new(&path), &cache)
-                    });
+                    .unwrap_or_default();
                 if let Some(artwork) = tags.artwork_path {
                     batch.push((path, artwork));
                     if batch.len() >= 64 {
@@ -117,6 +116,7 @@ impl App {
         // Cached Track rows still carry the old (missing) artwork paths; drop
         // them so the queue and every future view resolve the repaired rows.
         self.track_cache.clear();
+        self.invalidate_view_caches();
         self.refresh_view();
         self.publish_queue(false);
     }
@@ -132,6 +132,7 @@ impl App {
             return;
         }
         self.last_artwork_refresh = Instant::now();
+        self.invalidate_view_caches();
         self.publish_queue(false);
         self.refresh_view();
     }
@@ -198,7 +199,9 @@ impl App {
         if let Some((when, query)) = self.search_debounce.clone() {
             if Instant::now() >= when {
                 self.search_debounce = None;
-                self.set_view("Search", &query, "", "");
+                if self.ui.global::<State>().get_view().as_str() == "Search" {
+                    self.set_view("Search", &query, "", "");
+                }
             }
         }
 
@@ -247,6 +250,7 @@ impl App {
             ) {
                 let path = track.path.clone();
                 let _ = self.store.record_play(&path);
+                self.invalidate_view_caches();
             }
         }
 
@@ -401,6 +405,14 @@ impl App {
             return;
         };
 
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                SendMessageW, ICON_SMALL, WM_SETICON,
+            };
+            SendMessageW(hwnd as _, WM_SETICON, ICON_SMALL as _, 0);
+        }
+
         self.publish_appearance();
 
         let Some(os) = &self.os else {
@@ -553,6 +565,7 @@ impl App {
                 self.load_lyrics(&track);
             }
         }
+        self.invalidate_view_caches();
         self.refresh_view();
     }
 

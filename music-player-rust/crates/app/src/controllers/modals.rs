@@ -156,6 +156,7 @@ impl App {
                         let _ = self
                             .store
                             .add_tracks_to_playlist(&new_id, &[t.path.clone()]);
+                        self.invalidate_view_caches();
                         self.refresh_playlists();
                         self.set_view("Playlist", "", "", &new_id);
                         self.show_notice(
@@ -255,7 +256,7 @@ impl App {
             return;
         };
         self.details_target = Some(track.path.clone());
-        let details = inspect_file(Path::new(&track.path));
+        let details = self.metadata_engine.inspect_file(Path::new(&track.path)).ok();
         let mut rows = vec![
             DetailRowItem {
                 label: ss("File"),
@@ -339,7 +340,10 @@ impl App {
             return;
         };
         self.tags_target = Some(track.path.clone());
-        let tags = music_player_core::read_tags(&track.path);
+        let tags = self
+            .metadata_engine
+            .read_metadata(Path::new(&track.path), Some(&artwork_cache_dir()))
+            .unwrap_or_default();
         let state = self.ui.global::<State>();
         state.set_tags_title(ss(tags.title.unwrap_or_else(|| track.title.clone())));
         state.set_tags_artist(ss(tags.artist.unwrap_or_else(|| track.artist.clone())));
@@ -616,7 +620,12 @@ impl App {
         self.edit_target = Some(path.clone());
         let (text, source) = if let Some(sidecar) = read_sidecar(&path) {
             (sidecar, "sidecar file")
-        } else if let Some(embedded) = read_tags(&path).lyrics {
+        } else if let Some(embedded) = self
+            .metadata_engine
+            .read_metadata(Path::new(&path), None)
+            .ok()
+            .and_then(|t| t.lyrics)
+        {
             (embedded, "embedded tags")
         } else {
             (String::new(), "no existing lyrics")

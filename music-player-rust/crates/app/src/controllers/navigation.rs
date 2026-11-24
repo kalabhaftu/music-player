@@ -34,6 +34,9 @@ impl App {
         self.tracks_offset = 0;
         self.groups_offset = 0;
         self.query_generation = self.query_generation.wrapping_add(1);
+        if view != "Search" {
+            self.search_debounce = None;
+        }
         state.set_view(ss(view));
         state.set_view_search(ss(resolved_search));
         state.set_view_group_column(ss(

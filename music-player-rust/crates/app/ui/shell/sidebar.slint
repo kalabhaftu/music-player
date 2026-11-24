@@ -134,9 +134,10 @@ export component NavRail inherits Rectangle {
 
         Rectangle { height: 8px; }
 
-        ScrollView {
+        Flickable {
             vertical-stretch: 1;
-            VerticalLayout {
+            viewport-height: nav-list.preferred-height;
+            nav-list := VerticalLayout {
                 spacing: 2px;
                 for item in State.navigation-items : NavEntryRow {
                     view: item.view;

@@ -219,6 +219,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 };
                 if let Some(track) = app.track_by_id(&track_id) {
                     if app.store.add_tracks_to_playlist(&id, &[track.path]).is_ok() {
+                        app.invalidate_view_caches();
                         app.refresh_playlists();
                         app.close_modal();
                         app.show_notice("Added to playlist.", NoticeSeverity::Success);
@@ -237,6 +238,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                     .remove_from_playlist(&id, position as u32)
                     .unwrap_or(false)
                 {
+                    app.invalidate_view_caches();
                     app.refresh_view();
                 }
             });
@@ -251,6 +253,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 .move_playlist_track(&id, from as u32, to as u32)
                 .unwrap_or(false)
             {
+                app.invalidate_view_caches();
                 app.refresh_view();
             }
         });
@@ -267,6 +270,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                     let id = app.new_playlist_id();
                     if app.store.create_playlist(&id, &name).is_ok() {
                         let _ = app.store.add_tracks_to_playlist(&id, &paths);
+                        app.invalidate_view_caches();
                         app.refresh_playlists();
                         app.show_notice("Playlist imported.", NoticeSeverity::Success);
                     }

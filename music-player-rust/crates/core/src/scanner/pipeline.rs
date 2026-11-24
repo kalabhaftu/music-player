@@ -128,6 +128,11 @@ impl ScanPipeline {
         self.file_tx.send(file).map_err(|e| e.to_string())
     }
 
+    /// Returns a clone of the candidate file sender.
+    pub fn file_sender(&self) -> Sender<CandidateFile> {
+        self.file_tx.clone()
+    }
+
     /// Closes input channels, waits for in-flight jobs to complete, and returns total indexed count.
     pub fn finish(mut self) -> usize {
         drop(self.file_tx);

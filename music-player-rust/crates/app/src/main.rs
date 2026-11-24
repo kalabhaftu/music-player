@@ -31,11 +31,12 @@ use music_player_core::metadata::tag_reader::{
 };
 use music_player_core::scanner::scan::default_roots;
 use music_player_core::{
-    artwork_cache_dir, inspect_file, parse_lrc, read_sidecar, read_tags, write_sidecar,
-    ExactDuplicateGroup, IndexResult, LibraryFileWatcher, LibraryScanCoordinator, LibraryStats,
-    LibraryStore, LocalAppLog, PlaybackSession, PlayerSettings, PlaylistSummary, QueueCoordinator,
-    RepeatMode, ScanProgress, TagEdit, TagEditor, Track, TrackAvailabilityService, TrackQuery,
-    TrackSort, EQUALIZER_BANDS,
+    artwork_cache_dir, parse_lrc, read_sidecar, write_sidecar,
+    ExactDuplicateGroup, HybridMetadataEngine, IndexResult, LibraryFileWatcher,
+    LibraryScanCoordinator, LibraryStats, LibraryStore, LocalAppLog, PlaybackSession,
+    PlayerSettings, PlaylistSummary, QueueCoordinator, RepeatMode, ScanProgress,
+    TagEdit, TagEditor, Track, TrackAvailabilityService, TrackQuery, TrackSort,
+    EQUALIZER_BANDS,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde_json::json;
@@ -186,6 +187,7 @@ pub(crate) struct App {
     pub(crate) query_generation: u64,
     pub(crate) track_view_cache: HashMap<String, (u64, Vec<TrackItem>, Vec<String>, HashMap<String, String>, i64)>,
     pub(crate) group_view_cache: HashMap<String, (u64, Vec<GroupItem>, i64)>,
+    pub(crate) metadata_engine: HybridMetadataEngine,
 }
 
 impl App {
@@ -193,6 +195,7 @@ impl App {
         let store = LibraryStore::in_app_data().expect("could not open the library database");
         let settings = PlayerSettings::new(store.clone());
         let scan = LibraryScanCoordinator::new(&store).with_artwork_cache(artwork_cache_dir());
+        let metadata_engine = HybridMetadataEngine::new();
         let log_folder = LocalAppLog::shared().folder().to_path_buf();
         let persisted_volume = settings.int_or(music_player_core::settings::keys::VOLUME, 75);
         let volume = persisted_volume.clamp(0, 100) as u32;
@@ -300,6 +303,7 @@ impl App {
             query_generation: 0,
             track_view_cache: HashMap::new(),
             group_view_cache: HashMap::new(),
+            metadata_engine,
         }
     }
 
@@ -359,6 +363,9 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             .clamp(500, 1000);
         ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
     }
+
+    // Initialize startup state before showing window so UI opens with data populated
+    app.borrow_mut().startup();
 
     // Show UI and dismiss splash immediately for instantaneous launch
     ui.show()?;

@@ -41,9 +41,10 @@ pub struct TrackDetails {
 }
 
 /// Where extracted artwork bytes are written.
-enum ArtSink<'a> {
+pub(crate) enum ArtSink<'a> {
     Global,
     Dir(&'a Path),
+    None,
 }
 
 impl ArtSink<'_> {
@@ -52,6 +53,7 @@ impl ArtSink<'_> {
             return None;
         }
         let target: PathBuf = match self {
+            ArtSink::None => return None,
             ArtSink::Global => save_artwork_to_cache(data).ok()?,
             ArtSink::Dir(dir) => {
                 std::fs::create_dir_all(dir).ok()?;
@@ -99,16 +101,28 @@ fn has_usable_lyrics(text: &str) -> bool {
 
 /// Reads tags for any supported container, saving artwork to the global cache.
 pub fn read_tags<P: AsRef<Path>>(path: P) -> ExtractedTags {
-    read_tags_with_sink(path.as_ref(), ArtSink::Global)
+    let cache = crate::metadata::artwork_cache_dir();
+    read_tags_in_cache(path, &cache)
 }
 
 /// Same, but artwork is written under `cache_dir` (scan-session parity with
 /// `TrackReader.Read(path, artworkCache)`).
 pub fn read_tags_in_cache<P: AsRef<Path>>(path: P, cache_dir: &Path) -> ExtractedTags {
-    read_tags_with_sink(path.as_ref(), ArtSink::Dir(cache_dir))
+    let engine = super::composite::HybridMetadataEngine::new();
+    engine
+        .read_metadata(path.as_ref(), Some(cache_dir))
+        .unwrap_or_else(|_| legacy_read_tags_with_sink(path.as_ref(), ArtSink::Dir(cache_dir)))
 }
 
-fn read_tags_with_sink(path: &Path, sink: ArtSink<'_>) -> ExtractedTags {
+pub fn legacy_read_tags_in_cache(path: &Path, cache_dir: Option<&Path>) -> ExtractedTags {
+    let sink = match cache_dir {
+        Some(dir) => ArtSink::Dir(dir),
+        None => ArtSink::None,
+    };
+    legacy_read_tags_with_sink(path, sink)
+}
+
+pub(crate) fn legacy_read_tags_with_sink(path: &Path, sink: ArtSink<'_>) -> ExtractedTags {
     match file_ext(path).as_str() {
         "dff" => ExtractedTags {
             duration_ms: crate::metadata::read_dff_duration_ms(path),
@@ -131,6 +145,11 @@ fn read_tags_with_sink(path: &Path, sink: ArtSink<'_>) -> ExtractedTags {
 
 /// `TrackInformation.Read` port: container + duration + audio quality.
 pub fn inspect_file(path: &Path) -> Option<TrackDetails> {
+    let engine = super::composite::HybridMetadataEngine::new();
+    engine.inspect_file(path).ok().or_else(|| legacy_inspect_file(path))
+}
+
+pub fn legacy_inspect_file(path: &Path) -> Option<TrackDetails> {
     let info = std::fs::metadata(path).ok()?;
     let full = std::fs::canonicalize(path)
         .unwrap_or_else(|_| path.to_path_buf())

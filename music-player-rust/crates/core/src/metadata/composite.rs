@@ -1,7 +1,7 @@
 use std::path::Path;
 use super::adapter::MetadataAdapter;
 use super::lofty_adapter::LoftyAdapter;
-use super::tag_reader::{read_tags_in_cache, inspect_file as legacy_inspect_file, ExtractedTags, TrackDetails};
+use super::tag_reader::{legacy_read_tags_in_cache, legacy_inspect_file, ExtractedTags, TrackDetails};
 
 /// Primary metadata engine combining Lofty streaming reader with custom parser fallback.
 pub struct HybridMetadataEngine {
@@ -37,8 +37,7 @@ impl MetadataAdapter for HybridMetadataEngine {
             Ok(tags) => Ok(tags),
             Err(_) => {
                 // Fallback to legacy parser if Lofty encountered an unhandled container variant
-                let cache_dir = artwork_cache.unwrap_or_else(|| Path::new(""));
-                let tags = read_tags_in_cache(path, cache_dir);
+                let tags = legacy_read_tags_in_cache(path, artwork_cache);
                 Ok(tags)
             }
         }

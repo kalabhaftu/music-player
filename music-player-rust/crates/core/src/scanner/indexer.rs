@@ -278,17 +278,18 @@ impl<'a> LibraryIndexer<'a> {
 
         let artwork_guard = crate::metadata::ArtworkOperationGuard::new();
 
-        let pipeline = std::sync::Arc::new(super::pipeline::ScanPipeline::new(
+        let pipeline = super::pipeline::ScanPipeline::new(
             self.store.clone(),
             self.artwork_cache.clone(),
             control.clone(),
             None,
             self.batch_size,
-        ));
+        );
+        let file_sender = pipeline.file_sender();
 
         {
             let run_for_files = run.clone();
-            let pipeline_files = pipeline.clone();
+            let file_sender_clone = file_sender.clone();
             let mut on_audio_file = move |path: &Path| {
                 let mut run = run_for_files.borrow_mut();
                 if run.control.is_cancelled() {
@@ -315,7 +316,7 @@ impl<'a> LibraryIndexer<'a> {
                             return;
                         }
                         run.session.borrow_mut().mark_seen(path);
-                        let _ = pipeline_files.submit(super::pipeline::CandidateFile {
+                        let _ = file_sender_clone.send(super::pipeline::CandidateFile {
                             path: path.to_path_buf(),
                             file_size: info.len(),
                             modified_utc: modified,
@@ -395,10 +396,9 @@ impl<'a> LibraryIndexer<'a> {
             }
         }
 
-        if let Ok(p) = std::sync::Arc::try_unwrap(pipeline) {
-            let indexed = p.finish();
-            run.borrow_mut().result.indexed += indexed;
-        }
+        drop(file_sender);
+        let indexed = pipeline.finish();
+        run.borrow_mut().result.indexed += indexed;
 
         // Refresh already-indexed files: explicit rebuilds repair files that no
         // longer sit under today's roots; normal scans cheaply revisit only
@@ -606,7 +606,7 @@ fn build_track(path: &Path, file_size: u64, modified_utc: DateTime<Utc>, artwork
     let engine = crate::metadata::HybridMetadataEngine::new();
     let tags = engine
         .read_metadata(path, Some(artwork_cache))
-        .unwrap_or_else(|_| crate::metadata::read_tags_in_cache(path, artwork_cache));
+        .unwrap_or_default();
 
     let (stem_artist, stem_title) = match file_stem.split_once(" - ") {
         Some((a, t)) => (Some(a.trim().to_string()), Some(t.trim().to_string())),

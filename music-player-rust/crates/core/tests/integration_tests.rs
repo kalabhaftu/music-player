@@ -2039,6 +2039,118 @@ fn test_lofty_metadata_adapter_and_hybrid_engine() {
 }
 
 #[test]
+fn test_stage1_controller_workflows_and_hybrid_engine() {
+    use music_player_core::metadata::{
+        read_tags, read_tags_in_cache, HybridMetadataEngine, TagEditor,
+    };
+    use music_player_core::TagEdit;
+    use std::path::Path;
+
+    let hybrid = HybridMetadataEngine::new();
+    let root = temp_dir("stage1-test");
+    let cache_dir = root.join("artwork_cache");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+
+    // 1. Synthesize an MP3 file with ID3 tags and lyrics
+    let mut payload = Vec::new();
+    payload.extend(id3_text_frame("TIT2", &["Stage 1 Parity Track"]));
+    payload.extend(id3_text_frame("TPE1", &["Parity Artist"]));
+    payload.extend(id3_text_frame("TALB", &["Parity Album"]));
+    payload.extend(id3_text_frame("TPE2", &["Album Artist"]));
+    payload.extend(id3_text_frame("TCON", &["Synthwave"]));
+    payload.extend(id3_text_frame("TRCK", &["5/12"]));
+    payload.extend(id3_text_frame("TYER", &["2024"]));
+    let mut uslt = vec![3u8, b'e', b'n', b'g', 0];
+    uslt.extend_from_slice(b"Stage 1 Embedded Lyrics Line 1\nLine 2");
+    payload.extend(id3_frame("USLT", &uslt));
+    let mut seed = id3v23_tag(&payload);
+    seed.extend_from_slice(b"fake-audio-payload-for-testing");
+    let test_mp3 = root.join("stage1_track.mp3");
+    std::fs::write(&test_mp3, &seed).unwrap();
+
+    // Add cover image using TagEditor
+    let png = write_png(&root, "cover.png");
+    let editor = TagEditor::new(&root.join("backups"));
+    let edit = TagEdit {
+        artwork_path: Some(png.to_string_lossy().into_owned()),
+        ..Default::default()
+    };
+    editor.save(&test_mp3, &edit).unwrap();
+
+    // Workflow A: modal/details inspection (inspect_file) - as in modals.rs and views.rs
+    let inspection = hybrid.inspect_file(&test_mp3).expect("inspect_file failed");
+    assert!(inspection.file_size > 0);
+    assert!(!inspection.container.is_empty());
+
+    // Workflow B: tag reading for modal dialog (open_tags) with artwork cache
+    let tags_modal = hybrid.read_metadata(&test_mp3, Some(&cache_dir)).expect("read_metadata with cache failed");
+    assert_eq!(tags_modal.title.as_deref(), Some("Stage 1 Parity Track"));
+    assert_eq!(tags_modal.artist.as_deref(), Some("Parity Artist"));
+    assert_eq!(tags_modal.album.as_deref(), Some("Parity Album"));
+    assert_eq!(tags_modal.album_artist.as_deref(), Some("Album Artist"));
+    assert_eq!(tags_modal.genre.as_deref(), Some("Synthwave"));
+    assert_eq!(tags_modal.track_number, 5);
+    assert!(tags_modal.artwork_path.is_some());
+    let art_path = tags_modal.artwork_path.as_ref().unwrap();
+    assert!(std::path::Path::new(art_path).exists(), "Extracted artwork must exist in cache");
+
+    // Workflow C: lyrics loading without artwork decode overhead (None passed for artwork_dir)
+    // as in playback.rs line 86, views.rs line 1806, modals.rs line 619
+    let tags_lyrics = hybrid.read_metadata(&test_mp3, None).expect("read_metadata without artwork failed");
+    assert!(tags_lyrics.lyrics.is_some());
+    assert!(tags_lyrics.lyrics.as_ref().unwrap().contains("Stage 1 Embedded Lyrics"));
+    assert!(tags_lyrics.artwork_path.is_none(), "When artwork_dir is None, no artwork should be decoded/saved");
+
+    // Workflow D: legacy entrypoint compatibility (read_tags, read_tags_in_cache)
+    let legacy_tags = read_tags(&test_mp3);
+    assert_eq!(legacy_tags.title.as_deref(), Some("Stage 1 Parity Track"));
+    assert_eq!(legacy_tags.artist.as_deref(), Some("Parity Artist"));
+    let legacy_cached_tags = read_tags_in_cache(&test_mp3, &cache_dir);
+    assert_eq!(legacy_cached_tags.title.as_deref(), Some("Stage 1 Parity Track"));
+    assert!(legacy_cached_tags.artwork_path.is_some());
+
+    // Workflow E: verification against real library files if present
+    let music_dir = Path::new(r"C:\Users\SlimShady\Music");
+    if let Ok(entries) = std::fs::read_dir(music_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("mp3")).unwrap_or(false) {
+                // Read via hybrid streaming
+                let tags = hybrid.read_metadata(&p, Some(&cache_dir)).expect("hybrid read failed on real track");
+                assert!(!tags.title.as_deref().unwrap_or("").is_empty() || !tags.artist.as_deref().unwrap_or("").is_empty());
+
+                // Read lyrics only (no artwork decode)
+                let lyrics_only = hybrid.read_metadata(&p, None).expect("lyrics only read failed");
+                assert_eq!(lyrics_only.title, tags.title);
+                assert!(lyrics_only.artwork_path.is_none());
+
+                // Inspect properties
+                let details = hybrid.inspect_file(&p).expect("inspect failed on real track");
+                assert!(details.duration_ms > 0);
+                assert!(details.file_size > 0);
+                break;
+            }
+        }
+    }
+
+    // Workflow F: FLAC format coverage with HybridMetadataEngine
+    let flac_file = root.join("stage1_track.flac");
+    std::fs::write(&flac_file, flac_seed()).unwrap();
+    let flac_tags = hybrid.read_metadata(&flac_file, None).expect("hybrid flac read failed");
+    assert_eq!(flac_tags.title.as_deref(), Some("Old Title"));
+    assert_eq!(flac_tags.artist.as_deref(), Some("Old Artist"));
+    let flac_details = hybrid.inspect_file(&flac_file).expect("hybrid flac inspect failed");
+    assert_eq!(flac_details.sample_rate_hz, 44100);
+
+    // Workflow G: MP4 format coverage with HybridMetadataEngine
+    let (mp4_bytes, _) = mp4_seed();
+    let mp4_file = root.join("stage1_track.m4a");
+    std::fs::write(&mp4_file, &mp4_bytes).unwrap();
+    let mp4_details = hybrid.inspect_file(&mp4_file).expect("hybrid mp4 inspect failed");
+    assert!(mp4_details.file_size > 0);
+}
+
+#[test]
 fn test_artwork_reliability_lifecycle_and_pruning_guards() {
     use music_player_core::metadata::{
         prune_unreferenced_artwork, save_artwork_to_cache_in, ArtworkOperationGuard,

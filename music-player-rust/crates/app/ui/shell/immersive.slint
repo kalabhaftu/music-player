@@ -8,28 +8,24 @@ export component ImmersivePlayerOverlay inherits Rectangle {
     clip: true;
 
     if State.current-has-cover : Image {
-        source: State.current-cover;
+        source: State.current-blurred-backdrop;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         width: parent.width * 1.15;
         height: parent.height * 1.15;
         image-fit: ImageFit.cover;
-        opacity: 0.22;
+        opacity: 0.65;
     }
     Rectangle {
         width: 100%;
         height: 100%;
-        background: @linear-gradient(180deg, #10110f40 0%, #10110fe0 100%);
+        background: @linear-gradient(180deg, #10110f60 0%, #10110fe8 100%);
     }
     Rectangle {
         width: 100%;
         height: 100%;
         background: State.accent.with-alpha(0.04);
         animate background { duration: 400ms; easing: ease-in-out; }
-    }
-
-    overlay-hover := TouchArea {
-        mouse-cursor: default;
     }
 
     VerticalLayout {
@@ -55,7 +51,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 }
                 HorizontalLayout {
                     spacing: 12px;
-                    opacity: (overlay-hover.has-hover || top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.0;
+                    opacity: (top-hover.has-hover || fs-ta.has-hover || close-ta.has-hover) ? 1.0 : 0.85;
                     animate opacity { duration: 180ms; }
 
                     Rectangle {
@@ -114,77 +110,80 @@ export component ImmersivePlayerOverlay inherits Rectangle {
 
         HorizontalLayout {
             vertical-stretch: 1;
-            alignment: center;
             padding-left: 20px;
             padding-right: 20px;
             spacing: root.show-lyrics ? 40px : 0px;
 
-            art-column := VerticalLayout {
+            VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
-                spacing: 16px;
-                horizontal-stretch: 0;
-                width: root.show-lyrics
-                    ? clamp(State.window-height * 0.38 * 1px, 240px, 420px)
-                    : clamp(State.window-height * 0.48 * 1px, 280px, 540px);
 
-                Rectangle {
-                    width: parent.width;
-                    height: self.width;
-                    border-radius: 16px;
-                    clip: true;
-                    background: State.current-badge-bg;
-                    border-width: 1px;
-                    border-color: #ffffff1c;
-                    if State.current-has-cover : Image {
-                        source: State.current-cover;
-                        width: parent.width;
-                        height: parent.height;
-                        image-fit: ImageFit.cover;
-                    }
-                    if !State.current-has-cover : Text {
-                        text: State.current-initials;
-                        color: #ffffffcc;
-                        font-size: 64px;
-                        font-weight: 900;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                    }
-                }
-
-                HorizontalLayout {
-                    width: parent.width;
-                    spacing: 12px;
+                art-column := VerticalLayout {
                     alignment: center;
+                    spacing: 16px;
+                    width: root.show-lyrics
+                        ? clamp(min(State.window-height * 0.38 * 1px, State.window-width * 0.36 * 1px), 240px, 420px)
+                        : clamp(min(State.window-height * 0.48 * 1px, State.window-width * 0.50 * 1px), 280px, 540px);
 
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        min-width: 0px;
-                        spacing: 4px;
-                        Text {
-                            text: State.has-track ? State.current-title : "Nothing playing";
-                            color: #ffffff;
-                            font-size: 24px;
-                            font-weight: 800;
-                            letter-spacing: -0.5px;
-                            overflow: elide;
+                    Rectangle {
+                        width: parent.width;
+                        height: self.width;
+                        border-radius: 16px;
+                        clip: true;
+                        background: State.current-badge-bg;
+                        border-width: 1px;
+                        border-color: #ffffff1c;
+                        if State.current-has-cover : Image {
+                            source: State.current-cover;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: ImageFit.cover;
                         }
-                        Text {
-                            text: State.has-track ? State.current-artist : "Choose a song from your library";
-                            color: #ffffffb3;
-                            font-size: 14px;
-                            overflow: elide;
+                        if !State.current-has-cover : Text {
+                            text: State.current-initials;
+                            color: #ffffffcc;
+                            font-size: 64px;
+                            font-weight: 900;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
                         }
                     }
 
-                    if State.has-track : IcBtn {
-                        icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
-                        tint: State.current-favorite ? State.accent : #ffffffb3;
-                        icon-size: 20px;
-                        width: 40px;
-                        height: 40px;
-                        clicked => {
-                            State.current-favorite = !State.current-favorite;
-                            Actions.toggle-favorite(State.current-id);
+                    HorizontalLayout {
+                        width: parent.width;
+                        spacing: 12px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            spacing: 4px;
+                            Text {
+                                text: State.has-track ? State.current-title : "Nothing playing";
+                                color: #ffffff;
+                                font-size: 24px;
+                                font-weight: 800;
+                                letter-spacing: -0.5px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: State.has-track ? State.current-artist : "Choose a song from your library";
+                                color: #ffffffb3;
+                                font-size: 14px;
+                                overflow: elide;
+                            }
+                        }
+
+                        if State.has-track : IcBtn {
+                            icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                            tint: State.current-favorite ? State.accent : #ffffffb3;
+                            icon-size: 20px;
+                            width: 40px;
+                            height: 40px;
+                            clicked => {
+                                State.current-favorite = !State.current-favorite;
+                                Actions.toggle-favorite(State.current-id);
+                            }
                         }
                     }
                 }
@@ -244,15 +243,15 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 VerticalLayout {
                                     padding-left: 16px;
                                     padding-right: 16px;
-                                    padding-top: 8px;
-                                    padding-bottom: 8px;
+                                    padding-top: line.is-active ? 12px : 6px;
+                                    padding-bottom: line.is-active ? 12px : 6px;
                                     alignment: center;
                                     Text {
                                         width: 100%;
                                         text: line.text;
                                         color: line.is-active ? #ffffff : (line-ta.has-hover ? #ffffff : (line.is-past ? #a4a8a18c : #e3e4df8c));
-                                        font-size: line.is-active ? 22px : 16px;
-                                        font-weight: line.is-active ? 800 : 550;
+                                        font-size: line.is-active ? 28px : 18px;
+                                        font-weight: line.is-active ? 850 : 550;
                                         horizontal-alignment: center;
                                         vertical-alignment: center;
                                         wrap: word-wrap;

@@ -83,7 +83,12 @@ impl App {
                 );
                 continue;
             }
-            if let Some(embedded) = read_tags(path).lyrics {
+            if let Some(embedded) = self
+                .metadata_engine
+                .read_metadata(Path::new(path), None)
+                .ok()
+                .and_then(|t| t.lyrics)
+            {
                 let doc = parse_lrc(&embedded);
                 let timed = !doc.lines.is_empty();
                 self.lyrics_cache.insert(
@@ -612,7 +617,10 @@ impl App {
                     }
                 }
             }
-            let extracted = music_player_core::read_tags_in_cache(p, &artwork_cache_dir());
+            let extracted = self
+                .metadata_engine
+                .read_metadata(p, Some(&artwork_cache_dir()))
+                .unwrap_or_default();
             let meta = std::fs::metadata(p).ok();
             let file_size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
             let modified = meta
@@ -729,6 +737,7 @@ impl App {
         let id = self.new_playlist_id();
         let _ = self.store.create_playlist(&id, &name);
         let _ = self.store.add_tracks_to_playlist(&id, &track_paths);
+        self.invalidate_view_caches();
         self.refresh_playlists();
         self.show_notice(
             format!("Created playlist “{}”.", name),
