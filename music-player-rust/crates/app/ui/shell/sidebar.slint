@@ -140,6 +140,7 @@ export component NavRail inherits Rectangle {
             content-height: nav-list.preferred-height;
             nav-list := VerticalLayout {
                 width: nav-scroll.width;
+                height: self.preferred-height;
                 spacing: 2px;
                 for item in State.navigation-items : NavEntryRow {
                     view: item.view;
