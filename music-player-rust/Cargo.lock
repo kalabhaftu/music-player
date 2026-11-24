@@ -2852,6 +2852,7 @@ name = "music-player-app"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "crossbeam-channel",
  "directories",
  "image",
  "music-player-core",

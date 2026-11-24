@@ -11,6 +11,7 @@ image = { version = "=0.25.10", default-features = false, features = ["jpeg", "p
 directories = "=6.0.0"
 chrono = { version = "=0.4.45", features = ["serde"] }
 serde_json = "=1.0.154"
+crossbeam-channel = "=0.5.17"
 windows = { version = "0.62.2", features = [
     "Foundation",
     "Media",
