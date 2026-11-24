@@ -1,4 +1,5 @@
 use crate::*;
+use super::query_dispatcher::*;
 
 impl App {
     pub(crate) fn publish_appearance(&self) {
@@ -521,6 +522,27 @@ impl App {
         state.set_scan_active(status.active);
         state.set_scan_paused(status.paused);
         state.set_scan_cancelling(status.cancelling);
+        if status.active && !status.paused {
+            if !self.scan_timer.running() {
+                let ui_weak = self.ui.as_weak();
+                self.scan_timer.start(
+                    TimerMode::Repeated,
+                    Duration::from_millis(40),
+                    move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            let state = ui.global::<State>();
+                            if state.get_scan_active() && !state.get_scan_paused() {
+                                let next = (state.get_scan_angle() + 9.6) % 360.0;
+                                state.set_scan_angle(next);
+                            }
+                        }
+                    },
+                );
+            }
+        } else if !status.active {
+            self.scan_timer.stop();
+            state.set_scan_angle(0.0);
+        }
         if !status.active {
             let stats = self.store.get_library_stats().unwrap_or(LibraryStats {
                 total_tracks: 0,
@@ -1142,7 +1164,7 @@ impl App {
             }
         }
         let video_extensions = self.video_extensions();
-        let mut query = TrackQuery {
+        let query = TrackQuery {
             favorites: view == "Favorites",
             most_played: view == "Most Played",
             recently_played: view == "Recently Played",
@@ -1197,61 +1219,21 @@ impl App {
             },
             ..TrackQuery::default()
         };
-        let (mut tracks, total) = self.store.query_track_page(&query).unwrap_or_default();
-        if view == "Search" {
-            let last_offset = if total > 0 {
-                (((total - 1) / 40) * 40) as u32
-            } else {
-                0
-            };
-            if search_song_offset > last_offset {
-                query.offset = last_offset;
-                self.ui
-                    .global::<State>()
-                    .set_search_song_offset(last_offset as i32);
-                tracks = self.store.query_track_page(&query).unwrap_or_default().0;
-            }
-        }
-        let items: Vec<TrackItem> = tracks
-            .iter()
-            .enumerate()
-            .map(|(i, t)| self.track_to_ui(t, (i + 1 + query.offset as usize) as i32, &playing))
-            .collect();
-        self.view_paths = tracks.iter().map(|t| t.path.clone()).collect();
-        self.id_to_path.clear();
-        for t in &tracks {
-            self.id_to_path.insert(t.id(), t.path.clone());
-            self.id_to_path.insert(t.path.clone(), t.path.clone());
-            self.track_cache.insert(t.path.clone(), t.clone());
-        }
-
         let state = self.ui.global::<State>();
-        state.set_tracks(ui_model(items.clone()).into());
-        state.set_tracks_total(total as i32);
-        state.set_can_load_more(
-            view != "Search" && self.tracks_offset + TRACK_PAGE_SIZE < total as usize,
-        );
-        state.set_view_title(ss(&view));
-        state.set_view_subtitle(ss(format!(
-            "{} {}",
-            fmt_count(total as u32),
-            if view == "Videos" { "videos" } else { "tracks" }
-        )));
-        state.set_has_roots(!self.settings.library_roots().is_empty());
-        state.set_library_empty(view == "Home" && total == 0);
-        state.set_page_loading(false);
-
-        if view != "Search" {
-            self.track_view_cache.insert(
+        state.set_page_loading(true);
+        self.query_dispatcher.dispatch(QueryTask {
+            generation: self.query_generation,
+            epoch: self.library_epoch,
+            payload: QueryPayload::TrackPage {
+                query,
+                view: view.clone(),
                 cache_key,
-                (
-                    self.library_epoch,
-                    items,
-                    self.view_paths.clone(),
-                    self.id_to_path.clone(),
-                    total,
-                ),
-            );
+            },
+            store: self.store.clone(),
+            ui_weak: self.ui.as_weak(),
+        });
+        if view == "Search" {
+            self.publish_search_counts(&search);
         }
 
         // Home sections.
@@ -1489,33 +1471,23 @@ impl App {
                 }
             }
         }
-        let (groups, total) = self
-            .store
-            .query_group_page(
-                column,
-                if view == "Search" { Some(search) } else { None },
-                self.groups_offset as u32,
-                60,
-                hide_dupes,
-            )
-            .unwrap_or_default();
-        self.group_total = total;
-        let items: Vec<GroupItem> = groups.iter().map(group_to_ui).collect();
-        if self.groups_offset == 0 {
-            self.group_items.clear();
-        }
-        self.group_items.extend(items);
-        if self.groups_offset == 0 && view != "Search" {
-            self.group_view_cache.insert(
-                cache_key,
-                (self.library_epoch, self.group_items.clone(), total),
-            );
-        }
-        let rows = chunk_groups(self.group_items.clone());
         let state = self.ui.global::<State>();
-        state.set_groups(ui_model(self.group_items.clone()).into());
-        state.set_group_rows(ui_model(rows).into());
-        state.set_groups_total(total as i32);
+        state.set_page_loading(true);
+        self.query_dispatcher.dispatch(QueryTask {
+            generation: self.query_generation,
+            epoch: self.library_epoch,
+            payload: QueryPayload::GroupPage {
+                column: column.to_string(),
+                search: if view == "Search" { Some(search.to_string()) } else { None },
+                offset: self.groups_offset as u32,
+                limit: 60,
+                hide_dupes,
+                view: view.to_string(),
+                cache_key,
+            },
+            store: self.store.clone(),
+            ui_weak: self.ui.as_weak(),
+        });
     }
 
     pub(crate) fn publish_search_counts(&mut self, search: &str) {
@@ -1523,79 +1495,11 @@ impl App {
             .settings
             .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
         let state = self.ui.global::<State>();
-        let mut album_offset = state.get_search_album_offset().max(0) as u32;
-        let mut artist_offset = state.get_search_artist_offset().max(0) as u32;
+        let album_offset = state.get_search_album_offset().max(0) as u32;
+        let artist_offset = state.get_search_artist_offset().max(0) as u32;
         let mut playlist_offset = state.get_search_playlist_offset().max(0) as usize;
         drop(state);
-        let (mut album_groups, albums) = if search.trim().is_empty() {
-            (Vec::new(), 0)
-        } else {
-            self.store
-                .query_group_page("album", Some(search), album_offset, 24, hide_dupes)
-                .unwrap_or_default()
-        };
-        let album_last_offset = if albums > 0 {
-            (((albums - 1) / 24) * 24) as u32
-        } else {
-            0
-        };
-        if album_offset > album_last_offset {
-            album_offset = album_last_offset;
-            if !search.trim().is_empty() {
-                if let Ok((groups, _)) =
-                    self.store
-                        .query_group_page("album", Some(search), album_offset, 24, hide_dupes)
-                {
-                    album_groups = groups;
-                }
-            }
-            self.ui
-                .global::<State>()
-                .set_search_album_offset(album_offset as i32);
-        }
-        let (mut artist_groups, artists) = if search.trim().is_empty() {
-            (Vec::new(), 0)
-        } else {
-            self.store
-                .query_group_page("artist", Some(search), artist_offset, 24, hide_dupes)
-                .unwrap_or_default()
-        };
-        let artist_last_offset = if artists > 0 {
-            (((artists - 1) / 24) * 24) as u32
-        } else {
-            0
-        };
-        if artist_offset > artist_last_offset {
-            artist_offset = artist_last_offset;
-            if !search.trim().is_empty() {
-                if let Ok((groups, _)) = self.store.query_group_page(
-                    "artist",
-                    Some(search),
-                    artist_offset,
-                    24,
-                    hide_dupes,
-                ) {
-                    artist_groups = groups;
-                }
-            }
-            self.ui
-                .global::<State>()
-                .set_search_artist_offset(artist_offset as i32);
-        }
-        let (_, songs) = if search.trim().is_empty() {
-            (Vec::new(), 0)
-        } else {
-            self.store
-                .query_track_page(&TrackQuery {
-                    search: Some(search.into()),
-                    hide_duplicates: hide_dupes,
-                    sort: TrackSort::Title,
-                    descending: false,
-                    page_size: 1,
-                    ..TrackQuery::default()
-                })
-                .unwrap_or_default()
-        };
+
         let matching_playlists: Vec<PlaylistCardItem> = if search.trim().is_empty() {
             Vec::new()
         } else {
@@ -1635,17 +1539,21 @@ impl App {
             .take(20)
             .collect::<Vec<_>>();
         let state = self.ui.global::<State>();
-        state.set_search_albums(
-            ui_model(album_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into(),
-        );
-        state.set_search_artists(
-            ui_model(artist_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into(),
-        );
         state.set_search_playlists(ui_model(search_playlists).into());
-        state.set_search_song_count(songs as i32);
-        state.set_search_album_count(albums as i32);
-        state.set_search_artist_count(artists as i32);
         state.set_search_playlist_count(playlist_count as i32);
+
+        self.query_dispatcher.dispatch(QueryTask {
+            generation: self.query_generation,
+            epoch: self.library_epoch,
+            payload: QueryPayload::SearchCounts {
+                search: search.to_string(),
+                album_offset,
+                artist_offset,
+                hide_dupes,
+            },
+            store: self.store.clone(),
+            ui_weak: self.ui.as_weak(),
+        });
     }
 
     pub(crate) fn publish_playlist(&mut self, playlist_id: &str, playing: &str) {
@@ -2139,71 +2047,156 @@ impl App {
         }
         self.dup_sort = sort.to_string();
         self.dup_desc = descending;
-        let page_size = 100usize;
+        self.dup_page = page;
         let search = self.ui.global::<State>().get_view_search().to_string();
-        let mut groups = self
-            .store
-            .get_duplicate_groups(0, 10000)
-            .unwrap_or_default();
-        if !search.trim().is_empty() {
-            let needle = search.trim().to_lowercase();
-            groups.retain(|group| {
-                let track = &group.representative;
-                [
-                    track.title.as_str(),
-                    track.artist.as_str(),
-                    track.album.as_str(),
-                    track.genre.as_str(),
-                    track.path.as_str(),
-                ]
-                .iter()
-                .any(|field| field.to_lowercase().contains(&needle))
-            });
-        }
-        groups.sort_by(|left, right| {
-            let left_track = &left.representative;
-            let right_track = &right.representative;
-            let compare_text = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase());
-            match sort.to_ascii_lowercase().as_str() {
-                "artist" => compare_text(&left_track.artist, &right_track.artist),
-                "album" => compare_text(&left_track.album, &right_track.album),
-                "year" => left_track.year.cmp(&right_track.year),
-                "added" => left_track.added_utc.cmp(&right_track.added_utc),
-                "duration" => left_track.duration_ms.cmp(&right_track.duration_ms),
-                "playcount" => left_track.play_count.cmp(&right_track.play_count),
-                "lastplayed" => left_track.last_played_utc.cmp(&right_track.last_played_utc),
-                "path" => compare_text(&left_track.path, &right_track.path),
-                "rating" => left_track.rating.cmp(&right_track.rating),
-                _ => compare_text(&left_track.title, &right_track.title),
-            }
-            .then_with(|| compare_text(&left_track.title, &right_track.title))
-            .then_with(|| left_track.path.cmp(&right_track.path))
-        });
-        if descending {
-            groups.reverse();
-        }
-        let total = groups.len();
-        let pages = ((total + page_size - 1) / page_size).max(1);
-        let page = page.min(pages - 1);
-        let playing = self
-            .current
-            .as_ref()
-            .map(|t| t.path.clone())
-            .unwrap_or_default();
-        let items: Vec<DuplicateItem> = groups
-            .iter()
-            .skip(page * page_size)
-            .take(page_size)
-            .map(|g| self.duplicate_to_ui(g, &playing))
-            .collect();
         let state = self.ui.global::<State>();
-        state.set_duplicates(ui_model(items).into());
-        state.set_duplicates_total(total as i32);
-        state.set_duplicates_page(page as i32);
-        state.set_duplicates_pages(pages as i32);
-        state.set_duplicates_sort(ss(sort));
-        state.set_duplicates_descending(descending);
-        state.set_duplicate_loading(false);
+        state.set_duplicate_loading(true);
+
+        self.query_dispatcher.dispatch(QueryTask {
+            generation: self.query_generation,
+            epoch: self.library_epoch,
+            payload: QueryPayload::Duplicates {
+                sort: sort.to_string(),
+                descending,
+                search,
+                page,
+                page_size: 100,
+            },
+            store: self.store.clone(),
+            ui_weak: self.ui.as_weak(),
+        });
+    }
+
+    pub(crate) fn on_query_completed(&mut self, generation: u64, epoch: u64, result: QueryResult) {
+        if generation != self.query_generation || epoch != self.library_epoch {
+            // Superseded by newer navigation or search, or invalidated by library scan
+            return;
+        }
+        match result {
+            QueryResult::TrackPage {
+                view,
+                cache_key,
+                query_offset,
+                tracks,
+                total,
+            } => {
+                let playing = self
+                    .current
+                    .as_ref()
+                    .map(|t| t.path.clone())
+                    .unwrap_or_default();
+                let items: Vec<TrackItem> = tracks
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| self.track_to_ui(t, (i + 1 + query_offset as usize) as i32, &playing))
+                    .collect();
+                self.view_paths = tracks.iter().map(|t| t.path.clone()).collect();
+                self.id_to_path.clear();
+                for t in &tracks {
+                    self.id_to_path.insert(t.id(), t.path.clone());
+                    self.id_to_path.insert(t.path.clone(), t.path.clone());
+                    self.track_cache.insert(t.path.clone(), t.clone());
+                }
+
+                let state = self.ui.global::<State>();
+                state.set_tracks(ui_model(items.clone()).into());
+                state.set_tracks_total(total as i32);
+                state.set_can_load_more(
+                    view != "Search" && self.tracks_offset + TRACK_PAGE_SIZE < total as usize,
+                );
+                state.set_view_title(ss(&view));
+                state.set_view_subtitle(ss(format!(
+                    "{} {}",
+                    fmt_count(total as u32),
+                    if view == "Videos" { "videos" } else { "tracks" }
+                )));
+                state.set_has_roots(!self.settings.library_roots().is_empty());
+                state.set_library_empty(view == "Home" && total == 0);
+                state.set_page_loading(false);
+
+                if view != "Search" {
+                    self.track_view_cache.insert(
+                        cache_key,
+                        (
+                            self.library_epoch,
+                            items,
+                            self.view_paths.clone(),
+                            self.id_to_path.clone(),
+                            total,
+                        ),
+                    );
+                }
+            }
+            QueryResult::GroupPage {
+                view,
+                cache_key,
+                groups,
+                total,
+            } => {
+                self.group_total = total;
+                let items: Vec<GroupItem> = groups.iter().map(group_to_ui).collect();
+                if self.groups_offset == 0 {
+                    self.group_items.clear();
+                }
+                self.group_items.extend(items);
+                if self.groups_offset == 0 && view != "Search" {
+                    self.group_view_cache.insert(
+                        cache_key,
+                        (self.library_epoch, self.group_items.clone(), total),
+                    );
+                }
+                let rows = chunk_groups(self.group_items.clone());
+                let state = self.ui.global::<State>();
+                state.set_groups(ui_model(self.group_items.clone()).into());
+                state.set_group_rows(ui_model(rows).into());
+                state.set_groups_total(total as i32);
+                state.set_page_loading(false);
+            }
+            QueryResult::SearchCounts {
+                album_groups,
+                albums,
+                artist_groups,
+                artists,
+                songs,
+            } => {
+                let state = self.ui.global::<State>();
+                state.set_search_albums(
+                    ui_model(album_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into(),
+                );
+                state.set_search_artists(
+                    ui_model(artist_groups.iter().map(group_to_ui).collect::<Vec<_>>()).into(),
+                );
+                state.set_search_song_count(songs as i32);
+                state.set_search_album_count(albums as i32);
+                state.set_search_artist_count(artists as i32);
+            }
+            QueryResult::Duplicates {
+                groups,
+                total,
+                page,
+                pages,
+                sort,
+                descending,
+            } => {
+                let playing = self
+                    .current
+                    .as_ref()
+                    .map(|t| t.path.clone())
+                    .unwrap_or_default();
+                let items: Vec<DuplicateItem> = groups
+                    .iter()
+                    .map(|g| self.duplicate_to_ui(g, &playing))
+                    .collect();
+                let state = self.ui.global::<State>();
+                state.set_duplicates(ui_model(items).into());
+                state.set_duplicates_total(total as i32);
+                state.set_duplicates_page(page as i32);
+                state.set_duplicates_pages(pages as i32);
+                state.set_duplicates_sort(ss(&sort));
+                state.set_duplicates_descending(descending);
+                state.set_duplicate_loading(false);
+            }
+        }
     }
 
     pub(crate) fn duplicate_to_ui(

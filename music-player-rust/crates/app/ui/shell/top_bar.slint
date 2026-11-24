@@ -171,12 +171,38 @@ export component TopBar inherits Rectangle {
                 height: State.window-width <= 650 ? 28px : 32px;
                 border-radius: self.width / 2;
                 background: scan-area.has-hover ? Palette.overlay : transparent;
-                border-width: 2.5px;
-                border-color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
-                Text {
-                    text: State.scan-paused ? "Ⅱ" : (State.scan-cancelling ? "×" : "•");
-                    color: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
-                    font-size: State.scan-paused ? 10px : 14px;
+
+                // Track ring
+                Image {
+                    source: @image-url("../../assets/icons/scan-track.svg");
+                    width: parent.width;
+                    height: parent.height;
+                    colorize: Palette.border;
+                    opacity: 0.45;
+                }
+                // Rotating progress arc
+                Image {
+                    source: @image-url("../../assets/icons/scan-arc.svg");
+                    width: parent.width;
+                    height: parent.height;
+                    colorize: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
+                    rotation-angle: State.scan-angle * 1deg;
+                    rotation-origin-x: self.width / 2;
+                    rotation-origin-y: self.height / 2;
+                }
+                if State.scan-paused : Text {
+                    text: "Ⅱ";
+                    color: #ffb04a;
+                    font-size: 10px;
+                    font-weight: 800;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                if State.scan-cancelling : Text {
+                    text: "×";
+                    color: #ff5b74;
+                    font-size: 12px;
+                    font-weight: 800;
                     vertical-alignment: center;
                     horizontal-alignment: center;
                 }

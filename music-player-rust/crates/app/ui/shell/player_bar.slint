@@ -17,7 +17,7 @@ export component PlayerBar inherits Rectangle {
 
     // Centered controls column: exactly dead-center in the window, never shifted by title length
     center-col := VerticalLayout {
-        width: clamp(State.window-width * 1px - 560px, 280px, max(380px, State.window-width * 0.56 * 1px));
+        width: clamp(320px, State.window-width * 1px - 540px, min(920px, max(380px, State.window-width * 0.52 * 1px)));
         x: (parent.width - self.width) / 2;
         y: 10px;
         height: parent.height - 20px;
@@ -136,8 +136,8 @@ export component PlayerBar inherits Rectangle {
         }
 
         HorizontalLayout {
+            width: 100%;
             spacing: State.window-width <= 650 ? 4px : 8px;
-            alignment: center;
 
             Text {
                 text: State.current-time;
@@ -320,8 +320,8 @@ export component PlayerBar inherits Rectangle {
 
             // Volume control container
             vol-box := Rectangle {
-                property <bool> popover-shown: State.window-width <= 820 && vol-btn.hovered;
-                width: State.window-width > 820 ? 125px : (State.window-width <= 650 ? 27px : 30px);
+                property <bool> popover-shown: State.window-width <= 600 && vol-btn.hovered;
+                width: State.window-width > 850 ? 125px : (State.window-width > 600 ? 101px : (State.window-width <= 650 ? 27px : 30px));
                 height: 30px;
 
                 HorizontalLayout {
@@ -353,10 +353,10 @@ export component PlayerBar inherits Rectangle {
                         }
                     }
 
-                    if State.window-width > 820 : VerticalLayout {
+                    if State.window-width > 600 : VerticalLayout {
                         alignment: center;
                         PlayerSlider {
-                            width: 88px;
+                            width: State.window-width > 850 ? 88px : 64px;
                             height: 16px;
                             minimum: 0.0;
                             maximum: 100.0;
@@ -379,7 +379,7 @@ export component PlayerBar inherits Rectangle {
                     }
                 }
 
-                // Floating popover when window-width <= 820 and hovered
+                // Floating popover when window-width <= 600 and hovered
                 if vol-box.popover-shown : Rectangle {
                     x: parent.width - self.width;
                     y: -54px;
@@ -394,43 +394,49 @@ export component PlayerBar inherits Rectangle {
                     drop-shadow-blur: 16px;
                     drop-shadow-color: #00000040;
 
-                    HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: 12px;
+                    VerticalLayout {
+                        width: 100%;
+                        height: 100%;
                         alignment: center;
-                        spacing: 8px;
 
-                        VerticalLayout {
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
                             alignment: center;
-                            PlayerSlider {
-                                width: 80px;
-                                height: 16px;
-                                minimum: 0.0;
-                                maximum: 100.0;
-                                value: State.volume;
-                                fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
-                                track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
-                                thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
-                                scrollable: true;
-                                scroll-step: 4.0;
-                                changed(val) => { Actions.volume-changed(round(val)); }
-                                scrolled(event) => {
-                                    let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
-                                    if (delta != 0) {
-                                        Actions.volume-changed(clamp(State.volume + delta, 0, 100));
-                                        return accept;
+                            spacing: 8px;
+
+                            VerticalLayout {
+                                alignment: center;
+                                PlayerSlider {
+                                    width: 80px;
+                                    height: 16px;
+                                    minimum: 0.0;
+                                    maximum: 100.0;
+                                    value: State.volume;
+                                    fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                                    track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                                    thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                                    scrollable: true;
+                                    scroll-step: 4.0;
+                                    changed(val) => { Actions.volume-changed(round(val)); }
+                                    scrolled(event) => {
+                                        let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                                        if (delta != 0) {
+                                            Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                            return accept;
+                                        }
+                                        reject
                                     }
-                                    reject
                                 }
                             }
-                        }
 
-                        Text {
-                            text: "\{State.volume}%";
-                            color: Palette.muted;
-                            font-size: 10px;
-                            font-weight: 600;
-                            vertical-alignment: center;
+                            Text {
+                                text: "\{State.volume}%";
+                                color: Palette.muted;
+                                font-size: 10px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
                         }
                     }
                 }

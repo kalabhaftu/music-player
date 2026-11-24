@@ -415,10 +415,13 @@ impl App {
     }
 
     pub(crate) fn save_session(&mut self) {
-        let size = self.ui.window().size();
-        if size.width >= 500 && size.height >= 400 {
-            let _ = self.store.set_setting("window-width", &size.width.to_string());
-            let _ = self.store.set_setting("window-height", &size.height.to_string());
+        let scale = self.ui.window().scale_factor().max(1.0);
+        let phys = self.ui.window().size();
+        let log_w = (phys.width as f32 / scale).round() as u32;
+        let log_h = (phys.height as f32 / scale).round() as u32;
+        if (720..=1400).contains(&log_w) && (500..=900).contains(&log_h) {
+            let _ = self.store.set_setting("window-width", &log_w.to_string());
+            let _ = self.store.set_setting("window-height", &log_h.to_string());
         }
         let session = PlaybackSession {
             track_path: self.current.as_ref().map(|t| t.path.clone()),

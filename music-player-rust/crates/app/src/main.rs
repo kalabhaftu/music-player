@@ -14,6 +14,7 @@ mod splash;
 mod ui;
 mod updates;
 
+use controllers::*;
 use ui::*;
 
 use chrono::Timelike;
@@ -109,6 +110,19 @@ pub(crate) struct UpdateOutcome {
     result: std::result::Result<updates::UpdateCheck, updates::UpdateError>,
 }
 
+thread_local! {
+    static APP_INSTANCE: RefCell<Option<Rc<RefCell<App>>>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
+    APP_INSTANCE.with(|cell| {
+        let binding = cell.borrow();
+        let app_rc = binding.as_ref()?;
+        let mut app = app_rc.try_borrow_mut().ok()?;
+        Some(f(&mut *app))
+    })
+}
+
 pub(crate) struct App {
     pub(crate) ui: AppWindow,
     pub(crate) store: LibraryStore,
@@ -128,6 +142,7 @@ pub(crate) struct App {
     pub(crate) lyrics_results: Vec<LyricsSearchResult>,
     pub(crate) notice_timer: Timer,
     pub(crate) seek_wheel_timer: Timer,
+    pub(crate) scan_timer: Timer,
     pub(crate) seek_preview_ms: Option<u64>,
     pub(crate) current: Option<Track>,
     pub(crate) id_to_path: HashMap<String, String>,
@@ -188,6 +203,7 @@ pub(crate) struct App {
     pub(crate) track_view_cache: HashMap<String, (u64, Vec<TrackItem>, Vec<String>, HashMap<String, String>, i64)>,
     pub(crate) group_view_cache: HashMap<String, (u64, Vec<GroupItem>, i64)>,
     pub(crate) metadata_engine: HybridMetadataEngine,
+    pub(crate) query_dispatcher: QueryDispatcher,
 }
 
 impl App {
@@ -244,6 +260,7 @@ impl App {
             lyrics_results: Vec::new(),
             notice_timer: Timer::default(),
             seek_wheel_timer: Timer::default(),
+            scan_timer: Timer::default(),
             seek_preview_ms: None,
             current: None,
             id_to_path: HashMap::new(),
@@ -304,11 +321,14 @@ impl App {
             track_view_cache: HashMap::new(),
             group_view_cache: HashMap::new(),
             metadata_engine,
+            query_dispatcher: QueryDispatcher::new(),
         }
     }
 
     pub(crate) fn invalidate_view_caches(&mut self) {
         self.library_epoch = self.library_epoch.wrapping_add(1);
+        self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_dispatcher.cancel_below(self.query_generation);
         self.track_view_cache.clear();
         self.group_view_cache.clear();
     }
@@ -327,6 +347,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     }
     let ui = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new(ui.clone_strong())));
+    APP_INSTANCE.with(|cell| *cell.borrow_mut() = Some(app.clone()));
 
     if !cli_args.is_empty() {
         let (verb, paths) = os::parse_activation_args(&cli_args);
@@ -353,14 +374,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(1024)
-            .clamp(720, 1600);
+            .clamp(720, 1400);
         let h = store
             .get_setting("window-height")
             .ok()
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(640)
-            .clamp(500, 1000);
+            .clamp(500, 900);
         ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
     }
 
@@ -384,5 +405,6 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     ui.run()?;
     os_shell::detach();
     app.borrow_mut().save_session();
+    APP_INSTANCE.with(|cell| *cell.borrow_mut() = None);
     Ok(())
 }

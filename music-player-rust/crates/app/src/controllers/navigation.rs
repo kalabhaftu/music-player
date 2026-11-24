@@ -34,6 +34,7 @@ impl App {
         self.tracks_offset = 0;
         self.groups_offset = 0;
         self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_dispatcher.cancel_below(self.query_generation);
         if view != "Search" {
             self.search_debounce = None;
         }
@@ -94,6 +95,8 @@ impl App {
             return;
         }
         self.history_pos -= 1;
+        self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_dispatcher.cancel_below(self.query_generation);
         let ctx = self.history[self.history_pos].clone();
         {
             let state = self.ui.global::<State>();
@@ -114,6 +117,8 @@ impl App {
             return;
         }
         self.history_pos += 1;
+        self.query_generation = self.query_generation.wrapping_add(1);
+        self.query_dispatcher.cancel_below(self.query_generation);
         let ctx = self.history[self.history_pos].clone();
         {
             let state = self.ui.global::<State>();

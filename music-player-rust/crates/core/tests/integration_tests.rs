@@ -2242,6 +2242,122 @@ fn test_stage2_startup_discovery_fingerprints_and_threshold_behavior() {
 }
 
 #[test]
+fn test_stage3_background_query_cancellation_and_epoch_invalidation() {
+    use music_player_core::TrackQuery;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    let test_dir = temp_dir("stage3-query-test");
+    let db_path = test_dir.join("library.db");
+    let store = LibraryStore::open(&db_path).expect("open store failed");
+
+    // 1. Insert seed tracks
+    let mut tracks = Vec::new();
+    for i in 1..=50 {
+        let mut t = sample_track(
+            &format!("C:/Music/Track_{:03}.mp3", i),
+            &format!("Title {:03}", i),
+            &format!("Artist {}", i % 5),
+            &format!("Album {}", i % 10),
+        );
+        t.duration_ms = 180_000;
+        t.file_size = 1024 * 1024;
+        t.year = 2020 + (i % 4);
+        tracks.push(t);
+    }
+    store.upsert_tracks(&tracks).expect("upsert failed");
+
+    // 2. Simulate query generation cancellation model:
+    // User rapidly navigates: Gen 1 (Songs) -> Gen 2 (Albums) -> Gen 3 (Search)
+    let active_generation = Arc::new(AtomicU64::new(1));
+    let library_epoch = Arc::new(AtomicU64::new(10));
+
+    // Spawn reader pool queries in parallel
+    let store_clone1 = store.clone();
+    let gen_clone1 = active_generation.clone();
+    let epoch_clone1 = library_epoch.clone();
+    let h1 = std::thread::spawn(move || {
+        let task_gen = 1u64;
+        let task_epoch = 10u64;
+        let (tracks, total) = store_clone1
+            .query_track_page(&TrackQuery {
+                sort: TrackSort::Title,
+                page_size: 20,
+                ..TrackQuery::default()
+            })
+            .unwrap_or_default();
+        let superseded = task_gen < gen_clone1.load(Ordering::Acquire)
+            || task_epoch != epoch_clone1.load(Ordering::Acquire);
+        (task_gen, superseded, tracks.len(), total)
+    });
+
+    // Advance generation to 2 immediately (simulating user clicking another view)
+    active_generation.store(2, Ordering::Release);
+
+    let store_clone2 = store.clone();
+    let gen_clone2 = active_generation.clone();
+    let epoch_clone2 = library_epoch.clone();
+    let h2 = std::thread::spawn(move || {
+        let task_gen = 2u64;
+        let task_epoch = 10u64;
+        let (groups, total) = store_clone2
+            .query_group_page("album", None, 0, 10, false)
+            .unwrap_or_default();
+        let superseded = task_gen < gen_clone2.load(Ordering::Acquire)
+            || task_epoch != epoch_clone2.load(Ordering::Acquire);
+        (task_gen, superseded, groups.len(), total)
+    });
+
+    // Advance generation to 3 and advance library epoch (simulating cache invalidation)
+    active_generation.store(3, Ordering::Release);
+    library_epoch.store(11, Ordering::Release);
+
+    let store_clone3 = store.clone();
+    let gen_clone3 = active_generation.clone();
+    let epoch_clone3 = library_epoch.clone();
+    let h3 = std::thread::spawn(move || {
+        let task_gen = 3u64;
+        let task_epoch = 11u64;
+        let (tracks, total) = store_clone3
+            .query_track_page(&TrackQuery {
+                search: Some("Title 00".into()),
+                page_size: 10,
+                ..TrackQuery::default()
+            })
+            .unwrap_or_default();
+        let superseded = task_gen < gen_clone3.load(Ordering::Acquire)
+            || task_epoch != epoch_clone3.load(Ordering::Acquire);
+        (task_gen, superseded, tracks.len(), total)
+    });
+
+    let (g1, sup1, count1, total1) = h1.join().unwrap();
+    let (g2, sup2, count2, total2) = h2.join().unwrap();
+    let (g3, sup3, count3, total3) = h3.join().unwrap();
+
+    // Gen 1 was superseded:
+    assert_eq!(g1, 1);
+    assert!(sup1, "Gen 1 should be superseded by newer generation");
+    assert_eq!(count1, 20);
+    assert_eq!(total1, 50);
+
+    // Gen 2 was superseded by Gen 3 and epoch invalidation:
+    assert_eq!(g2, 2);
+    assert!(sup2, "Gen 2 should be superseded by Gen 3 and epoch invalidation");
+    assert_eq!(count2, 10);
+    assert_eq!(total2, 10);
+
+    // Gen 3 was current and matches current epoch:
+    assert_eq!(g3, 3);
+    assert!(!sup3, "Gen 3 matches latest generation and epoch");
+    assert_eq!(count3, 9);
+    assert_eq!(total3, 9);
+
+    drop(store);
+    std::thread::sleep(Duration::from_millis(50));
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
 fn test_artwork_reliability_lifecycle_and_pruning_guards() {
     use music_player_core::metadata::{
         prune_unreferenced_artwork, save_artwork_to_cache_in, ArtworkOperationGuard,
