@@ -27,7 +27,19 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             else {
                 return;
             };
-            let result = LocalAppLog::shared().export_to(Path::new(&path));
+            let dest = Path::new(&path);
+            if let Some(parent) = dest.parent() {
+                if let Some(free) = native_io::available_disk_space_bytes(parent) {
+                    if free < 10 * 1024 * 1024 {
+                        a.borrow_mut().show_notice(
+                            "Not enough free disk space to export logs (less than 10 MB available).",
+                            NoticeSeverity::Error,
+                        );
+                        return;
+                    }
+                }
+            }
+            let result = LocalAppLog::shared().export_to(dest);
             let mut app = a.borrow_mut();
             match result {
                 Ok(()) => app.show_notice(

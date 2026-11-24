@@ -5,8 +5,8 @@
 
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW,
-    HKEY, HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_SET_VALUE, REG_SZ,
 };
 use windows_sys::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
 
@@ -49,6 +49,19 @@ fn open_or_create_key(parent: HKEY, subkey: &str) -> Option<HKEY> {
     }
 }
 
+fn open_existing_key(parent: HKEY, subkey: &str) -> Option<HKEY> {
+    let wide_key = to_wide(subkey);
+    let mut hkey: HKEY = std::ptr::null_mut();
+    let status = unsafe {
+        RegOpenKeyExW(parent, wide_key.as_ptr(), 0, KEY_SET_VALUE, &mut hkey)
+    };
+    if status == ERROR_SUCCESS {
+        Some(hkey)
+    } else {
+        None
+    }
+}
+
 fn set_reg_sz(hkey: HKEY, value_name: Option<&str>, value: &str) -> bool {
     let wide_val = to_wide(value);
     let wide_name = value_name.map(to_wide);
@@ -70,13 +83,15 @@ fn set_reg_sz(hkey: HKEY, value_name: Option<&str>, value: &str) -> bool {
     status == ERROR_SUCCESS
 }
 
-fn set_key_value(subkey: &str, value_name: Option<&str>, value: &str) -> bool {
-    if let Some(hkey) = open_or_create_key(HKEY_CURRENT_USER, subkey) {
-        let ok = set_reg_sz(hkey, value_name, value);
-        unsafe { RegCloseKey(hkey); }
-        ok
+fn set_key_value(subkey: &str, value_name: Option<&str>, value: &str) -> Result<(), String> {
+    let hkey = open_or_create_key(HKEY_CURRENT_USER, subkey)
+        .ok_or_else(|| format!("Failed to open/create HKCU\\{subkey}"))?;
+    let ok = set_reg_sz(hkey, value_name, value);
+    unsafe { RegCloseKey(hkey); }
+    if ok {
+        Ok(())
     } else {
-        false
+        Err(format!("Failed to write value to HKCU\\{subkey}"))
     }
 }
 
@@ -104,21 +119,21 @@ pub fn register_associations() -> Result<(), String> {
     let icon_ref = format!("\"{exe_str}\",0");
 
     // Integration metadata
-    set_key_value(INTEGRATION_ROOT, None, exe_str);
-    set_key_value(INTEGRATION_ROOT, Some("ExecutablePath"), exe_str);
-    set_key_value(REG_APP_KEY, Some(APP_NAME), CAPABILITIES_SUBKEY);
-    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationName"), APP_NAME);
-    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationDescription"), "Offline music library and player");
-    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationIcon"), &icon_ref);
+    set_key_value(INTEGRATION_ROOT, None, exe_str)?;
+    set_key_value(INTEGRATION_ROOT, Some("ExecutablePath"), exe_str)?;
+    set_key_value(REG_APP_KEY, Some(APP_NAME), CAPABILITIES_SUBKEY)?;
+    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationName"), APP_NAME)?;
+    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationDescription"), "Offline music library and player")?;
+    set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationIcon"), &icon_ref)?;
 
     // Application shell open registration
-    set_key_value(&format!("{app_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""));
-    set_key_value(&format!("{app_key}\\shell\\open"), Some("MultiSelectModel"), "Player");
-    set_key_value(&format!("{app_key}\\DefaultIcon"), None, &icon_ref);
+    set_key_value(&format!("{app_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""))?;
+    set_key_value(&format!("{app_key}\\shell\\open"), Some("MultiSelectModel"), "Player")?;
+    set_key_value(&format!("{app_key}\\DefaultIcon"), None, &icon_ref)?;
 
     // Clean up legacy .mp4 registration if upgrading from earlier version
     for ext in LEGACY_EXTENSIONS {
-        let prog_id = format!("MusicPlayer.AssocFile{}", ext.trim_start_matches('.'));
+        let prog_id = format!("MusicPlayer.AssocFile.{}", ext.trim_start_matches('.'));
         delete_tree(&format!("Software\\Classes\\{prog_id}"));
         delete_tree(&format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerAddToQueue"));
         delete_tree(&format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerCreatePlaylist"));
@@ -130,32 +145,32 @@ pub fn register_associations() -> Result<(), String> {
         let prog_id = format!("MusicPlayer.AssocFile.{ext_clean}");
 
         // SupportedTypes & Capabilities
-        set_key_value(&format!("{app_key}\\SupportedTypes"), Some(ext), "");
-        set_key_value(&format!("{CAPABILITIES_SUBKEY}\\FileAssociations"), Some(ext), &prog_id);
+        set_key_value(&format!("{app_key}\\SupportedTypes"), Some(ext), "")?;
+        set_key_value(&format!("{CAPABILITIES_SUBKEY}\\FileAssociations"), Some(ext), &prog_id)?;
 
         // OpenWithProgids
-        set_key_value(&format!("Software\\Classes\\{ext}\\OpenWithProgids"), Some(&prog_id), "");
+        set_key_value(&format!("Software\\Classes\\{ext}\\OpenWithProgids"), Some(&prog_id), "")?;
 
         // ProgID configuration
         let prog_key = format!("Software\\Classes\\{prog_id}");
-        set_key_value(&prog_key, None, &format!("{APP_NAME} audio file"));
-        set_key_value(&format!("{prog_key}\\DefaultIcon"), None, &icon_ref);
-        set_key_value(&prog_key, Some("TypeOverlay"), &icon_ref);
-        set_key_value(&format!("{prog_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""));
-        set_key_value(&format!("{prog_key}\\shell\\open"), Some("MultiSelectModel"), "Player");
+        set_key_value(&prog_key, None, &format!("{APP_NAME} audio file"))?;
+        set_key_value(&format!("{prog_key}\\DefaultIcon"), None, &icon_ref)?;
+        set_key_value(&prog_key, Some("TypeOverlay"), &icon_ref)?;
+        set_key_value(&format!("{prog_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""))?;
+        set_key_value(&format!("{prog_key}\\shell\\open"), Some("MultiSelectModel"), "Player")?;
 
         // Context-menu actions: Add to Queue & Create Playlist
         let add_queue_key = format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerAddToQueue");
-        set_key_value(&add_queue_key, None, "Add to Music Player queue");
-        set_key_value(&add_queue_key, Some("Icon"), &icon_ref);
-        set_key_value(&add_queue_key, Some("MultiSelectModel"), "Player");
-        set_key_value(&format!("{add_queue_key}\\command"), None, &format!("\"{exe_str}\" --add-to-queue \"%1\""));
+        set_key_value(&add_queue_key, None, "Add to Music Player queue")?;
+        set_key_value(&add_queue_key, Some("Icon"), &icon_ref)?;
+        set_key_value(&add_queue_key, Some("MultiSelectModel"), "Player")?;
+        set_key_value(&format!("{add_queue_key}\\command"), None, &format!("\"{exe_str}\" --add-to-queue \"%1\""))?;
 
         let playlist_key = format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerCreatePlaylist");
-        set_key_value(&playlist_key, None, "Create Music Player playlist");
-        set_key_value(&playlist_key, Some("Icon"), &icon_ref);
-        set_key_value(&playlist_key, Some("MultiSelectModel"), "Player");
-        set_key_value(&format!("{playlist_key}\\command"), None, &format!("\"{exe_str}\" --create-playlist \"%1\""));
+        set_key_value(&playlist_key, None, "Create Music Player playlist")?;
+        set_key_value(&playlist_key, Some("Icon"), &icon_ref)?;
+        set_key_value(&playlist_key, Some("MultiSelectModel"), "Player")?;
+        set_key_value(&format!("{playlist_key}\\command"), None, &format!("\"{exe_str}\" --create-playlist \"%1\""))?;
     }
 
     notify_shell();
@@ -176,10 +191,10 @@ pub fn unregister_associations() -> Result<(), String> {
     delete_tree(INTEGRATION_ROOT);
 
     // Remove RegisteredApplications value
-    if let Some(hkey) = open_or_create_key(HKEY_CURRENT_USER, REG_APP_KEY) {
+    if let Some(hkey) = open_existing_key(HKEY_CURRENT_USER, REG_APP_KEY) {
         let wide = to_wide(APP_NAME);
         unsafe {
-            windows_sys::Win32::System::Registry::RegDeleteValueW(hkey, wide.as_ptr());
+            RegDeleteValueW(hkey, wide.as_ptr());
             RegCloseKey(hkey);
         }
     }
@@ -189,10 +204,10 @@ pub fn unregister_associations() -> Result<(), String> {
         let prog_id = format!("MusicPlayer.AssocFile.{ext_clean}");
 
         // Remove from OpenWithProgids
-        if let Some(hkey) = open_or_create_key(HKEY_CURRENT_USER, &format!("Software\\Classes\\{ext}\\OpenWithProgids")) {
+        if let Some(hkey) = open_existing_key(HKEY_CURRENT_USER, &format!("Software\\Classes\\{ext}\\OpenWithProgids")) {
             let wide = to_wide(&prog_id);
             unsafe {
-                windows_sys::Win32::System::Registry::RegDeleteValueW(hkey, wide.as_ptr());
+                RegDeleteValueW(hkey, wide.as_ptr());
                 RegCloseKey(hkey);
             }
         }

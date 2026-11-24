@@ -704,12 +704,12 @@ pub fn save_window_placement(hwnd: isize, store: &music_player_core::LibraryStor
             let maximized = wp.showCmd == SW_SHOWMAXIMIZED as u32;
             let _ = store.set_setting("window-maximized", if maximized { "true" } else { "false" });
             let norm = wp.rcNormalPosition;
-            let width = (norm.right - norm.left).clamp(720, 3840);
-            let height = (norm.bottom - norm.top).clamp(500, 2160);
-            let _ = store.set_setting("window-width", &width.to_string());
-            let _ = store.set_setting("window-height", &height.to_string());
-            let _ = store.set_setting("window-x", &norm.left.to_string());
-            let _ = store.set_setting("window-y", &norm.top.to_string());
+            let width = (norm.right - norm.left).max(720);
+            let height = (norm.bottom - norm.top).max(500);
+            let _ = store.set_setting("window-pos-x", &norm.left.to_string());
+            let _ = store.set_setting("window-pos-y", &norm.top.to_string());
+            let _ = store.set_setting("window-pos-w", &width.to_string());
+            let _ = store.set_setting("window-pos-h", &height.to_string());
         }
     }
 }
@@ -728,17 +728,19 @@ pub fn restore_window_placement(hwnd: isize, store: &music_player_core::LibraryS
         };
         use windows_sys::Win32::Foundation::RECT;
 
-        let w = store.get_setting("window-width").ok().flatten().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1024).clamp(720, 3840);
-        let h = store.get_setting("window-height").ok().flatten().and_then(|s| s.parse::<i32>().ok()).unwrap_or(640).clamp(500, 2160);
-        let x = store.get_setting("window-x").ok().flatten().and_then(|s| s.parse::<i32>().ok());
-        let y = store.get_setting("window-y").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let x = store.get_setting("window-pos-x").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let y = store.get_setting("window-pos-y").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let w = store.get_setting("window-pos-w").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let h = store.get_setting("window-pos-h").ok().flatten().and_then(|s| s.parse::<i32>().ok());
         let is_maximized = store.get_setting("window-maximized").ok().flatten().as_deref() == Some("true");
 
-        if let (Some(x), Some(y)) = (x, y) {
-            let rect = RECT { left: x, top: y, right: x + w, bottom: y + h };
-            let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL);
-            if !monitor.is_null() {
-                SetWindowPos(hwnd as _, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        if let (Some(x), Some(y), Some(w), Some(h)) = (x, y, w, h) {
+            if w >= 720 && h >= 500 {
+                let rect = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL);
+                if !monitor.is_null() {
+                    SetWindowPos(hwnd as _, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                }
             }
         }
 
@@ -749,7 +751,6 @@ pub fn restore_window_placement(hwnd: isize, store: &music_player_core::LibraryS
 }
 
 /// Returns the free bytes available to the user on the drive containing `path`.
-#[allow(dead_code)]
 pub fn available_disk_space_bytes(path: &Path) -> Option<u64> {
     #[cfg(windows)]
     unsafe {
