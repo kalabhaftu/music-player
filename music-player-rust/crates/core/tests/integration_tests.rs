@@ -2601,3 +2601,79 @@ fn fastrand() -> u64 {
         .unwrap()
         .as_nanos() as u64
 }
+
+#[test]
+fn test_backup_failure_injection_phases_and_byte_for_byte_restoration() {
+    use music_player_core::metadata::clean_stale_temp_files;
+
+    let root = temp_dir("backup-failure-injection");
+    let backups = root.join("backups");
+    let editor = TagEditor::new(&backups);
+
+    let song = root.join("original_track.mp3");
+    let initial_bytes = b"ID3\x03\0\0\0\0\0\0MPEG_AUDIO_TEST_PAYLOAD_BYTE_EXACT_12345";
+    std::fs::write(&song, initial_bytes).unwrap();
+
+    // 1. Phase 4 Failure: Validation/format rejection (invalid custom ID3 frame)
+    let mut custom = std::collections::HashMap::new();
+    custom.insert("ID3:INVALID_LONG_TAG".to_string(), "Val".to_string());
+    let invalid_edit = TagEdit {
+        title: Some("New Title".to_string()),
+        custom_fields: Some(custom),
+        ..Default::default()
+    };
+    let err = editor.save(&song, &invalid_edit).unwrap_err();
+    assert!(err.to_string().contains("four-character") || err.to_string().contains("ID3"));
+    // Verify original file is 100% untouched byte-for-byte
+    assert_eq!(std::fs::read(&song).unwrap(), initial_bytes);
+    // Verify no stray stage files were left behind
+    assert_eq!(editor.list_backups(&song).len(), 0);
+
+    // 2. Crash Recovery: Clean leftover temp staging files
+    let stray_stage = root.join(".musicplayer-stage-1234.tmp");
+    let stray_bak = root.join(".musicplayer-backup_stage-5678.tmp");
+    std::fs::write(&stray_stage, b"stray-stage-data").unwrap();
+    std::fs::write(&stray_bak, b"stray-backup-data").unwrap();
+    assert!(stray_stage.exists());
+    assert!(stray_bak.exists());
+    clean_stale_temp_files(&root);
+    assert!(!stray_stage.exists(), "stale stage file must be purged");
+    assert!(!stray_bak.exists(), "stale backup stage file must be purged");
+
+    // 3. Successful Edit and Byte-for-Byte Restoration
+    let valid_edit = TagEdit {
+        title: Some("Modified Title".to_string()),
+        artist: Some("Modified Artist".to_string()),
+        ..Default::default()
+    };
+    let backup_snapshot = editor.save(&song, &valid_edit).expect("Valid save must succeed");
+    let modified_bytes = std::fs::read(&song).unwrap();
+    assert_ne!(modified_bytes, initial_bytes, "Bytes must change after tag save");
+    assert_eq!(editor.list_backups(&song).len(), 1);
+
+    // Restore from backup snapshot
+    editor.restore(&backup_snapshot).expect("Restore must succeed");
+    let restored_bytes = std::fs::read(&song).unwrap();
+    assert_eq!(
+        restored_bytes, initial_bytes,
+        "Restored file must be 100% byte-for-byte identical to the original prior to edit"
+    );
+
+    // 4. Fixed 5-backup Retention Cap
+    for i in 1..=8 {
+        let edit = TagEdit {
+            title: Some(format!("Edit Version {}", i)),
+            ..Default::default()
+        };
+        editor.save(&song, &edit).unwrap();
+    }
+    let retained = editor.list_backups(&song);
+    assert_eq!(
+        retained.len(),
+        5,
+        "Backup retention must cap strictly at 5 backups per track"
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
