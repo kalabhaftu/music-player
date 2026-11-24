@@ -57,6 +57,17 @@ extern "system" {
     fn RegCloseKey(hKey: isize) -> i32;
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    #[allow(dead_code)]
+    fn GetDiskFreeSpaceExW(
+        lpDirectoryName: *const u16,
+        lpFreeBytesAvailableToCaller: *mut u64,
+        lpTotalNumberOfBytes: *mut u64,
+        lpTotalNumberOfFreeBytes: *mut u64,
+    ) -> i32;
+}
+
 const HKEY_CURRENT_USER: isize = -2147483647isize; // 0x80000001 as i32 as isize
 const KEY_QUERY_VALUE: u32 = 0x0001;
 
@@ -724,6 +735,29 @@ pub fn restore_window_placement(hwnd: isize, store: &music_player_core::LibraryS
     }
 }
 
+/// Returns the free bytes available to the user on the drive containing `path`.
+#[allow(dead_code)]
+pub fn available_disk_space_bytes(path: &Path) -> Option<u64> {
+    #[cfg(windows)]
+    unsafe {
+        let mut wide: Vec<u16> = path.to_string_lossy().encode_utf16().collect();
+        wide.push(0);
+        let mut free: u64 = 0;
+        let mut total: u64 = 0;
+        let mut total_free: u64 = 0;
+        if GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut total, &mut total_free) != 0 {
+            Some(free)
+        } else {
+            None
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -731,6 +765,17 @@ mod tests {
     #[test]
     fn test_extract_artwork_palette_nonexistent() {
         assert!(extract_artwork_palette(Path::new("nonexistent_test_art.jpg")).is_none());
+    }
+
+    #[test]
+    fn test_available_disk_space_bytes() {
+        let temp = std::env::temp_dir();
+        let space = available_disk_space_bytes(&temp);
+        #[cfg(windows)]
+        {
+            assert!(space.is_some(), "Disk space query should succeed on Windows");
+            assert!(space.unwrap() > 0, "Available disk space must be greater than 0");
+        }
     }
 
     #[test]

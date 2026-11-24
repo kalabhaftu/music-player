@@ -100,8 +100,19 @@ fn read_body(request: *mut c_void, timeout: Duration) -> Result<Vec<u8>, String>
     Ok(body)
 }
 
-/// Performs a blocking GET. The caller owns rate limiting and retries.
+/// Performs a blocking GET with one automatic retry on transient failure.
 pub fn get(url: &str, user_agent: &str, timeout: Duration) -> Result<HttpResponse, String> {
+    match get_once(url, user_agent, timeout) {
+        Ok(res) => Ok(res),
+        Err(_) => {
+            // One-shot automatic retry after brief backoff on transient network glitch
+            std::thread::sleep(Duration::from_millis(250));
+            get_once(url, user_agent, timeout)
+        }
+    }
+}
+
+fn get_once(url: &str, user_agent: &str, timeout: Duration) -> Result<HttpResponse, String> {
     let (host, path) = split_https_url(url)?;
     let agent = wide(user_agent);
     let mut raw_session = unsafe {

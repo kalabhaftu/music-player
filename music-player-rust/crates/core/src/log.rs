@@ -195,13 +195,54 @@ impl LocalAppLog {
             for item in dir.flatten() {
                 let path = item.path();
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with(LOG_PREFIX) && name.contains(".log") {
+                if (name.starts_with(LOG_PREFIX) && name.contains(".log")) || name == "crash.log" {
                     files.push(path);
                 }
             }
         }
         files.sort();
         write_zip(dest, &self.folder, &files)
+    }
+
+    /// Installs a panic hook that logs any unhandled panics with backtrace info
+    /// to `%LOCALAPPDATA%\MusicPlayer\Logs\crash.log`.
+    pub fn install_panic_hook(&self) {
+        let folder = self.folder.clone();
+        let old_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let now = Utc::now().to_rfc3339();
+            let crash_file = folder.join("crash.log");
+            let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                *s
+            } else if let Some(s) = info.payload().downcast_ref::<String>() {
+                s.as_str()
+            } else {
+                "Unknown panic payload"
+            };
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_else(|| "unknown location".to_string());
+            let thread = std::thread::current();
+            let thread_name = thread.name().unwrap_or("unnamed");
+
+            let report = format!(
+                "\n==================== CRASH REPORT ====================\n\
+                 Timestamp: {}\n\
+                 Thread: {}\n\
+                 Location: {}\n\
+                 Message: {}\n\
+                 ======================================================\n",
+                now, thread_name, location, payload
+            );
+
+            let _ = std::fs::create_dir_all(&folder);
+            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&crash_file) {
+                let _ = f.write_all(report.as_bytes());
+            }
+
+            old_hook(info);
+        }));
     }
 }
 

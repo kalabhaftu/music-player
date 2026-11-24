@@ -356,6 +356,7 @@ impl App {
 }
 
 fn main() -> std::result::Result<(), slint::PlatformError> {
+    LocalAppLog::shared().install_panic_hook();
     let cli_args: Vec<String> = std::env::args().skip(1).collect();
 
     // Native file association registration without PowerShell:
