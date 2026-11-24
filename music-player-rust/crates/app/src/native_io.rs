@@ -612,7 +612,7 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
     if width == 0 || height == 0 {
         return None;
     }
-    let factor = (320.0 / (width.max(height) as f32)).clamp(0.0, 1.0);
+    let factor = (400.0 / (width.max(height) as f32)).clamp(0.0, 1.0);
     let target_width = ((width as f32 * factor).round() as u32).max(1);
     let target_height = ((height as f32 * factor).round() as u32).max(1);
     let scaled = image::imageops::resize(
@@ -621,7 +621,7 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
         target_height,
         image::imageops::FilterType::Triangle,
     );
-    let blurred = image::imageops::blur(&scaled, 18.0);
+    let blurred = image::imageops::blur(&scaled, 26.0);
     let (b_w, b_h) = blurred.dimensions();
     let image = rgba_to_image(blurred.into_raw(), b_w, b_h);
     if let Ok(mut guard) = blurred_cache().lock() {
@@ -663,6 +663,65 @@ pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
         guard.insert(path.to_path_buf(), palette.clone());
     }
     Some(palette)
+}
+
+pub fn save_window_placement(hwnd: isize, store: &music_player_core::LibraryStore) {
+    if hwnd == 0 {
+        return;
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowPlacement, WINDOWPLACEMENT, SW_SHOWMAXIMIZED,
+        };
+        let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
+        wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+        if GetWindowPlacement(hwnd as _, &mut wp) != 0 {
+            let maximized = wp.showCmd == SW_SHOWMAXIMIZED as u32;
+            let _ = store.set_setting("window-maximized", if maximized { "true" } else { "false" });
+            let norm = wp.rcNormalPosition;
+            let width = (norm.right - norm.left).clamp(720, 3840);
+            let height = (norm.bottom - norm.top).clamp(500, 2160);
+            let _ = store.set_setting("window-width", &width.to_string());
+            let _ = store.set_setting("window-height", &height.to_string());
+            let _ = store.set_setting("window-x", &norm.left.to_string());
+            let _ = store.set_setting("window-y", &norm.top.to_string());
+        }
+    }
+}
+
+pub fn restore_window_placement(hwnd: isize, store: &music_player_core::LibraryStore) {
+    if hwnd == 0 {
+        return;
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, ShowWindow, SW_MAXIMIZE, SWP_NOZORDER, SWP_NOACTIVATE,
+        };
+        use windows_sys::Win32::Graphics::Gdi::{
+            MonitorFromRect, MONITOR_DEFAULTTONULL,
+        };
+        use windows_sys::Win32::Foundation::RECT;
+
+        let w = store.get_setting("window-width").ok().flatten().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1024).clamp(720, 3840);
+        let h = store.get_setting("window-height").ok().flatten().and_then(|s| s.parse::<i32>().ok()).unwrap_or(640).clamp(500, 2160);
+        let x = store.get_setting("window-x").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let y = store.get_setting("window-y").ok().flatten().and_then(|s| s.parse::<i32>().ok());
+        let is_maximized = store.get_setting("window-maximized").ok().flatten().as_deref() == Some("true");
+
+        if let (Some(x), Some(y)) = (x, y) {
+            let rect = RECT { left: x, top: y, right: x + w, bottom: y + h };
+            let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL);
+            if !monitor.is_null() {
+                SetWindowPos(hwnd as _, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+
+        if is_maximized {
+            ShowWindow(hwnd as _, SW_MAXIMIZE);
+        }
+    }
 }
 
 #[cfg(test)]

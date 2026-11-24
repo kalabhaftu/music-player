@@ -29,11 +29,21 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_window_resized(move |w, h| {
-            if (720..=2560).contains(&w) && (500..=1600).contains(&h) {
-                let app = a.borrow();
-                let _ = app.store.set_setting("window-width", &w.to_string());
-                let _ = app.store.set_setting("window-height", &h.to_string());
-            }
+            let app = a.borrow();
+            let _ = app.store.set_setting("window-width", &w.to_string());
+            let _ = app.store.set_setting("window-height", &h.to_string());
+            let hwnd = app
+                .ui
+                .window()
+                .window_handle()
+                .window_handle()
+                .ok()
+                .and_then(|handle| match handle.as_raw() {
+                    RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            native_io::save_window_placement(hwnd, &app.store);
         });
     }
     {

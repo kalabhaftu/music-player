@@ -373,12 +373,13 @@ export component LyricsView inherits Rectangle {
                 height: 38px;
                 border-radius: 19px;
                 border-width: 1px;
-                border-color: State.accent.with-alpha(0.6);
-                background: Palette.raised;
+                border-color: resume-ta.has-hover ? State.accent : State.accent.with-alpha(0.6);
+                background: resume-ta.has-hover ? Palette.hover : Palette.raised;
                 drop-shadow-offset-x: 0px;
                 drop-shadow-offset-y: 4px;
                 drop-shadow-blur: 16px;
                 drop-shadow-color: #00000060;
+                animate background { duration: 120ms; }
                 Image {
                     source: @image-url("../../assets/icons/locate.svg");
                     width: 18px;
@@ -387,7 +388,7 @@ export component LyricsView inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     colorize: State.accent;
                 }
-                TouchArea {
+                resume-ta := TouchArea {
                     mouse-cursor: pointer;
                     clicked => {
                         State.lyrics-scroll-paused = false;
@@ -411,6 +412,7 @@ export component LyricsView inherits Rectangle {
 export component AudioView inherits Rectangle {
     ScrollView {
         VerticalLayout {
+            width: parent.width;
             padding-left: clamp(16px, State.window-width * 0.02 * 1px, 28px);
             padding-right: clamp(16px, State.window-width * 0.02 * 1px, 28px);
             padding-top: 20px;
@@ -524,8 +526,8 @@ export component AudioView inherits Rectangle {
                         alignment: center;
                         for band[index] in State.eq-bands : VerticalLayout {
                             horizontal-stretch: 1;
-                            min-width: 20px;
-                            max-width: 60px;
+                            min-width: 14px;
+                            max-width: 50px;
                             spacing: 10px;
                             alignment: center;
                             Text {

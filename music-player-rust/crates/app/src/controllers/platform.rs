@@ -417,8 +417,8 @@ impl App {
         unsafe {
             use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
-                LR_SHARED, WM_SETICON,
+                LoadImageW, SendMessageW, SetClassLongPtrW, GCLP_HICON, GCLP_HICONSM, ICON_BIG,
+                ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE, LR_SHARED, WM_SETICON,
             };
             let hinstance = GetModuleHandleW(std::ptr::null());
             let icon_big = LoadImageW(
@@ -439,9 +439,11 @@ impl App {
             );
             if icon_big != std::ptr::null_mut() {
                 SendMessageW(hwnd as _, WM_SETICON, ICON_BIG as _, icon_big as isize);
+                SetClassLongPtrW(hwnd as _, GCLP_HICON, icon_big as isize);
             }
             if icon_small != std::ptr::null_mut() {
                 SendMessageW(hwnd as _, WM_SETICON, ICON_SMALL as _, icon_small as isize);
+                SetClassLongPtrW(hwnd as _, GCLP_HICONSM, icon_small as isize);
             }
         }
 

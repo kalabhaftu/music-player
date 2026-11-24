@@ -137,7 +137,9 @@ impl App {
             position,
             duration,
         );
-        let display_position = self.seek_preview_ms.unwrap_or(position);
+        let track_duration = self.current.as_ref().map(|t| t.duration_ms as u64).unwrap_or(0);
+        let duration = if duration > 0 { duration } else { track_duration };
+        let display_position = self.seek_preview_ms.unwrap_or(position).min(duration);
         let progress = if duration > 0 {
             (display_position as f32 / duration as f32).clamp(0.0, 1.0)
         } else {

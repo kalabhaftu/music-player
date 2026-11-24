@@ -207,6 +207,9 @@ impl App {
                     let title = file_stem(&path);
                     match self.engine.begin_crossfade(&path, request.duration_ms) {
                         CrossfadeOutcome::Committed => {
+                            self.crossfade_in_progress = false;
+                            self.crossfade_source_index = None;
+                            self.crossfade_failure_source = None;
                             if let Some(track) = self.store.get_track(&path).ok().flatten() {
                                 self.update_current_track(&track);
                             }
