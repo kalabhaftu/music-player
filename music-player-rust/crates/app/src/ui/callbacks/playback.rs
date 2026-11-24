@@ -23,11 +23,30 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_play_view(move |view| {
-            a.borrow_mut().set_view(&view, "", "", "");
-            let paths = a.borrow().view_paths.clone();
+            let mut app = a.borrow_mut();
+            app.set_view(&view, "", "", "");
+            let paths = app.view_paths.clone();
             if let Some(path) = paths.first() {
-                if let Some(track) = a.borrow().store.get_track(path).ok().flatten() {
-                    a.borrow_mut().play_track(track, true, Some(0));
+                if let Some(track) = app.store.get_track(path).ok().flatten() {
+                    app.play_track(track, true, Some(0));
+                }
+            }
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_shuffle_view(move |view| {
+            let mut app = a.borrow_mut();
+            app.set_view(&view, "", "", "");
+            let paths = app.view_paths.clone();
+            if !paths.is_empty() {
+                app.coordinator.queue_mut().replace(paths, Some(0));
+                app.coordinator.queue_mut().set_shuffle(true);
+                app.coordinator.queue_mut().shuffle_upcoming(0);
+                if let Some(path) = app.coordinator.queue().entries().first().cloned() {
+                    if let Some(track) = app.store.get_track(&path).ok().flatten() {
+                        app.play_track(track, false, Some(0));
+                    }
                 }
             }
         });
@@ -36,21 +55,23 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_play_group(move |column, value| {
             let mut app = a.borrow_mut();
-            app.set_view(
-                match column.as_str() {
-                    "album" => "Album",
-                    "artist" => "Artist",
-                    "genre" => "Genre",
-                    _ => "Folder",
+            let query = music_player_core::TrackQuery {
+                group_column: Some(column.to_string()),
+                group_value: Some(value.to_string()),
+                sort: if column == "album" {
+                    music_player_core::TrackSort::TrackNumber
+                } else {
+                    music_player_core::TrackSort::Title
                 },
-                "",
-                &value,
-                "",
-            );
-            let paths = app.view_paths.clone();
-            if let Some(path) = paths.first() {
-                if let Some(track) = app.store.get_track(path).ok().flatten() {
-                    app.play_track(track, true, Some(0));
+                page_size: 10_000,
+                ..Default::default()
+            };
+            if let Ok((tracks, _)) = app.store.query_track_page(&query) {
+                if !tracks.is_empty() {
+                    let paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+                    app.coordinator.queue_mut().replace(paths, Some(0));
+                    let first = tracks[0].clone();
+                    app.play_track(first, false, Some(0));
                 }
             }
         });
@@ -71,20 +92,25 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>()
             .on_play_group_shuffle(move |column, value| {
-                let view = match column.as_str() {
-                    "album" => "Album",
-                    "artist" => "Artist",
-                    "genre" => "Genre",
-                    _ => "Folder",
-                };
                 let mut app = a.borrow_mut();
-                app.set_view(view, "", &value, "");
-                let paths = app.view_paths.clone();
-                if !paths.is_empty() {
-                    app.coordinator.queue_mut().replace(paths.clone(), Some(0));
-                    app.coordinator.queue_mut().shuffle_upcoming(1);
-                    if let Some(track) = app.store.get_track(&paths[0]).ok().flatten() {
-                        app.play_track(track, false, Some(0));
+                let query = music_player_core::TrackQuery {
+                    group_column: Some(column.to_string()),
+                    group_value: Some(value.to_string()),
+                    sort: music_player_core::TrackSort::Title,
+                    page_size: 10_000,
+                    ..Default::default()
+                };
+                if let Ok((tracks, _)) = app.store.query_track_page(&query) {
+                    if !tracks.is_empty() {
+                        let paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+                        app.coordinator.queue_mut().replace(paths, Some(0));
+                        app.coordinator.queue_mut().set_shuffle(true);
+                        app.coordinator.queue_mut().shuffle_upcoming(0);
+                        if let Some(path) = app.coordinator.queue().entries().first().cloned() {
+                            if let Some(track) = app.store.get_track(&path).ok().flatten() {
+                                app.play_track(track, false, Some(0));
+                            }
+                        }
                     }
                 }
             });

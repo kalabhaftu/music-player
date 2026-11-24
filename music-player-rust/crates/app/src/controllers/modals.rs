@@ -646,11 +646,7 @@ impl App {
             (embedded, "embedded tags")
         } else if let Some(doc) = &self.lyrics_doc {
             (
-                doc.lines
-                    .iter()
-                    .map(|l| l.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
+                music_player_core::lyrics::format_lrc(doc),
                 "currently loaded lyrics",
             )
         } else {

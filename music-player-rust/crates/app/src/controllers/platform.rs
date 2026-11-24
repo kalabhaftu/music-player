@@ -415,10 +415,34 @@ impl App {
 
         #[cfg(windows)]
         unsafe {
+            use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                SendMessageW, ICON_SMALL, WM_SETICON,
+                LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
+                LR_SHARED, WM_SETICON,
             };
-            SendMessageW(hwnd as _, WM_SETICON, ICON_SMALL as _, 0);
+            let hinstance = GetModuleHandleW(std::ptr::null());
+            let icon_big = LoadImageW(
+                hinstance,
+                1 as *const u16,
+                IMAGE_ICON,
+                0,
+                0,
+                LR_DEFAULTSIZE | LR_SHARED,
+            );
+            let icon_small = LoadImageW(
+                hinstance,
+                1 as *const u16,
+                IMAGE_ICON,
+                16,
+                16,
+                LR_SHARED,
+            );
+            if icon_big != std::ptr::null_mut() {
+                SendMessageW(hwnd as _, WM_SETICON, ICON_BIG as _, icon_big as isize);
+            }
+            if icon_small != std::ptr::null_mut() {
+                SendMessageW(hwnd as _, WM_SETICON, ICON_SMALL as _, icon_small as isize);
+            }
         }
 
         self.publish_appearance();

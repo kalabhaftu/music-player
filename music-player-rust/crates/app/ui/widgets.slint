@@ -117,7 +117,7 @@ export component IcBtn inherits Rectangle {
 
 export component PlayerSlider inherits Rectangle {
     out property <bool> hovered: area.has-hover;
-    in-out property <float> value: 0.0;
+    in property <float> value: 0.0;
     in property <float> minimum: 0.0;
     in property <float> maximum: 1.0;
     in property <color> fill-color: #e2e6e1;
@@ -126,6 +126,11 @@ export component PlayerSlider inherits Rectangle {
     in property <bool> scrollable: false;
     in property <bool> commit-on-release: false;
     in property <float> scroll-step: 0.0;
+
+    property <bool> is-dragging: false;
+    property <float> drag-value: 0.0;
+    property <float> current-val: is-dragging ? drag-value : value;
+
     callback changed(float);
     callback preview(float);
     callback finished(float);
@@ -141,29 +146,44 @@ export component PlayerSlider inherits Rectangle {
             }
             if (root.scrollable) {
                 let step = root.scroll-step > 0.0 ? root.scroll-step : max(0.01, (root.maximum - root.minimum) * 0.04);
-                let delta = event.delta-y > 0px ? -step : (event.delta-y < 0px ? step : 0.0);
+                let delta = event.delta-y > 0px ? step : (event.delta-y < 0px ? -step : 0.0);
                 if (delta != 0.0) {
-                    root.value = clamp(root.value + delta, root.minimum, root.maximum);
-                    root.changed(root.value);
+                    let next-val = clamp(root.current-val + delta, root.minimum, root.maximum);
+                    root.changed(next-val);
                     return accept;
                 }
             }
             reject
         }
         clicked => {
-            root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
-            if (!root.commit-on-release) { root.changed(root.value); }
+            let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+            root.drag-value = next-val;
+            if (root.commit-on-release) { root.finished(next-val); }
+            else { root.changed(next-val); }
         }
         pointer-event(event) => {
-            if (event.kind == PointerEventKind.down || (event.kind == PointerEventKind.move && area.pressed)) {
-                root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
-                if (root.commit-on-release) { root.preview(root.value); }
-                else { root.changed(root.value); }
-            }
-            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && root.commit-on-release) {
-                root.value = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
-                root.preview(root.value);
-                root.finished(root.value);
+            if (event.kind == PointerEventKind.down) {
+                root.is-dragging = true;
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                if (root.commit-on-release) { root.preview(next-val); }
+                else { root.changed(next-val); }
+            } else if (event.kind == PointerEventKind.move && area.pressed) {
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                if (root.commit-on-release) { root.preview(next-val); }
+                else { root.changed(next-val); }
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.is-dragging = false;
+                if (root.commit-on-release) {
+                    root.finished(next-val);
+                } else {
+                    root.changed(next-val);
+                }
+            } else if (event.kind == PointerEventKind.cancel) {
+                root.is-dragging = false;
             }
         }
     }
@@ -181,7 +201,7 @@ export component PlayerSlider inherits Rectangle {
             x: 0px;
             y: 0px;
             height: 4px;
-            width: parent.width * clamp((root.value - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0);
+            width: parent.width * clamp((root.current-val - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0);
             border-radius: 99px;
             background: area.has-hover || area.pressed ? State.accent : root.fill-color;
             animate background { duration: 100ms; }
@@ -190,7 +210,7 @@ export component PlayerSlider inherits Rectangle {
 
     // Thumb dot
     Rectangle {
-        x: clamp(parent.width * clamp((root.value - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0) - self.width / 2, 0px, parent.width - self.width);
+        x: clamp(parent.width * clamp((root.current-val - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0) - self.width / 2, 0px, parent.width - self.width);
         y: (parent.height - self.height) / 2;
         width: 8px;
         height: 8px;
@@ -202,10 +222,15 @@ export component PlayerSlider inherits Rectangle {
 }
 
 export component VerticalEqSlider inherits Rectangle {
-    in-out property <float> value: 0.0;
+    in property <float> value: 0.0;
     in property <float> minimum: -20.0;
     in property <float> maximum: 20.0;
     in property <float> step: 0.5;
+
+    property <bool> is-dragging: false;
+    property <float> drag-value: 0.0;
+    property <float> current-val: is-dragging ? drag-value : value;
+
     callback changed(float);
 
     width: 36px;
@@ -215,10 +240,10 @@ export component VerticalEqSlider inherits Rectangle {
     area := TouchArea {
         mouse-cursor: ns-resize;
         scroll-event(event) => {
-            let delta = event.delta-y > 0px ? -root.step : (event.delta-y < 0px ? root.step : 0.0);
+            let delta = event.delta-y > 0px ? root.step : (event.delta-y < 0px ? -root.step : 0.0);
             if (delta != 0.0) {
-                root.value = clamp(root.value + delta, root.minimum, root.maximum);
-                root.changed(root.value);
+                let next-val = clamp(root.current-val + delta, root.minimum, root.maximum);
+                root.changed(next-val);
                 return accept;
             }
             reject
@@ -227,16 +252,36 @@ export component VerticalEqSlider inherits Rectangle {
             let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
             let raw = root.minimum + frac * (root.maximum - root.minimum);
             let stepped = round(raw / root.step) * root.step;
-            root.value = clamp(stepped, root.minimum, root.maximum);
-            root.changed(root.value);
+            let next-val = clamp(stepped, root.minimum, root.maximum);
+            root.drag-value = next-val;
+            root.changed(next-val);
         }
         pointer-event(event) => {
-            if (event.kind == PointerEventKind.down || (event.kind == PointerEventKind.move && area.pressed)) {
+            if (event.kind == PointerEventKind.down) {
+                root.is-dragging = true;
                 let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
                 let raw = root.minimum + frac * (root.maximum - root.minimum);
                 let stepped = round(raw / root.step) * root.step;
-                root.value = clamp(stepped, root.minimum, root.maximum);
-                root.changed(root.value);
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.move && area.pressed) {
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.is-dragging = false;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.cancel) {
+                root.is-dragging = false;
             }
         }
     }
@@ -558,9 +603,8 @@ export component TrackRow inherits Rectangle {
                 root.context(round((root.absolute-position.x + area.mouse-x) / 1px), round((root.absolute-position.y + area.mouse-y) / 1px));
             }
         }
-    }
 
-    HorizontalLayout {
+        HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
@@ -646,10 +690,10 @@ export component TrackRow inherits Rectangle {
 
             VerticalLayout {
                 alignment: center;
-                HorizontalLayout {
+                actions-layout := HorizontalLayout {
                     spacing: 2px;
                     alignment: center;
-                    opacity: area.has-hover ? 1.0 : 0.0;
+                    opacity: area.has-hover || root.track.is-favorite ? 1.0 : 0.0;
                     animate opacity { duration: 120ms; }
 
                     if State.show-list-favorite : IcBtn {
@@ -735,6 +779,7 @@ export component TrackRow inherits Rectangle {
             vertical-alignment: center;
         }
     }
+}
 }
 
 // Sortable table header.
@@ -994,11 +1039,11 @@ export component CardTile inherits Rectangle {
             }
 
             Rectangle {
-                width: 38px;
-                height: 38px;
-                x: parent.width - self.width - 10px;
-                y: parent.height - self.height - 10px;
-                border-radius: 19px;
+                width: 44px;
+                height: 44px;
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                border-radius: 22px;
                 drop-shadow-offset-x: 0px;
                 drop-shadow-offset-y: 8px;
                 drop-shadow-blur: 20px;
@@ -1010,14 +1055,18 @@ export component CardTile inherits Rectangle {
 
                 Image {
                     source: @image-url("../assets/icons/play.svg");
-                    width: 16px;
-                    height: 16px;
+                    width: 18px;
+                    height: 18px;
                     x: (parent.width - self.width) / 2 + 1px;
                     y: (parent.height - self.height) / 2;
                     colorize: Palette.accent-ink;
                 }
 
                 fab-area := TouchArea {
+                    width: 48px;
+                    height: 48px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
                     mouse-cursor: pointer;
                     clicked => { root.play(); }
                 }

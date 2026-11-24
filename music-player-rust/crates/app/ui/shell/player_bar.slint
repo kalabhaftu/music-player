@@ -262,12 +262,12 @@ export component PlayerBar inherits Rectangle {
     right-col := VerticalLayout {
         x: center-col.x + center-col.width + (State.window-width <= 650 ? 8px : 12px);
         y: 10px;
-        width: max(0px, parent.width - self.x - (State.window-width <= 650 ? 12px : 24px));
+        width: max(0px, parent.width - self.x);
         height: parent.height - 20px;
         alignment: center;
 
         HorizontalLayout {
-            padding-right: State.window-width <= 650 ? 8px : 16px;
+            padding-right: State.window-width <= 650 ? 12px : 24px;
             spacing: State.window-width <= 650 ? 2px : (State.window-width <= 900 ? 3px : 7px);
             alignment: end;
 

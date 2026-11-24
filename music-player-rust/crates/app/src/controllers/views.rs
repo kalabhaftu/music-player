@@ -1986,6 +1986,26 @@ impl App {
                             state.set_lyrics_timed(matched.timed);
                             state.set_lyrics_active_line(-1);
 
+                            // Persist fetched lyrics: embed first, fallback to sidecar
+                            let text_to_save = matched.raw.clone();
+                            let track_path = path.clone();
+                            let store = self.store.clone();
+                            std::thread::spawn(move || {
+                                let stored = TagEditor::new(tag_backups_dir())
+                                    .save(
+                                        &track_path,
+                                        &TagEdit {
+                                            lyrics: Some(text_to_save.clone()),
+                                            ..TagEdit::default()
+                                        },
+                                    )
+                                    .is_ok();
+                                if !stored {
+                                    let _ = write_sidecar(&track_path, &text_to_save);
+                                }
+                                let _ = store.update_track_lyrics_status(&track_path, true);
+                            });
+
                             // Sync position if audio is currently playing this track
                             let position_ms = self.engine.position_ms();
                             if position_ms > 0 {

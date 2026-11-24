@@ -394,14 +394,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(1024)
-            .clamp(720, 1400);
+            .clamp(720, 2560);
         let h = store
             .get_setting("window-height")
             .ok()
             .flatten()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(640)
-            .clamp(500, 900);
+            .clamp(500, 1600);
         ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
     }
 

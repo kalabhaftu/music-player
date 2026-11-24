@@ -25,8 +25,7 @@ export component SongsView inherits Rectangle {
             ActionBtn {
                 label: "Shuffle";
                 clicked => {
-                    if (!State.shuffle) { Actions.toggle-shuffle(); }
-                    Actions.play-view(State.view);
+                    Actions.shuffle-view(State.view);
                 }
             }
         }

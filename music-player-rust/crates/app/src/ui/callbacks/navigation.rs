@@ -29,7 +29,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_window_resized(move |w, h| {
-            if (720..=1400).contains(&w) && (500..=900).contains(&h) {
+            if (720..=2560).contains(&w) && (500..=1600).contains(&h) {
                 let app = a.borrow();
                 let _ = app.store.set_setting("window-width", &w.to_string());
                 let _ = app.store.set_setting("window-height", &h.to_string());
