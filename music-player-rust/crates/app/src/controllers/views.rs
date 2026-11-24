@@ -849,7 +849,13 @@ impl App {
             let _ = self.engine.set_audio_output_device("");
             selected_name = "System default".into();
         }
+        let current_preset = self.settings.eq_current();
+        if current_preset == "Off" {
+            self.eq_bands = [0.0; 10];
+            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
+        }
         let state = self.ui.global::<State>();
+        state.set_eq_preset(ss(&current_preset));
         state.set_eq_bands(ui_model(bands).into());
         state.set_eq_preamp(self.eq_preamp);
         state.set_eq_presets(ui_model(presets.into_iter().map(ss).collect::<Vec<_>>()).into());

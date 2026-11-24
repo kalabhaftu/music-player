@@ -2151,6 +2151,97 @@ fn test_stage1_controller_workflows_and_hybrid_engine() {
 }
 
 #[test]
+fn test_stage2_startup_discovery_fingerprints_and_threshold_behavior() {
+    use music_player_core::IndexResult;
+    use std::path::Path;
+
+    let test_dir = temp_dir("startup-discovery-test");
+    let music_folder = test_dir.join("music");
+    let artwork_cache = test_dir.join("artwork");
+    let db_path = test_dir.join("library.db");
+    std::fs::create_dir_all(&music_folder).unwrap();
+    std::fs::create_dir_all(&artwork_cache).unwrap();
+
+    let store = LibraryStore::open(&db_path).expect("open store failed");
+
+    // Helper closure to create synthetic mp3
+    let create_mp3 = |path: &Path, title: &str, artist: &str| {
+        let mut payload = Vec::new();
+        payload.extend(id3_text_frame("TIT2", &[title]));
+        payload.extend(id3_text_frame("TPE1", &[artist]));
+        payload.extend(id3_text_frame("TALB", &["Startup Album"]));
+        let mut seed = id3v23_tag(&payload);
+        seed.extend_from_slice(b"fake-audio-payload-for-discovery");
+        std::fs::write(path, &seed).unwrap();
+    };
+
+    // Helper closure to run coordinator scan synchronously
+    let run_scan = |store: &LibraryStore, roots: &[PathBuf], cache: &Path| -> IndexResult {
+        let mut coordinator = LibraryScanCoordinator::new(store).with_artwork_cache(cache.to_path_buf());
+        assert!(coordinator.start(roots, &[], false, None, None));
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while coordinator.is_running() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!coordinator.is_running(), "scan timed out");
+        coordinator.poll_result().expect("poll_result missing").expect("scan failed")
+    };
+
+    // 1. Initial State: Track 1 exists
+    let song1 = music_folder.join("song1.mp3");
+    create_mp3(&song1, "Song One", "Artist One");
+
+    let result1 = run_scan(&store, &[music_folder.clone()], &artwork_cache);
+    assert_eq!(result1.files_found, 1);
+    assert_eq!(result1.indexed, 1);
+    assert_eq!(result1.removed, 0);
+    assert_eq!(store.get_library_stats().unwrap().total_tracks, 1);
+
+    // 2. Simulate recent scan (< 12 hours ago, e.g. 5 minutes ago)
+    let five_minutes_ago = Utc::now() - chrono::Duration::minutes(5);
+    store
+        .set_setting(
+            music_player_core::settings::keys::LIBRARY_LAST_SCAN_UTC,
+            &five_minutes_ago.to_rfc3339(),
+        )
+        .unwrap();
+
+    // 3. User adds a new track (Song 2) while application is closed
+    let song2 = music_folder.join("song2.mp3");
+    create_mp3(&song2, "Song Two", "Artist Two");
+
+    // 4. Startup discovery scan runs (force: false)
+    // Must discover Song 2 even though last scan was only 5 minutes ago!
+    let result2 = run_scan(&store, &[music_folder.clone()], &artwork_cache);
+    assert_eq!(result2.files_found, 2);
+    // Song 1 must be skipped via fingerprint (is_unchanged = true), only Song 2 is indexed:
+    assert_eq!(result2.indexed, 1, "Only newly added Song 2 should be indexed");
+    assert_eq!(result2.removed, 0);
+    assert_eq!(store.get_library_stats().unwrap().total_tracks, 2);
+
+    // 5. Subsequent run with zero changes
+    // All 2 files must be skipped via fingerprint without re-reading metadata
+    let result3 = run_scan(&store, &[music_folder.clone()], &artwork_cache);
+    assert_eq!(result3.files_found, 2);
+    assert_eq!(result3.indexed, 0, "No files should be indexed when unchanged");
+    assert_eq!(result3.removed, 0);
+    assert_eq!(store.get_library_stats().unwrap().total_tracks, 2);
+
+    // 6. Delete Song 1 and verify deletion discovery on startup scan
+    std::fs::remove_file(&song1).unwrap();
+    let result4 = run_scan(&store, &[music_folder.clone()], &artwork_cache);
+    assert_eq!(result4.files_found, 1);
+    assert_eq!(result4.indexed, 0);
+    assert_eq!(result4.removed, 1, "Deleted Song 1 must be removed from index");
+    assert_eq!(store.get_library_stats().unwrap().total_tracks, 1);
+
+    // Clean up
+    drop(store);
+    std::thread::sleep(Duration::from_millis(50));
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
 fn test_artwork_reliability_lifecycle_and_pruning_guards() {
     use music_player_core::metadata::{
         prune_unreferenced_artwork, save_artwork_to_cache_in, ArtworkOperationGuard,

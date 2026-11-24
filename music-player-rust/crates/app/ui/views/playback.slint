@@ -494,37 +494,35 @@ export component AudioView inherits Rectangle {
                     border-radius: 12px;
                     background: Palette.raised;
                     min-height: 290px;
-                    ScrollView {
-                        HorizontalLayout {
-                            padding-top: 24px;
-                            padding-bottom: 24px;
-                            padding-left: 14px;
-                            padding-right: 14px;
-                            spacing: 14px;
+                    HorizontalLayout {
+                        padding-top: 24px;
+                        padding-bottom: 24px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 12px;
+                        alignment: center;
+                        for band[index] in State.eq-bands : VerticalLayout {
+                            width: 44px;
+                            spacing: 10px;
                             alignment: center;
-                            for band[index] in State.eq-bands : VerticalLayout {
-                                min-width: 44px;
-                                spacing: 10px;
-                                alignment: center;
-                                Text {
-                                    text: band.label;
-                                    color: Palette.muted;
-                                    font-size: 11px;
-                                    font-weight: 700;
-                                    horizontal-alignment: center;
-                                }
-                                VerticalEqSlider {
-                                    minimum: -20.0;
-                                    maximum: 20.0;
-                                    value: band.value;
-                                    changed(val) => { Actions.set-eq-band(index, val); }
-                                }
-                                Text {
-                                    text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
-                                    color: Palette.text;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
-                                }
+                            Text {
+                                text: band.label;
+                                color: Palette.muted;
+                                font-size: 11px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            VerticalEqSlider {
+                                minimum: -20.0;
+                                maximum: 20.0;
+                                value: band.value;
+                                changed(val) => { Actions.set-eq-band(index, val); }
+                            }
+                            Text {
+                                text: band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB";
+                                color: Palette.text;
+                                font-size: 11px;
+                                horizontal-alignment: center;
                             }
                         }
                     }

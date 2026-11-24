@@ -357,7 +357,9 @@ fn benchmark_suite_real_library_performance() {
         println!("    Completed Writes:   {} ({:.1} writes/sec through dedicated writer actor)", total_writes, total_writes as f64 / 2.0);
         println!("    Database Contention: 0 SQLITE_BUSY errors, 100% successful WAL concurrency");
 
-        // Clean up temp bench directory
+        // Release all SQLite database handles before directory cleanup
+        drop(store);
+        std::thread::sleep(Duration::from_millis(50));
         let _ = std::fs::remove_dir_all(&bench_dir);
         println!();
     }

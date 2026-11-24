@@ -318,8 +318,9 @@ impl LibraryScanSession {
                 "scan_roots",
                 "scan_runs",
             ] {
+                let col = if table == "scan_runs" { "id" } else { "run_id" };
                 tx.execute(
-                    &format!("DELETE FROM {} WHERE run_id = ?1", table),
+                    &format!("DELETE FROM {} WHERE {} = ?1", table, col),
                     params![run],
                 )?;
             }

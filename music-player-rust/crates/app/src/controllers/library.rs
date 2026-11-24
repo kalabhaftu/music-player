@@ -73,25 +73,15 @@ impl App {
 
     pub(crate) fn startup_scan(&mut self) {
         let roots = self.settings.library_roots();
-        let recent = self
-            .settings
-            .raw(music_player_core::settings::keys::LIBRARY_LAST_SCAN_UTC)
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-            .map(|t| {
-                chrono::Utc::now().signed_duration_since(t.with_timezone(&chrono::Utc))
-                    < chrono::Duration::hours(12)
-            })
-            .unwrap_or(false);
-        if recent {
-            // Availability-only reconcile path (< 12 h since the last scan).
+        if roots.is_empty() {
+            // Availability-only reconcile path when no roots are configured.
             // Run in background thread so application startup and UI painting are never blocked.
             let availability = self.availability.clone();
-            let root_refs = roots.clone();
             std::thread::Builder::new()
                 .name("startup-reconcile".to_string())
                 .spawn(move || {
                     let reconciliation =
-                        availability.reconcile_indexed_tracks(&[], &[], Some(&root_refs));
+                        availability.reconcile_indexed_tracks(&[], &[], None);
                     let _ = availability.clear_unavailable_tracks_that_exist();
                     if reconciliation.unavailable_count > 0 || reconciliation.recovered_count > 0 {
                         LocalAppLog::shared().info(
@@ -104,9 +94,15 @@ impl App {
                     }
                 })
                 .ok();
-        } else {
-            self.start_scan(&roots, false);
+            return;
         }
+
+        // Always initiate background directory discovery on every startup (force: false).
+        // Uses fast file fingerprinting (size + mtime + artwork check) to skip unchanged files
+        // without re-reading metadata. Newly added, modified, deleted, and renamed files
+        // are detected in the background without blocking the UI. The 12-hour threshold
+        // never suppresses discovery of new files.
+        self.start_scan(&roots, false);
     }
 
     pub(crate) fn start_scan(&mut self, roots: &[String], force: bool) {
@@ -184,15 +180,17 @@ impl App {
         };
         self.ui.global::<State>().set_scan_outcome(ss(message));
         self.scan_outcome_time = Some(Instant::now());
-        self.track_cache.clear();
-        self.invalidate_view_caches();
         self.settings.set_raw(
             music_player_core::settings::keys::LIBRARY_LAST_SCAN_UTC,
             &chrono::Utc::now().to_rfc3339(),
         );
-        self.load_roots();
-        self.refresh_playlists();
-        self.refresh_view();
+        if index.indexed > 0 || index.removed > 0 {
+            self.track_cache.clear();
+            self.invalidate_view_caches();
+            self.load_roots();
+            self.refresh_playlists();
+            self.refresh_view();
+        }
     }
 
     pub(crate) fn on_paths_removed(&mut self, paths: &[PathBuf]) {

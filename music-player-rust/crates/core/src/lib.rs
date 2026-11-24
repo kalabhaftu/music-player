@@ -14,7 +14,7 @@ pub use audio::{
     canonical_preset_by_name, canonical_preset_names, quadratic_volume_curve, AudioEngine,
     EqualizerState, PlaybackStatus, QueueCoordinator, RepeatMode, CANONICAL_PRESETS,
     EQUALIZER_BANDS, EQUALIZER_BAND_FREQUENCIES_HZ, EQUALIZER_BAND_LABELS, EQUALIZER_PREAMP_MAX,
-    EQUALIZER_PREAMP_MIN,
+    EQUALIZER_PREAMP_MIN, NEUTRAL_EQUALIZER_PREAMP,
 };
 pub use db::LibraryStore;
 pub use db::tracks::TrackQuery;

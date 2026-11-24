@@ -520,16 +520,33 @@ pub fn load_artwork_image(path: &Path) -> Option<slint::Image> {
     Some(image)
 }
 
-static BLURRED_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, slint::Image>>> =
+struct BlurredCache {
+    entries: HashMap<PathBuf, slint::Image>,
+    order: std::collections::VecDeque<PathBuf>,
+}
+
+unsafe impl Send for BlurredCache {}
+unsafe impl Sync for BlurredCache {}
+
+static BLURRED_CACHE: std::sync::OnceLock<std::sync::Mutex<BlurredCache>> =
     std::sync::OnceLock::new();
+
+fn blurred_cache() -> &'static std::sync::Mutex<BlurredCache> {
+    BLURRED_CACHE.get_or_init(|| {
+        std::sync::Mutex::new(BlurredCache {
+            entries: HashMap::new(),
+            order: std::collections::VecDeque::new(),
+        })
+    })
+}
 
 pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
     if !path.is_file() {
         return None;
     }
-    let cache = BLURRED_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let cache = blurred_cache();
     if let Ok(guard) = cache.lock() {
-        if let Some(image) = guard.get(path).cloned() {
+        if let Some(image) = guard.entries.get(path).cloned() {
             return Some(image);
         }
     }
@@ -553,11 +570,15 @@ pub fn load_blurred_backdrop(path: &Path) -> Option<slint::Image> {
     let blurred = image::imageops::blur(&scaled, 14.0);
     let (b_w, b_h) = blurred.dimensions();
     let image = rgba_to_image(blurred.into_raw(), b_w, b_h);
-    if let Ok(mut guard) = cache.lock() {
-        if guard.len() >= 6 {
-            guard.clear();
+    if let Ok(mut guard) = blurred_cache().lock() {
+        while guard.order.len() >= 6 {
+            let Some(oldest) = guard.order.pop_front() else {
+                break;
+            };
+            guard.entries.remove(&oldest);
         }
-        guard.insert(path.to_path_buf(), image.clone());
+        guard.entries.insert(path.to_path_buf(), image.clone());
+        guard.order.push_back(path.to_path_buf());
     }
     Some(image)
 }

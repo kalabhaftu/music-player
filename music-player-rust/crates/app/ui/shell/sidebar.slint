@@ -136,7 +136,7 @@ export component NavRail inherits Rectangle {
 
         Flickable {
             vertical-stretch: 1;
-            viewport-height: nav-list.preferred-height;
+            content-height: nav-list.preferred-height;
             nav-list := VerticalLayout {
                 spacing: 2px;
                 for item in State.navigation-items : NavEntryRow {

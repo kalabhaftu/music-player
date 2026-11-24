@@ -25,7 +25,7 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyIcon, DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, HHOOK, HICON, HWND_MESSAGE,
-    IDI_APPLICATION, LoadIconW, LoadImageW, IMAGE_ICON, LR_DEFAULTCOLOR, SM_CXSMICON, SM_CYSMICON,
+    IDI_APPLICATION, LoadIconW, LoadImageW, IMAGE_ICON, LR_DEFAULTCOLOR, LR_LOADFROMFILE, SM_CXSMICON, SM_CYSMICON,
     PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW, SendMessageTimeoutW,
     SetForegroundWindow, SetTimer, SetWindowsHookExW, TrackPopupMenu, TranslateMessage,
     UnhookWindowsHookEx, HC_ACTION, HWND_BROADCAST,
@@ -347,6 +347,33 @@ unsafe fn run_tray_thread(
         icon = LoadIconW(hinstance, 1 as *const u16);
     }
     if icon.is_null() {
+        if let Ok(exe_dir) = std::env::current_exe().map(|p| p.parent().unwrap_or(std::path::Path::new("")).to_path_buf()) {
+            let candidates = [
+                exe_dir.join("assets/MusicPlayer.ico"),
+                exe_dir.join("../../crates/app/assets/MusicPlayer.ico"),
+                exe_dir.join("../../../packaging/icon.ico"),
+                std::path::PathBuf::from("crates/app/assets/MusicPlayer.ico"),
+            ];
+            for path in candidates {
+                if path.is_file() {
+                    let mut path_u16: Vec<u16> = path.to_string_lossy().encode_utf16().collect();
+                    path_u16.push(0);
+                    icon = LoadImageW(
+                        std::ptr::null_mut(),
+                        path_u16.as_ptr(),
+                        IMAGE_ICON,
+                        GetSystemMetrics(SM_CXSMICON),
+                        GetSystemMetrics(SM_CYSMICON),
+                        LR_LOADFROMFILE | LR_DEFAULTCOLOR,
+                    );
+                    if !icon.is_null() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if icon.is_null() {
         icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
     }
     let taskbar_created_name: Vec<u16> = "TaskbarCreated\0".encode_utf16().collect();
@@ -508,18 +535,26 @@ unsafe fn enable_dark_mode_support(hwnd: HWND) {
     let uxtheme_str = b"uxtheme.dll\0";
     let uxtheme = LoadLibraryA(uxtheme_str.as_ptr());
     if !uxtheme.is_null() {
+        let is_light = crate::native_io::prefers_light_theme();
+        let app_mode = if is_light { 3 } else { 2 }; // 3 = ForceLight, 2 = ForceDark
+
         // Ordinal 135: SetPreferredAppMode (Windows 10 1903+) / AllowDarkModeForApp (1809)
-        // Mode 1: AllowDark (follows system setting: dark if Windows is dark, light if Windows is light)
         let set_app_mode: Option<unsafe extern "system" fn(i32) -> i32> =
             std::mem::transmute(GetProcAddress(uxtheme, 135 as *const u8));
         if let Some(set_mode) = set_app_mode {
-            set_mode(1);
+            set_mode(app_mode);
         }
         // Ordinal 133: AllowDarkModeForWindow
         let allow_window: Option<unsafe extern "system" fn(HWND, i32) -> i32> =
             std::mem::transmute(GetProcAddress(uxtheme, 133 as *const u8));
         if let Some(allow) = allow_window {
-            allow(hwnd, 1);
+            allow(hwnd, if is_light { 0 } else { 1 });
+        }
+        // Ordinal 136: FlushMenuThemes
+        let flush_menu_themes: Option<unsafe extern "system" fn()> =
+            std::mem::transmute(GetProcAddress(uxtheme, 136 as *const u8));
+        if let Some(flush) = flush_menu_themes {
+            flush();
         }
     }
 }
