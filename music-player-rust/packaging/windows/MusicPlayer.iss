@@ -18,6 +18,9 @@ AppVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}.0
 VersionInfoProductVersion={#AppVersion}.0
 AppPublisher=Kalabhaftu
+AppPublisherURL=https://github.com/kalabhaftu/music-player
+AppSupportURL=https://github.com/kalabhaftu/music-player/issues
+AppUpdatesURL=https://github.com/kalabhaftu/music-player/releases
 VersionInfoCompany=Kalabhaftu
 VersionInfoProductName=Music Player
 VersionInfoDescription=Music Player Installer (Native Rust)
@@ -31,6 +34,8 @@ PrivilegesRequired=lowest
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
+AppMutex=Local\MusicPlayer.SingleInstance
+ChangesAssociations=yes
 Compression=lzma2/ultra64
 SolidCompression=yes
 OutputDir={#OutputDir}
@@ -43,21 +48,27 @@ SignTool=musicplayer
 #endif
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "Portable-README.txt,Uninstall-MusicPlayer.ps1,Register-MusicPlayer-FileActions.ps1"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "Portable-README.txt,Uninstall-MusicPlayer.ps1,*.pdb,*.d,*.rlib,.cargo-*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Music Player"; Filename: "{app}\MusicPlayer.exe"
-Name: "{autodesktop}\Music Player"; Filename: "{app}\MusicPlayer.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Music Player"; Filename: "{app}\MusicPlayer.exe"; IconFilename: "{app}\Assets\MusicPlayer.ico"; Comment: "Offline music library and player"
+Name: "{autodesktop}\Music Player"; Filename: "{app}\MusicPlayer.exe"; IconFilename: "{app}\Assets\MusicPlayer.ico"; Comment: "Offline music library and player"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Registry]
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\MusicPlayer.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\MusicPlayer.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\MusicPlayer.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\music-player-app.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\MusicPlayer.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\music-player-app.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\MusicPlayer.exe"; Parameters: "--register-associations"; Flags: runhidden waituntilterminated
-Filename: "{app}\MusicPlayer.exe"; Description: "Launch Music Player"; Flags: postinstall nowait skipifsilent runasoriginaluser
+Filename: "{app}\MusicPlayer.exe"; Description: "{cm:LaunchProgram,Music Player}"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
-Filename: "{app}\MusicPlayer.exe"; Parameters: "--unregister-associations"; Flags: runhidden waituntilterminated
+Filename: "{app}\MusicPlayer.exe"; Parameters: "--unregister-associations"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterAssociations"
 
 [Code]
 var
