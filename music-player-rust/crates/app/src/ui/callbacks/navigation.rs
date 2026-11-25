@@ -3,6 +3,16 @@ use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Matches a settings search query against a row's searchable haystack using case-insensitive AND-token matching.
+pub(crate) fn setting_matches_query(haystack: &str, query: &str) -> bool {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return false;
+    }
+    let h = haystack.to_lowercase();
+    q.split_whitespace().all(|token| h.contains(token))
+}
+
 pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     // Navigation.
     {
@@ -116,6 +126,10 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             });
     }
     {
+        ui.global::<Actions>()
+            .on_setting_matches(|haystack, query| setting_matches_query(&haystack, &query));
+    }
+    {
         let a = app.clone();
         ui.global::<Actions>().on_search_input(move |query| {
             let mut app = a.borrow_mut();
@@ -123,68 +137,6 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             let current = app.ui.global::<State>().get_view().to_string();
             if current == "Settings" {
                 app.search_debounce = None;
-                let words = query.to_lowercase();
-                let matches = |terms: &[&str]| terms.iter().any(|term| words.contains(term));
-                let section = if matches(&[
-                    "update",
-                    "release",
-                    "version",
-                    "license",
-                    "privacy",
-                    "repository",
-                ]) {
-                    Some("About")
-                } else if matches(&[
-                    "sidebar",
-                    "navigation",
-                    "tray",
-                    "logs",
-                    "diagnostic",
-                    "default app",
-                    "export",
-                ]) {
-                    Some("Advanced")
-                } else if matches(&[
-                    "folder",
-                    "library",
-                    "scan",
-                    "index",
-                    "duplicate",
-                    "column",
-                    "artwork",
-                    "artist",
-                    "album size",
-                ]) {
-                    Some("Library")
-                } else if matches(&[
-                    "playback",
-                    "autoplay",
-                    "lyrics",
-                    "seek",
-                    "queue",
-                    "crossfade",
-                    "music output",
-                    "equalizer",
-                    "volume",
-                ]) {
-                    Some("Playback")
-                } else if matches(&[
-                    "theme",
-                    "appearance",
-                    "accent",
-                    "color",
-                    "colour",
-                    "transparen",
-                    "motion",
-                    "selection",
-                ]) {
-                    Some("Appearance")
-                } else {
-                    None
-                };
-                if let Some(section) = section {
-                    app.ui.global::<State>().set_settings_section(ss(section));
-                }
                 return;
             }
             if current != "Search" {

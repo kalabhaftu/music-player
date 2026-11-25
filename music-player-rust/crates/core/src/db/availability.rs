@@ -252,13 +252,7 @@ pub fn is_within_root(root: &str, path: &str) -> bool {
 }
 
 pub fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim();
-    let mut out = trimmed.trim_end_matches(['/', '\\']).to_string();
-    // Preserve drive roots like "C:\"
-    if out.len() == 2 && out.as_bytes()[1] == b':' {
-        out.push('\\');
-    }
-    out
+    crate::normalize_windows_path_str(path)
 }
 
 /// Scans indexed tracks for active folders on accessible storage (e.g. a

@@ -42,6 +42,7 @@ pub mod keys {
     pub const RIGHT_PANEL_WIDTH: &str = "right-panel-width";
     pub const SIDEBAR_COLLAPSED: &str = "sidebar-collapsed";
     pub const SONG_COLUMN_WIDTHS: &str = "song-column-widths";
+    pub const TAG_BACKUP_MAX_MB: &str = "tag-backup-max-mb";
 
     // Internal keys.
     pub const VOLUME: &str = "volume";
@@ -375,6 +376,21 @@ impl PlayerSettings {
                 self.set_raw(keys::SONG_COLUMN_WIDTHS, &Value::Object(widths).to_string());
                 keys::SONG_COLUMN_WIDTHS
             }
+            "tagBackupMaxMb" => {
+                let mb = value
+                    .as_i64()
+                    .or_else(|| {
+                        value.as_str().and_then(|s| {
+                            s.split_whitespace()
+                                .next()
+                                .and_then(|n| n.parse::<i64>().ok())
+                        })
+                    })
+                    .unwrap_or(100)
+                    .clamp(25, 2000);
+                self.set_raw(keys::TAG_BACKUP_MAX_MB, &mb.to_string());
+                keys::TAG_BACKUP_MAX_MB
+            }
             other => {
                 return Err(format!(
                     "The setting '{}' is not editable from the player.",
@@ -538,6 +554,10 @@ impl PlayerSettings {
         } else {
             0
         }
+    }
+
+    pub fn tag_backup_max_mb(&self) -> u64 {
+        self.int_or(keys::TAG_BACKUP_MAX_MB, 100).clamp(25, 2000) as u64
     }
 }
 

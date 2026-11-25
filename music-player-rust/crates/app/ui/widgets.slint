@@ -85,6 +85,7 @@ export component DelayedTooltip inherits Rectangle {
     in property <length> anchor-width: 0px;
     in property <length> anchor-height: 0px;
     in property <duration> delay: 500ms;
+    in property <bool> use-global: true;
 
     property <bool> shown: false;
 
@@ -93,47 +94,101 @@ export component DelayedTooltip inherits Rectangle {
         running: root.active && !root.pressed && root.text != "" && !root.shown;
         triggered => {
             root.shown = true;
+            if (root.use-global) {
+                State.tooltip-text = root.text;
+                State.tooltip-anchor-x = root.anchor-x;
+                State.tooltip-anchor-y = root.anchor-y;
+                State.tooltip-anchor-width = root.anchor-width;
+                State.tooltip-anchor-height = root.anchor-height;
+                State.tooltip-visible = true;
+            }
         }
     }
 
     changed active => {
         if (!self.active) {
             root.shown = false;
+            if (root.use-global && State.tooltip-text == root.text && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
         }
     }
     changed pressed => {
         if (self.pressed) {
             root.shown = false;
+            if (root.use-global && State.tooltip-text == root.text && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
         }
     }
     changed text => {
         if (self.text == "") {
             root.shown = false;
+            if (root.use-global && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
         }
     }
 
-    visible: root.shown && root.text != "" && !root.pressed;
+    visible: !root.use-global && root.shown && root.text != "" && !root.pressed;
     x: clamp((root.anchor-width - self.width) / 2, 4px - root.anchor-x, max(4px - root.anchor-x, (State.window-width * 1px) - self.width - 4px - root.anchor-x));
     y: root.anchor-y < 36px ? root.anchor-height + 6px : -(self.height + 6px);
-    width: tt-layout.preferred-width;
-    height: tt-layout.preferred-height;
+    width: root.use-global ? 0px : tt-layout.preferred-width;
+    height: root.use-global ? 0px : tt-layout.preferred-height;
     z: 1000;
     background: Palette.panel-3;
-    border-radius: 6px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: Palette.border;
     drop-shadow-blur: 6px;
     drop-shadow-color: #00000048;
 
     tt-layout := HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        padding-top: 4px;
-        padding-bottom: 4px;
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 5px;
+        padding-bottom: 5px;
         Text {
             text: root.text;
             color: Palette.text;
             font-size: 11px;
+        }
+    }
+}
+
+export component TooltipOverlay inherits Rectangle {
+    visible: State.tooltip-visible && State.tooltip-text != "" && !State.tools-menu-open && !State.context-visible;
+    x: clamp(
+        State.tooltip-anchor-x + (State.tooltip-anchor-width - tt-box.width) / 2,
+        8px,
+        max(8px, (State.window-width * 1px) - tt-box.width - 8px)
+    );
+    y: State.tooltip-anchor-y < 42px
+        ? State.tooltip-anchor-y + State.tooltip-anchor-height + 6px
+        : max(6px, State.tooltip-anchor-y - tt-box.height - 6px);
+    width: tt-box.width;
+    height: tt-box.height;
+
+    tt-box := Rectangle {
+        width: tt-layout.preferred-width;
+        height: tt-layout.preferred-height;
+        background: Palette.panel-3;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000058;
+
+        tt-layout := HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            Text {
+                text: State.tooltip-text;
+                color: Palette.text;
+                font-size: 11px;
+            }
         }
     }
 }
@@ -150,6 +205,7 @@ export component IcBtn inherits Rectangle {
     in property <bool> active: false;
     in property <bool> enabled: true;
     in property <string> tooltip: "";
+    in property <bool> global-tooltip: true;
     out property <bool> hovered: area.has-hover;
     callback clicked();
     callback scrolled(PointerScrollEvent) -> EventResult;
@@ -185,6 +241,7 @@ export component IcBtn inherits Rectangle {
         anchor-y: root.absolute-position.y;
         anchor-width: parent.width;
         anchor-height: parent.height;
+        use-global: root.global-tooltip;
     }
 }
 
@@ -671,6 +728,7 @@ export component CustomSelect inherits Rectangle {
     }
 
     popup := PopupWindow {
+        close-policy: PopupClosePolicy.close-on-click-outside;
         x: max(12px - root.absolute-position.x, min(0px, (State.window-width * 1px - 12px) - (root.absolute-position.x + root.final-popup-w)));
         y: root.open-upwards ? -(root.final-popup-h + 4px) : root.height + 4px;
         width: root.final-popup-w;
@@ -678,7 +736,7 @@ export component CustomSelect inherits Rectangle {
         Rectangle {
             width: 100%;
             height: 100%;
-            border-radius: 8px;
+            border-radius: 10px;
             border-width: 1px;
             border-color: Palette.border;
             background: Palette.panel-3;
@@ -702,9 +760,10 @@ export component CustomSelect inherits Rectangle {
                         item-area := TouchArea {
                             mouse-cursor: pointer;
                             clicked => {
+                                root.current-value = opt;
                                 root.current-index = idx;
-                                popup.close();
                                 root.selected(opt);
+                                popup.close();
                             }
                         }
                         HorizontalLayout {
@@ -1044,7 +1103,7 @@ export component TrackRow inherits Rectangle {
         }
 
         if root.show-plays : Text {
-            text: "\{root.track.play-count}";
+            text: root.track.play-count == 1 ? "1 play" : "\{root.track.play-count} plays";
             color: Palette.text-subtle;
             font-size: 11px;
             width: 76px;
@@ -1266,7 +1325,7 @@ export component CardTile inherits Rectangle {
     vertical-stretch: 0;
     horizontal-stretch: 0;
     width: State.card-width;
-    border-radius: 8px;
+    border-radius: 10px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
 
@@ -1288,7 +1347,7 @@ export component CardTile inherits Rectangle {
             cover-box := Rectangle {
                 width: 100%;
                 height: 100%;
-                border-radius: root.round ? self.width / 2 : 6px;
+                border-radius: root.round ? self.width / 2 : 8px;
                 clip: true;
                 drop-shadow-offset-x: 0px;
                 drop-shadow-offset-y: 14px;
@@ -1388,7 +1447,7 @@ export component HomeCardTile inherits Rectangle {
     vertical-stretch: 0;
     horizontal-stretch: 0;
     width: State.card-width;
-    border-radius: 8px;
+    border-radius: 10px;
     background: area.has-hover ? Palette.hover : Palette.raised;
     animate background { duration: 140ms; }
     area := TouchArea {

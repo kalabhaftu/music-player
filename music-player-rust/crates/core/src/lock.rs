@@ -88,7 +88,7 @@ impl FilePathLock {
 }
 
 fn lock_name(path: &Path) -> String {
-    let canonical = path.to_string_lossy().to_uppercase();
+    let canonical = crate::normalize_windows_path_str(&path.to_string_lossy()).to_uppercase();
     let mut hasher = Sha256::new();
     hasher.update(canonical.as_bytes());
     let digest: String = hasher

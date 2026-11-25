@@ -463,4 +463,22 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             open_url(&url);
         });
     }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_cleanup_tag_backups(move || {
+            let mut app = a.borrow_mut();
+            let removed = music_player_core::clear_backup_directory(&tag_backups_dir());
+            app.publish_settings();
+            let message = if removed == 0 {
+                "Tag backup cache is already clean.".to_string()
+            } else {
+                format!(
+                    "Removed {} tag backup {}.",
+                    removed,
+                    if removed == 1 { "file" } else { "files" }
+                )
+            };
+            app.show_notice(message, NoticeSeverity::Informational);
+        });
+    }
 }

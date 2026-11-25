@@ -144,3 +144,87 @@ fn formats_total_and_remaining_time() {
     assert_eq!(fmt_right_time(250_000, 225_000, true), "-0:00");
     assert_eq!(fmt_right_time(10_000, 0, true), "0:00");
 }
+
+#[test]
+fn test_setting_matches_query() {
+    use crate::ui::callbacks::navigation::setting_matches_query;
+    assert!(!setting_matches_query("Theme appearance dark", ""));
+    assert!(!setting_matches_query("Theme appearance dark", "   "));
+    assert!(setting_matches_query("Theme dark mode", "DARK theme"));
+    assert!(setting_matches_query(
+        "Crossfade blend into the next track",
+        "crossfade track"
+    ));
+    assert!(!setting_matches_query(
+        "Tag backups size cap cleanup",
+        "tag lyrics"
+    ));
+}
+
+#[test]
+fn test_player_settings_persistence_and_backup_cap_clamping() {
+    let store = music_player_core::LibraryStore::in_memory().expect("in-memory db");
+    let settings = music_player_core::PlayerSettings::new(store.clone());
+
+    assert_eq!(
+        settings.update_web_setting("theme", &serde_json::json!("Dark")),
+        Ok(music_player_core::settings::keys::THEME.to_string())
+    );
+    assert_eq!(
+        settings.raw(music_player_core::settings::keys::THEME).as_deref(),
+        Some("Dark")
+    );
+
+    assert_eq!(
+        settings.update_web_setting("tagBackupMaxMb", &serde_json::json!("250 MB")),
+        Ok(music_player_core::settings::keys::TAG_BACKUP_MAX_MB.to_string())
+    );
+    assert_eq!(settings.tag_backup_max_mb(), 250);
+
+    settings.set_raw(music_player_core::settings::keys::TAG_BACKUP_MAX_MB, "5");
+    assert_eq!(settings.tag_backup_max_mb(), 25);
+
+    settings.set_raw(music_player_core::settings::keys::TAG_BACKUP_MAX_MB, "9999");
+    assert_eq!(settings.tag_backup_max_mb(), 2000);
+
+    settings.set_raw(music_player_core::settings::keys::CROSSFADE_SECONDS, "5");
+    assert_eq!(settings.crossfade_seconds(), 5);
+    settings.set_raw(music_player_core::settings::keys::CROSSFADE_SECONDS, "6");
+    assert_eq!(settings.crossfade_seconds(), 0);
+}
+
+#[test]
+fn test_queue_select_and_shuffle_preserves_current_track() {
+    let mut queue = music_player_core::QueueCoordinator::new();
+    let paths = vec![
+        r"C:\Music\Alb\01.mp3".to_string(),
+        r"C:\Music\Alb\02.mp3".to_string(),
+        r"C:\Music\Alb\03.mp3".to_string(),
+        r"C:\Music\Alb\04.mp3".to_string(),
+    ];
+
+    // Normal context selection retains full album order and sets current_index to clicked track.
+    queue.select_track(paths.clone(), r"C:\Music\Alb\03.mp3");
+    assert_eq!(queue.entries(), paths.as_slice());
+    assert_eq!(queue.current_index(), Some(2));
+    assert!(!queue.move_entry_to(2, 0));
+
+    // Upcoming entries (>= current_index + 1) can be reordered.
+    queue.replace(paths.clone(), Some(0));
+    assert!(queue.move_entry_to(2, 1));
+    assert_eq!(queue.entries()[1], r"C:\Music\Alb\03.mp3");
+
+    // Shuffled context selection puts clicked track at index 0 and shuffles remaining tracks.
+    let mut reordered = paths.clone();
+    let pos = reordered
+        .iter()
+        .position(|p| p.eq_ignore_ascii_case(r"C:\Music\Alb\03.mp3"))
+        .unwrap();
+    let clicked = reordered.remove(pos);
+    reordered.insert(0, clicked);
+    queue.set_shuffle(true);
+    queue.select_track(reordered, r"C:\Music\Alb\03.mp3");
+    assert_eq!(queue.current_index(), Some(0));
+    assert_eq!(queue.entries()[0], r"C:\Music\Alb\03.mp3");
+    assert_eq!(queue.entries().len(), 4);
+}

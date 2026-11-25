@@ -22,11 +22,37 @@ pub use duplicates::{DuplicateDetector, ExactDuplicateGroup, ExactDuplicateGroup
 pub use lyrics::{format_lrc, has_sidecar, parse_lrc, plain_text, read_sidecar, write_sidecar};
 pub use log::LocalAppLog;
 pub use metadata::{
-    artwork_cache_dir, clean_stale_temp_files, custom_field_format, extract_palette, hash_artwork, inspect_file, read_tags,
-    read_tags_in_cache, resolve_cached_artwork, save_artwork_to_cache, ArtworkOperationGuard,
-    HybridMetadataEngine, LoftyAdapter, MetadataAdapter,
-    ADDITIONAL_STANDARD_FIELDS, ArtworkPalette, ExtractedTags, RgbColor, TagEditor, TrackDetails,
+    artwork_cache_dir, backup_directory_stats, clean_stale_temp_files, clear_backup_directory,
+    custom_field_format, extract_palette, hash_artwork, inspect_file,
+    prune_backup_directory_to_bytes, read_tags, read_tags_in_cache, resolve_cached_artwork,
+    save_artwork_to_cache, tag_backups_dir, ArtworkOperationGuard, HybridMetadataEngine,
+    LoftyAdapter, MetadataAdapter, ADDITIONAL_STANDARD_FIELDS, ArtworkPalette, ExtractedTags,
+    RgbColor, TagEditor, TrackDetails,
 };
+
+/// Strips Windows verbatim path prefixes (`\\?\` and `\\?\UNC\`) and trims
+/// trailing directory separators while preserving bare drive roots (e.g. `C:\`).
+pub fn normalize_windows_path_str(raw: &str) -> String {
+    let mut text = raw.trim();
+    if let Some(rest) = text.strip_prefix("\\\\?\\UNC\\") {
+        let trimmed = rest.trim_end_matches(['/', '\\']);
+        return format!("\\\\{}", trimmed);
+    }
+    if let Some(rest) = text.strip_prefix("\\\\?\\") {
+        text = rest;
+    }
+    let trimmed = text.trim_end_matches(['/', '\\']);
+    if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {
+        format!("{}\\", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// PathBuf wrapper around `normalize_windows_path_str`.
+pub fn normalize_windows_path(path: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    std::path::PathBuf::from(normalize_windows_path_str(&path.as_ref().to_string_lossy()))
+}
 pub use models::{
     LibraryGroup, LibraryStats, LyricsDocument, LyricsLine, PlaybackSession, Playlist,
     PlaylistEntry, PlaylistSummary, ScanProgress, TagBackup, TagEdit, Track, TrackSort,

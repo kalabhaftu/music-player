@@ -40,6 +40,7 @@ impl App {
             self.search_debounce = None;
         }
         state.set_view(ss(view));
+        state.set_tooltip_visible(false);
         state.set_view_search(ss(resolved_search));
         state.set_view_group_column(ss(
             if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {

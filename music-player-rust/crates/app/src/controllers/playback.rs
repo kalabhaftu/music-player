@@ -18,6 +18,11 @@ impl App {
     }
 
     pub(crate) fn track_by_id(&self, id: &str) -> Option<Track> {
+        if let Some(current) = &self.current {
+            if current.id() == id || current.path.eq_ignore_ascii_case(id) {
+                return Some(current.clone());
+            }
+        }
         let path = self
             .id_to_path
             .get(id)
@@ -31,6 +36,21 @@ impl App {
         }
         if let Some(track) = self.track_cache.get(id) {
             return Some(track.clone());
+        }
+        if let Some(track) = self.track_cache.values().find(|t| t.id() == id) {
+            return Some(track.clone());
+        }
+        if let Some(q_path) = self
+            .coordinator
+            .queue()
+            .entries()
+            .iter()
+            .find(|p| music_player_core::track_id_for_path(p) == id)
+            .cloned()
+        {
+            if let Ok(Some(track)) = self.store.get_track(&q_path) {
+                return Some(track);
+            }
         }
         self.store.get_track(id).ok().flatten()
     }
@@ -583,8 +603,8 @@ impl App {
         let fallback = if autoplay {
             self.current
                 .as_ref()
-                .and_then(|t| self.smart_autoplay(t, 10).into_iter().next())
-                .map(|first| vec![first])
+                .map(|t| self.smart_autoplay(t, 10))
+                .filter(|v| !v.is_empty())
         } else {
             None
         };
@@ -940,9 +960,12 @@ impl App {
             .to_lowercase();
         let mut new_roots = Vec::new();
         for raw in paths {
-            let Ok(abs) = std::fs::canonicalize(Path::new(raw)) else {
+            let abs = music_player_core::normalize_windows_path(
+                std::fs::canonicalize(Path::new(raw)).unwrap_or_else(|_| PathBuf::from(raw)),
+            );
+            if !abs.exists() {
                 continue;
-            };
+            }
             let Some(folder) = abs.parent() else {
                 continue;
             };
@@ -1059,6 +1082,100 @@ impl App {
         state.set_modal_text(ss(""));
         state.set_modal(ss("new-playlist"));
         state.set_modal_title(ss("Create playlist from files"));
+    }
+
+    /// Handles OS file/folder drops onto the window, filtering strictly for
+    /// supported audio, enabled video extensions, and M3U/M3U8 playlists.
+    pub(crate) fn handle_dropped_paths(&mut self, dropped: &[PathBuf]) {
+        if dropped.is_empty() {
+            return;
+        }
+        let allowed_exts = self.extension_set();
+        let mut media_paths = Vec::new();
+        let mut playlist_paths = Vec::new();
+        let mut seen = HashSet::new();
+
+        fn collect(
+            path: &Path,
+            allowed_exts: &HashSet<String>,
+            seen: &mut HashSet<String>,
+            media_out: &mut Vec<String>,
+            playlist_out: &mut Vec<String>,
+            depth: usize,
+        ) {
+            if depth > 16 {
+                return;
+            }
+            let clean = music_player_core::normalize_windows_path(path);
+            if clean.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&clean) {
+                    let mut children: Vec<PathBuf> =
+                        entries.flatten().map(|e| e.path()).collect();
+                    children.sort();
+                    for child in children {
+                        collect(&child, allowed_exts, seen, media_out, playlist_out, depth + 1);
+                    }
+                }
+                return;
+            }
+            if !clean.is_file() {
+                return;
+            }
+            let ext = clean
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| format!(".{}", e.to_ascii_lowercase()))
+                .unwrap_or_default();
+            let clean_str = clean.to_string_lossy().to_string();
+            if !seen.insert(clean_str.to_lowercase()) {
+                return;
+            }
+            if matches!(ext.as_str(), ".m3u" | ".m3u8") {
+                playlist_out.push(clean_str);
+            } else if allowed_exts.contains(&ext) {
+                media_out.push(clean_str);
+            }
+        }
+
+        for item in dropped {
+            collect(
+                item,
+                &allowed_exts,
+                &mut seen,
+                &mut media_paths,
+                &mut playlist_paths,
+                0,
+            );
+        }
+
+        if !media_paths.is_empty() {
+            self.play_external_files(&media_paths);
+            return;
+        }
+        if let Some(first_pl) = playlist_paths.first() {
+            if let Ok(entries) = music_player_core::import_m3u8(Path::new(first_pl), |p| {
+                let ext = Path::new(p)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| format!(".{}", e.to_ascii_lowercase()))
+                    .unwrap_or_default();
+                allowed_exts.contains(&ext)
+            }) {
+                let valid: Vec<String> = entries
+                    .into_iter()
+                    .map(|p| music_player_core::normalize_windows_path_str(&p))
+                    .filter(|p| Path::new(p).is_file())
+                    .collect();
+                if !valid.is_empty() {
+                    self.play_external_files(&valid);
+                    return;
+                }
+            }
+        }
+        self.show_notice(
+            "No supported audio or enabled video files were found in the dropped items.",
+            NoticeSeverity::Warning,
+        );
     }
 
     /// Flushes any debounced volume/equalizer writes, persists the session, and checkpoints SQLite WAL.

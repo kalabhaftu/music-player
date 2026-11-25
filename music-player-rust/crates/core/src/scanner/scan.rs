@@ -198,13 +198,7 @@ pub fn paths_equal(left: &Path, right: &Path) -> bool {
 }
 
 pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
-    let s = path.as_ref().to_string_lossy();
-    let trimmed = s.trim_end_matches(['/', '\\']);
-    if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {
-        PathBuf::from(format!("{}\\", trimmed))
-    } else {
-        PathBuf::from(trimmed)
-    }
+    crate::normalize_windows_path(path)
 }
 
 pub fn root_prefix(path: &Path) -> String {

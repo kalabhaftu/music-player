@@ -151,10 +151,11 @@ pub fn inspect_file(path: &Path) -> Option<TrackDetails> {
 
 pub fn legacy_inspect_file(path: &Path) -> Option<TrackDetails> {
     let info = std::fs::metadata(path).ok()?;
-    let full = std::fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_string();
+    let full = crate::normalize_windows_path(
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
+    )
+    .to_string_lossy()
+    .to_string();
     let modified: DateTime<Utc> = info.modified().map(DateTime::from).unwrap_or_else(|_| Utc::now());
     let ext = file_ext(path);
     let size = info.len();

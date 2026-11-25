@@ -8,7 +8,7 @@ import {
     BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, NavEntry, NavSettingItem,
     AboutComponentItem, ReleaseItem,
 } from "models.slint";
-import { Palette, IcBtn, PlayerSlider } from "widgets.slint";
+import { Palette, IcBtn, PlayerSlider, TooltipOverlay } from "widgets.slint";
 import { ContentArea, QueueView, AudioView } from "views.slint";
 import { ModalHost } from "modals/modal_host.slint";
 import { NavRail, PanelResizeHandle } from "shell/sidebar.slint";
@@ -38,7 +38,7 @@ export component AppWindow inherits Window {
     min-height: 500px;
     preferred-width: 1024px;
     preferred-height: 640px;
-    background: Palette.canvas;
+    background: State.transparent-window ? #00000000 : Palette.canvas;
     animate background { duration: 350ms; easing: ease-in-out; }
 
     changed width => {
@@ -277,6 +277,7 @@ export component AppWindow inherits Window {
 
     if State.immersive-player-open && !State.immersive-fullscreen : FramelessWindowChrome { width: 100%; height: 100%; }
 
+    TooltipOverlay { width: 100%; height: 100%; }
     if State.tools-menu-open : ToolsMenuOverlay { width: 100%; height: 100%; }
     if State.context-visible : ContextMenuOverlay { width: 100%; height: 100%; }
     if State.notice-visible : NoticeOverlay { width: 100%; height: 100%; }

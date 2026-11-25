@@ -125,6 +125,7 @@ export global State {
     in property <string> info-status: "";
     in property <string> info-quality: "";
     in property <string> info-location: "";
+    in property <string> info-folder: "";
     in property <int> queue-more-count: 0;
     in property <int> queue-panel-more-count: 0;
 
@@ -309,6 +310,20 @@ export global State {
     in property <string> notice-severity: "Informational";
     in property <bool> notice-visible: false;
 
+    // ---- Global tooltip overlay ----
+    in-out property <bool> tooltip-visible: false;
+    in-out property <string> tooltip-text: "";
+    in-out property <length> tooltip-anchor-x: 0px;
+    in-out property <length> tooltip-anchor-y: 0px;
+    in-out property <length> tooltip-anchor-width: 0px;
+    in-out property <length> tooltip-anchor-height: 0px;
+
+    // ---- Tag backups & settings search ----
+    in property <string> tag-backup-stats: "";
+    in-out property <string> tag-backup-max-mb-label: "100 MB";
+    in-out property <int> settings-match-count: -1;
+    in-out property <length> settings-match-y: -1px;
+
     // ---- Immersive ----
     in property <bool> immersive-open: false;
     in property <string> immersive-kind: "Queue";
@@ -490,4 +505,6 @@ export global Actions {
     callback close-notice();
     callback save-lyrics-modal();
     callback window-resized(int, int);
+    callback cleanup-tag-backups();
+    pure callback setting-matches(string, string) -> bool;
 }

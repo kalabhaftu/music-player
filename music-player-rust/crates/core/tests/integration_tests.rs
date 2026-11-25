@@ -2711,3 +2711,181 @@ fn test_tag_editor_read_only_file_handling() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn test_deduplicate_verbatim_paths_merges_tracks_and_normalizes_state() {
+    let dir = temp_dir("dedup_verbatim");
+    let db_path = dir.join("library.db");
+    let store = LibraryStore::open(&db_path).expect("open db");
+
+    const CLEAN_A: &str = r"C:\Music\Iceman\SongA.mp3";
+    const VERBATIM_A: &str = r"\\?\C:\Music\Iceman\SongA.mp3";
+    const CLEAN_B: &str = r"C:\Music\Iceman\SongB.mp3";
+    const VERBATIM_B: &str = r"\\?\C:\Music\Iceman\SongB.mp3";
+
+    // Seed SongA via verbatim path first with interaction metadata we must not lose.
+    let mut track_a_verbatim = sample_track(CLEAN_A, "Song A", "Artist One", "Iceman");
+    track_a_verbatim.favorite = true;
+    track_a_verbatim.rating = 5;
+    track_a_verbatim.play_count = 4;
+    track_a_verbatim.has_lyrics = true;
+    track_a_verbatim.artwork_path = Some(r"\\?\C:\Cache\art_a.jpg".to_string());
+    store.upsert_track(&track_a_verbatim).unwrap();
+    store
+        .write(move |conn| {
+            conn.execute(
+                "UPDATE tracks SET path = ?1 WHERE path = ?2",
+                rusqlite::params![VERBATIM_A, CLEAN_A],
+            )
+        })
+        .unwrap();
+
+    // Seed clean duplicate of SongA with additional plays.
+    let mut track_a_clean = sample_track(CLEAN_A, "Song A", "Artist One", "Iceman");
+    track_a_clean.play_count = 3;
+    store.upsert_track(&track_a_clean).unwrap();
+
+    // Seed SongB solely via a verbatim path.
+    let track_b = sample_track(CLEAN_B, "Song B", "Artist One", "Iceman");
+    store.upsert_track(&track_b).unwrap();
+    store
+        .write(move |conn| {
+            conn.execute(
+                "UPDATE tracks SET path = ?1 WHERE path = ?2",
+                rusqlite::params![VERBATIM_B, CLEAN_B],
+            )
+        })
+        .unwrap();
+
+    // Seed child references using verbatim paths.
+    store.create_playlist("pl-1", "Test Playlist").unwrap();
+    store
+        .write(move |conn| {
+            conn.execute(
+                "INSERT INTO playlist_tracks (playlist_id, position, track_path) VALUES (?1, 0, ?2), (?1, 1, ?3)",
+                rusqlite::params!["pl-1", VERBATIM_A, VERBATIM_B],
+            )?;
+            conn.execute(
+                "INSERT INTO playback_queue (position, track_path) VALUES (0, ?1), (1, ?2)",
+                rusqlite::params![VERBATIM_A, VERBATIM_B],
+            )?;
+            conn.execute(
+                "INSERT INTO track_interaction_state (path, added_utc, favorite, rating, play_count, last_played_utc) VALUES (?1, '2026-01-01T00:00:00Z', 1, 5, 4, NULL)",
+                rusqlite::params![VERBATIM_A],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let settings = music_player_core::PlayerSettings::new(store.clone());
+    settings.set_library_roots(&[r"\\?\C:\Music".to_string(), r"C:\Music".to_string()]);
+    settings.set_ignored_directories(&[r"\\?\C:\Music\Skipped".to_string()]);
+    store
+        .save_session(&music_player_core::PlaybackSession {
+            track_path: Some(VERBATIM_A.to_string()),
+            position_ms: 15_000,
+            queue: vec![VERBATIM_A.to_string(), VERBATIM_B.to_string()],
+            shuffle: false,
+            repeat_mode: "None".to_string(),
+            repeat_a_ms: None,
+            repeat_b_ms: None,
+            queue_index: 0,
+        })
+        .unwrap();
+
+    let fixed = store
+        .write(|conn| music_player_core::db::schema::deduplicate_verbatim_paths(conn))
+        .unwrap();
+    assert!(fixed > 0, "expected verbatim rows to be fixed");
+    drop(store);
+
+    // Reopen through LibraryStore::open (invokes initialize_schema automatically).
+    let reopened = LibraryStore::open(&db_path).expect("reopen db");
+    let all = reopened.get_all_tracks(TrackSort::Title, false).unwrap();
+    assert_eq!(all.len(), 2, "duplicate verbatim track should merge cleanly");
+    assert!(all.iter().all(|t| !t.path.starts_with(r"\\?\")));
+
+    let merged_a = all.iter().find(|t| t.path == CLEAN_A).expect("CLEAN_A present");
+    assert!(merged_a.favorite);
+    assert_eq!(merged_a.rating, 5);
+    assert_eq!(merged_a.play_count, 7);
+    assert!(merged_a.has_lyrics);
+    assert_eq!(
+        merged_a.artwork_path.as_deref(),
+        Some(r"\\?\C:\Cache\art_a.jpg")
+    );
+
+    let playlist_paths = reopened.get_playlist_paths("pl-1").unwrap();
+    assert_eq!(playlist_paths, vec![CLEAN_A.to_string(), CLEAN_B.to_string()]);
+
+    let queue_paths = reopened.load_queue().unwrap();
+    assert_eq!(queue_paths, vec![CLEAN_A.to_string(), CLEAN_B.to_string()]);
+
+    let session = reopened.load_session().unwrap().expect("session preserved");
+    assert_eq!(session.track_path.as_deref(), Some(CLEAN_A));
+    assert_eq!(session.queue, vec![CLEAN_A.to_string(), CLEAN_B.to_string()]);
+
+    let reopened_settings = music_player_core::PlayerSettings::new(reopened.clone());
+    assert_eq!(reopened_settings.library_roots(), vec![r"C:\Music".to_string()]);
+    assert_eq!(
+        reopened_settings.ignored_directories(),
+        vec![r"C:\Music\Skipped".to_string()]
+    );
+
+    let hits = reopened.search_tracks("Iceman", 10).unwrap();
+    assert_eq!(hits.len(), 2);
+    assert!(hits.iter().all(|t| !t.path.starts_with(r"\\?\")));
+
+    assert_eq!(
+        music_player_core::normalize_windows_path_str(r"\\?\C:\Music\Track.mp3"),
+        r"C:\Music\Track.mp3"
+    );
+    assert_eq!(
+        music_player_core::normalize_windows_path_str(r"\\?\UNC\server\share\Track.mp3"),
+        r"\\server\share\Track.mp3"
+    );
+    assert_eq!(
+        music_player_core::normalize_windows_path_str(r"C:\Music\Track.mp3"),
+        r"C:\Music\Track.mp3"
+    );
+
+    drop(reopened);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn test_backup_directory_byte_cap_and_clear() {
+    let dir = temp_dir("backup_cap");
+    let files = [
+        ("20260101-100000000-a.bak", vec![b'a'; 40]),
+        ("20260102-100000000-b.bak", vec![b'b'; 40]),
+        ("20260103-100000000-c.bak", vec![b'c'; 40]),
+        ("20260104-100000000-d.bak", vec![b'd'; 40]),
+    ];
+    for (name, bytes) in &files {
+        std::fs::write(dir.join(name), bytes).unwrap();
+    }
+    std::fs::write(dir.join("notes.txt"), b"keep-me").unwrap();
+
+    assert_eq!(music_player_core::backup_directory_stats(&dir), (4, 160));
+
+    let evicted = music_player_core::prune_backup_directory_to_bytes(&dir, 90);
+    assert_eq!(evicted, 2);
+    assert_eq!(music_player_core::backup_directory_stats(&dir), (2, 80));
+    assert!(!dir.join("20260101-100000000-a.bak").exists());
+    assert!(!dir.join("20260102-100000000-b.bak").exists());
+    assert!(dir.join("20260103-100000000-c.bak").exists());
+    assert!(dir.join("20260104-100000000-d.bak").exists());
+    assert!(dir.join("notes.txt").exists());
+
+    // Even under a tiny byte budget, the single newest backup file stays retained.
+    assert_eq!(music_player_core::prune_backup_directory_to_bytes(&dir, 10), 1);
+    assert_eq!(music_player_core::backup_directory_stats(&dir), (1, 40));
+    assert!(dir.join("20260104-100000000-d.bak").exists());
+
+    assert_eq!(music_player_core::clear_backup_directory(&dir), 1);
+    assert_eq!(music_player_core::backup_directory_stats(&dir), (0, 0));
+    assert!(dir.join("notes.txt").exists());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+

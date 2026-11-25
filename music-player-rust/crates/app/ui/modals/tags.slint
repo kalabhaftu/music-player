@@ -170,8 +170,8 @@ export component DetailsModal inherits Rectangle {
 
                 // Primary `<dl class="details">` rows
                 for row in State.detail-rows : Rectangle {
-                    min-height: 34px;
-                    HorizontalLayout {
+                    height: max(36px, det-layout.preferred-height);
+                    det-layout := HorizontalLayout {
                         padding-top: 8px;
                         padding-bottom: 8px;
                         spacing: 16px;
@@ -179,16 +179,18 @@ export component DetailsModal inherits Rectangle {
                             text: row.label;
                             color: Palette.muted;
                             font-size: 11px;
-                            width: 120px;
-                            vertical-alignment: center;
+                            font-weight: 600;
+                            width: 112px;
+                            vertical-alignment: top;
                         }
                         Text {
                             text: row.value != "" ? row.value : "—";
                             color: Palette.text;
                             font-size: 11px;
                             horizontal-stretch: 1;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
+                            min-width: 0px;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
                             wrap: word-wrap;
                         }
                     }
@@ -206,8 +208,8 @@ export component DetailsModal inherits Rectangle {
                     }
                 }
                 for row in State.detail-additional : Rectangle {
-                    min-height: 34px;
-                    HorizontalLayout {
+                    height: max(36px, add-layout.preferred-height);
+                    add-layout := HorizontalLayout {
                         padding-top: 8px;
                         padding-bottom: 8px;
                         spacing: 16px;
@@ -215,8 +217,9 @@ export component DetailsModal inherits Rectangle {
                             text: row.label;
                             color: Palette.muted;
                             font-size: 11px;
-                            width: 140px;
-                            vertical-alignment: center;
+                            font-weight: 600;
+                            width: 132px;
+                            vertical-alignment: top;
                             overflow: elide;
                         }
                         Text {
@@ -224,8 +227,9 @@ export component DetailsModal inherits Rectangle {
                             color: Palette.text;
                             font-size: 11px;
                             horizontal-stretch: 1;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
+                            min-width: 0px;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
                             wrap: word-wrap;
                         }
                     }
@@ -243,8 +247,8 @@ export component DetailsModal inherits Rectangle {
                     }
                 }
                 for row in State.detail-custom : Rectangle {
-                    min-height: 34px;
-                    HorizontalLayout {
+                    height: max(36px, cust-layout.preferred-height);
+                    cust-layout := HorizontalLayout {
                         padding-top: 8px;
                         padding-bottom: 8px;
                         spacing: 16px;
@@ -252,8 +256,9 @@ export component DetailsModal inherits Rectangle {
                             text: row.label;
                             color: Palette.muted;
                             font-size: 11px;
-                            width: 140px;
-                            vertical-alignment: center;
+                            font-weight: 600;
+                            width: 132px;
+                            vertical-alignment: top;
                             overflow: elide;
                         }
                         Text {
@@ -261,8 +266,9 @@ export component DetailsModal inherits Rectangle {
                             color: Palette.text;
                             font-size: 11px;
                             horizontal-stretch: 1;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
+                            min-width: 0px;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
                             wrap: word-wrap;
                         }
                     }

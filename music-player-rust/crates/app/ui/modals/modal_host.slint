@@ -23,9 +23,10 @@ export component ModalHost inherits Rectangle {
 
     in property <length> modal-width:
         State.modal == "edit-lyrics" ? min(680px, root.width - 32px) :
+        State.modal == "details" ? min(660px, root.width - 32px) :
         State.modal == "help" ? min(620px, root.width - 32px) :
         State.modal == "find-lyrics" ? min(580px, root.width - 32px) :
-        State.modal == "tags" || State.modal == "details" ? min(580px, root.width - 32px) :
+        State.modal == "tags" ? min(580px, root.width - 32px) :
         State.modal == "folders" || State.modal == "exclusions" || State.modal == "duplicate-locations" ? min(560px, root.width - 32px) :
         min(520px, root.width - 32px);
 
@@ -49,7 +50,7 @@ export component ModalHost inherits Rectangle {
         height: root.is-scrollable-modal ? root.scrollable-height : min(modal-layout.preferred-height, root.height - 40px);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        border-radius: 13px;
+        border-radius: 14px;
         background: Palette.panel;
         border-width: 1px;
         border-color: Palette.border;

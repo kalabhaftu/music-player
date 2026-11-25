@@ -256,8 +256,300 @@ pub fn initialize_schema(conn: &Connection) -> Result<()> {
     conn.execute(&format!("PRAGMA user_version = {}", SCHEMA_VERSION), [])?;
 
     super::functions::register_query_functions(conn);
+    deduplicate_verbatim_paths(conn)?;
 
     Ok(())
+}
+
+/// Repairs legacy Windows verbatim (`\\?\` / `\\?\UNC\`) paths written by
+/// `std::fs::canonicalize` across tracks, relations, settings, and session state,
+/// merging interaction counts onto the normalized path without data loss.
+pub fn deduplicate_verbatim_paths(conn: &Connection) -> Result<usize> {
+    const VERBATIM: &str = "\\\\?\\";
+    let needs_track_cleanup: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM tracks WHERE substr(path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM playlist_tracks WHERE substr(track_path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM playback_queue WHERE substr(track_path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM metadata_edit_history WHERE substr(track_path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM tag_backups WHERE substr(original_path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM track_handles WHERE substr(path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM track_interaction_state WHERE substr(path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM track_fingerprints WHERE substr(path, 1, 4) = ?1
+                UNION ALL
+                SELECT 1 FROM playback_session WHERE id = 1 AND instr(payload, ?1) > 0
+                UNION ALL
+                SELECT 1 FROM settings WHERE key IN ('library-roots', 'ignored-directories') AND instr(value, ?1) > 0
+            )",
+            [VERBATIM],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !needs_track_cleanup {
+        return Ok(0);
+    }
+
+    let mut fixed_count = 0usize;
+    let tx = conn.unchecked_transaction()?;
+
+    // Collect every verbatim track row first so we can mutate safely.
+    let mut verbatim_tracks: Vec<(String, i64, i64, i64, Option<String>, String, Option<String>, i64)> =
+        Vec::new();
+    {
+        let mut stmt = tx.prepare(
+            "SELECT path, favorite, rating, play_count, last_played_utc, added_utc, artwork_path, has_lyrics
+             FROM tracks
+             WHERE substr(path, 1, 4) = ?1",
+        )?;
+        let mut rows = stmt.query([VERBATIM])?;
+        while let Some(row) = rows.next()? {
+            verbatim_tracks.push((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+            ));
+        }
+    }
+
+    for (old_path, old_fav, old_rat, old_plays, old_last, old_added, old_art, old_lyrics) in verbatim_tracks {
+        let clean = crate::normalize_windows_path_str(&old_path);
+        if clean.is_empty() || clean == old_path {
+            continue;
+        }
+        fixed_count += 1;
+
+        let existing: Option<(String, i64, i64, i64, Option<String>, String, Option<String>, i64)> = tx
+            .query_row(
+                "SELECT path, favorite, rating, play_count, last_played_utc, added_utc, artwork_path, has_lyrics
+                 FROM tracks
+                 WHERE path = ?1 COLLATE NOCASE AND substr(path, 1, 4) != ?2
+                 LIMIT 1",
+                rusqlite::params![&clean, VERBATIM],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .ok();
+
+        let target_path = if let Some((
+            ex_path,
+            ex_fav,
+            ex_rat,
+            ex_plays,
+            ex_last,
+            ex_added,
+            ex_art,
+            ex_lyrics,
+        )) = existing
+        {
+            let fav = ex_fav.max(old_fav);
+            let rat = if ex_rat > 0 { ex_rat } else { old_rat };
+            let plays = ex_plays.saturating_add(old_plays);
+            let last_played = match (&ex_last, &old_last) {
+                (Some(a), Some(b)) => Some(if a >= b { a.clone() } else { b.clone() }),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            };
+            let added = if ex_added.is_empty() {
+                old_added
+            } else if old_added.is_empty() {
+                ex_added
+            } else if ex_added <= old_added {
+                ex_added
+            } else {
+                old_added
+            };
+            let art = match (
+                ex_art.as_deref().filter(|s| !s.is_empty()),
+                old_art.as_deref().filter(|s| !s.is_empty()),
+            ) {
+                (Some(a), _) => Some(a.to_string()),
+                (None, Some(b)) => Some(b.to_string()),
+                (None, None) => None,
+            };
+            let lyrics = ex_lyrics.max(old_lyrics);
+
+            tx.execute(
+                "UPDATE tracks SET favorite = ?1, rating = ?2, play_count = ?3, last_played_utc = ?4, added_utc = ?5, artwork_path = ?6, has_lyrics = ?7 WHERE path = ?8",
+                rusqlite::params![fav, rat, plays, last_played, added, art, lyrics, &ex_path],
+            )?;
+            tx.execute("DELETE FROM track_handles WHERE path = ?1", [&old_path])?;
+            tx.execute("DELETE FROM track_fingerprints WHERE path = ?1", [&old_path])?;
+            tx.execute("DELETE FROM tracks WHERE path = ?1", [&old_path])?;
+            ex_path
+        } else {
+            tx.execute(
+                "UPDATE tracks SET path = ?1 WHERE path = ?2",
+                rusqlite::params![&clean, &old_path],
+            )?;
+            let _ = tx.execute(
+                "UPDATE OR IGNORE track_handles SET path = ?1 WHERE path = ?2",
+                rusqlite::params![&clean, &old_path],
+            );
+            tx.execute("DELETE FROM track_handles WHERE path = ?1", [&old_path])?;
+            let _ = tx.execute(
+                "UPDATE OR IGNORE track_fingerprints SET path = ?1 WHERE path = ?2",
+                rusqlite::params![&clean, &old_path],
+            );
+            tx.execute("DELETE FROM track_fingerprints WHERE path = ?1", [&old_path])?;
+            clean
+        };
+
+        tx.execute(
+            "UPDATE playlist_tracks SET track_path = ?1 WHERE track_path = ?2",
+            rusqlite::params![&target_path, &old_path],
+        )?;
+        tx.execute(
+            "UPDATE playback_queue SET track_path = ?1 WHERE track_path = ?2",
+            rusqlite::params![&target_path, &old_path],
+        )?;
+        tx.execute(
+            "UPDATE metadata_edit_history SET track_path = ?1 WHERE track_path = ?2",
+            rusqlite::params![&target_path, &old_path],
+        )?;
+        tx.execute(
+            "UPDATE tag_backups SET original_path = ?1 WHERE original_path = ?2",
+            rusqlite::params![&target_path, &old_path],
+        )?;
+        tx.execute(
+            "DELETE FROM track_interaction_state WHERE path = ?1",
+            [&old_path],
+        )?;
+    }
+
+    // Clean any lingering orphan verbatim references across secondary tables.
+    for (table, col) in [
+        ("playlist_tracks", "track_path"),
+        ("playback_queue", "track_path"),
+        ("metadata_edit_history", "track_path"),
+        ("tag_backups", "original_path"),
+    ] {
+        let mut stale = Vec::new();
+        {
+            let sql = format!("SELECT DISTINCT {col} FROM {table} WHERE substr({col}, 1, 4) = ?1");
+            let mut stmt = tx.prepare(&sql)?;
+            let mut rows = stmt.query([VERBATIM])?;
+            while let Some(row) = rows.next()? {
+                stale.push(row.get::<_, String>(0)?);
+            }
+        }
+        for old in stale {
+            let clean = crate::normalize_windows_path_str(&old);
+            let upd = format!("UPDATE {table} SET {col} = ?1 WHERE {col} = ?2");
+            tx.execute(&upd, rusqlite::params![clean, old])?;
+            fixed_count += 1;
+        }
+    }
+    tx.execute(
+        "DELETE FROM track_handles WHERE substr(path, 1, 4) = ?1",
+        [VERBATIM],
+    )?;
+    tx.execute(
+        "DELETE FROM track_fingerprints WHERE substr(path, 1, 4) = ?1",
+        [VERBATIM],
+    )?;
+    tx.execute(
+        "DELETE FROM track_interaction_state WHERE substr(path, 1, 4) = ?1",
+        [VERBATIM],
+    )?;
+
+    // Clean library-roots & ignored-directories JSON arrays.
+    for key in ["library-roots", "ignored-directories"] {
+        if let Ok(raw) = tx.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [key],
+            |row| row.get::<_, String>(0),
+        ) {
+            if let Ok(list) = serde_json::from_str::<Vec<String>>(&raw) {
+                let mut seen = std::collections::HashSet::new();
+                let mut cleaned = Vec::with_capacity(list.len());
+                for item in list {
+                    let norm = crate::normalize_windows_path_str(&item);
+                    if !norm.is_empty() && seen.insert(norm.to_lowercase()) {
+                        cleaned.push(norm);
+                    }
+                }
+                if let Ok(json_str) = serde_json::to_string(&cleaned) {
+                    if json_str != raw {
+                        tx.execute(
+                            "UPDATE settings SET value = ?1 WHERE key = ?2",
+                            rusqlite::params![json_str, key],
+                        )?;
+                        fixed_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Clean saved playback_session JSON if it stored verbatim paths.
+    if let Ok(raw) = tx.query_row(
+        "SELECT payload FROM playback_session WHERE id = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        if raw.contains(VERBATIM) {
+            if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(obj) = val.as_object_mut() {
+                    for k in ["trackPath", "track_path"] {
+                        if let Some(s) = obj.get(k).and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                            obj.insert(
+                                k.to_string(),
+                                serde_json::Value::String(crate::normalize_windows_path_str(&s)),
+                            );
+                        }
+                    }
+                    if let Some(arr) = obj.get_mut("queue").and_then(|v| v.as_array_mut()) {
+                        for elem in arr.iter_mut() {
+                            if let Some(s) = elem.as_str() {
+                                *elem = serde_json::Value::String(
+                                    crate::normalize_windows_path_str(s),
+                                );
+                            }
+                        }
+                    }
+                }
+                if let Ok(updated) = serde_json::to_string(&val) {
+                    tx.execute(
+                        "UPDATE playback_session SET payload = ?1 WHERE id = 1",
+                        [updated],
+                    )?;
+                    fixed_count += 1;
+                }
+            }
+        }
+    }
+
+    if fixed_count > 0 {
+        let _ = tx.execute("INSERT INTO tracks_fts(tracks_fts) VALUES('rebuild')", []);
+    }
+    tx.commit()?;
+    Ok(fixed_count)
 }
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {

@@ -7,6 +7,7 @@ import { ScrollView } from "std-widgets.slint";
 component SettingRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
+    in property <bool> highlighted: false;
     min-width: 0px;
     height: 52px;
 
@@ -17,7 +18,7 @@ component SettingRow inherits Rectangle {
         Text {
             min-width: 0px;
             text: root.label;
-            color: Palette.text-strong;
+            color: root.highlighted ? State.accent : Palette.text-strong;
             font-size: 12px;
             font-weight: 700;
             overflow: elide;
@@ -35,15 +36,38 @@ component SettingRow inherits Rectangle {
 component SettingSwitchRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
     in property <bool> checked: false;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
     callback toggled(bool);
 
-    height: 52px;
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
     HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
         spacing: 18px;
         SettingRow {
             label: root.label;
             description: root.description;
+            highlighted: root.is-match;
             horizontal-stretch: 1;
         }
         VerticalLayout {
@@ -54,7 +78,7 @@ component SettingSwitchRow inherits Rectangle {
             }
         }
     }
-    Rectangle {
+    if !root.is-match : Rectangle {
         y: parent.height - 1px;
         height: 1px;
         background: Palette.border;
@@ -64,16 +88,39 @@ component SettingSwitchRow inherits Rectangle {
 component SettingComboRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
     in property <[string]> options;
     in property <string> value;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
     callback changed(string);
 
-    height: 52px;
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
     HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
         spacing: 18px;
         SettingRow {
             label: root.label;
             description: root.description;
+            highlighted: root.is-match;
             horizontal-stretch: 1;
         }
         VerticalLayout {
@@ -86,7 +133,7 @@ component SettingComboRow inherits Rectangle {
             }
         }
     }
-    Rectangle {
+    if !root.is-match : Rectangle {
         y: parent.height - 1px;
         height: 1px;
         background: Palette.border;
@@ -140,14 +187,35 @@ component SettingsNavTab inherits Rectangle {
 component SettingColorRow inherits Rectangle {
     in property <string> label;
     in property <string> description;
+    in property <string> keywords: "";
+    in property <string> search-query: "";
     in property <color> swatch;
     in property <bool> enabled: true;
     in property <string> setting;
-    height: 52px;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
 
     HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
         spacing: 18px;
-        SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
         VerticalLayout {
             alignment: center;
             Rectangle {
@@ -170,22 +238,43 @@ component SettingColorRow inherits Rectangle {
             }
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+    if !root.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
 component SettingRangeRow inherits Rectangle {
     in property <string> label;
     in property <string> description;
+    in property <string> keywords: "";
+    in property <string> search-query: "";
     in-out property <int> value;
     in property <int> minimum: 0;
     in property <int> maximum: 60;
     in property <bool> enabled: true;
     in property <string> setting;
-    height: 52px;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
 
     HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
         spacing: 18px;
-        SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -218,22 +307,43 @@ component SettingRangeRow inherits Rectangle {
             }
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+    if !root.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
 }
 
 component SettingNumberRow inherits Rectangle {
     in property <string> label;
     in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
     in-out property <int> value;
     in property <int> minimum: 180;
     in property <int> maximum: 480;
     in property <int> step: 10;
     in property <string> setting;
-    height: 52px;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
 
     HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
         spacing: 18px;
-        SettingRow { label: root.label; description: root.description; horizontal-stretch: 1; }
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
         VerticalLayout {
             alignment: center;
             Rectangle {
@@ -412,8 +522,29 @@ export component SettingsView inherits Rectangle {
     // into any parent geometry above `settings-scroll` (doing so recurses in Slint layout).
     property <length> scroll-pos: max(0px, -settings-scroll.content-y);
     property <string> watched-section: State.settings-section;
+    property <string> search-query: State.view == "Settings" ? State.view-search : "";
+    property <bool> has-any-match:
+        row-theme.is-match || row-accent.is-match || row-custom-accent.is-match
+        || row-accent-color.is-match || row-sel-mode.is-match || row-sel-color.is-match
+        || row-transparent.is-match || row-transparency.is-match || row-motion.is-match
+        || row-presets.is-match || row-indexed.is-match || row-backups.is-match
+        || row-dupes.is-match || row-col-artwork.is-match || row-col-artist.is-match
+        || row-col-album.is-match || row-col-added.is-match || row-col-year.is-match
+        || row-col-duration.is-match || row-col-fav.is-match || row-autoplay.is-match
+        || row-open-panel.is-match || row-auto-lyrics.is-match || row-seek-lyrics.is-match
+        || row-lyrics-storage.is-match || row-tray.is-match || row-nav-width.is-match
+        || row-browse-width.is-match || row-nav-order.is-match || row-updates.is-match
+        || row-version.is-match || row-privacy.is-match;
     changed watched-section => {
         root.scroll-only-to(self.watched-section);
+    }
+    changed search-query => {
+        if (self.search-query != "") {
+            let target-y = root.first-match-y();
+            if (target-y >= 0px) {
+                settings-scroll.content-y = -max(0px, min(target-y - 14px, max(0px, settings-content.preferred-height - settings-scroll.visible-height)));
+            }
+        }
     }
     property <string> active-tab:
         root.scroll-pos >= about-section.y - 60px ? "About" :
@@ -421,6 +552,42 @@ export component SettingsView inherits Rectangle {
         root.scroll-pos >= playback-section.y - 60px ? "Playback" :
         root.scroll-pos >= library-section.y - 60px ? "Library" :
         "Appearance";
+
+    function first-match-y() -> length {
+        if (row-theme.is-match) { return appearance-section.y + row-theme.y; }
+        if (row-accent.is-match) { return appearance-section.y + row-accent.y; }
+        if (row-custom-accent.is-match) { return appearance-section.y + row-custom-accent.y; }
+        if (row-accent-color.is-match) { return appearance-section.y + row-accent-color.y; }
+        if (row-sel-mode.is-match) { return appearance-section.y + row-sel-mode.y; }
+        if (row-sel-color.is-match) { return appearance-section.y + row-sel-color.y; }
+        if (row-transparent.is-match) { return appearance-section.y + row-transparent.y; }
+        if (row-transparency.is-match) { return appearance-section.y + row-transparency.y; }
+        if (row-motion.is-match) { return appearance-section.y + row-motion.y; }
+        if (row-presets.is-match) { return appearance-section.y + row-presets.y; }
+        if (row-indexed.is-match) { return library-section.y + row-indexed.y; }
+        if (row-backups.is-match) { return library-section.y + row-backups.y; }
+        if (row-dupes.is-match) { return library-section.y + row-dupes.y; }
+        if (row-col-artwork.is-match) { return library-section.y + row-col-artwork.y; }
+        if (row-col-artist.is-match) { return library-section.y + row-col-artist.y; }
+        if (row-col-album.is-match) { return library-section.y + row-col-album.y; }
+        if (row-col-added.is-match) { return library-section.y + row-col-added.y; }
+        if (row-col-year.is-match) { return library-section.y + row-col-year.y; }
+        if (row-col-duration.is-match) { return library-section.y + row-col-duration.y; }
+        if (row-col-fav.is-match) { return library-section.y + row-col-fav.y; }
+        if (row-autoplay.is-match) { return playback-section.y + row-autoplay.y; }
+        if (row-open-panel.is-match) { return playback-section.y + row-open-panel.y; }
+        if (row-auto-lyrics.is-match) { return playback-section.y + row-auto-lyrics.y; }
+        if (row-seek-lyrics.is-match) { return playback-section.y + row-seek-lyrics.y; }
+        if (row-lyrics-storage.is-match) { return playback-section.y + row-lyrics-storage.y; }
+        if (row-tray.is-match) { return advanced-section.y + row-tray.y; }
+        if (row-nav-width.is-match) { return advanced-section.y + row-nav-width.y; }
+        if (row-browse-width.is-match) { return advanced-section.y + row-browse-width.y; }
+        if (row-nav-order.is-match) { return advanced-section.y + row-nav-order.y; }
+        if (row-updates.is-match) { return about-section.y + row-updates.y; }
+        if (row-version.is-match) { return about-section.y + row-version.y; }
+        if (row-privacy.is-match) { return about-section.y + row-privacy.y; }
+        return -1px;
+    }
 
     function scroll-only-to(section: string) {
         if (section == "Appearance") {
@@ -467,7 +634,7 @@ export component SettingsView inherits Rectangle {
         // Single compact scrollable navigation tab strip with live active indicator
         Rectangle {
             height: 46px;
-            border-radius: 8px;
+            border-radius: 10px;
             background: Palette.raised;
             animate background { duration: 350ms; easing: ease-in-out; }
             clip: true;
@@ -494,15 +661,44 @@ export component SettingsView inherits Rectangle {
             }
         }
 
-        // Settings panel container: padding 20px, background #171917 (Palette.raised), border-radius 8px.
+        if root.search-query != "" : Rectangle {
+            height: 40px;
+            border-radius: 10px;
+            background: root.has-any-match ? State.accent.with-alpha(0.12) : Palette.panel-2;
+            border-width: 1px;
+            border-color: root.has-any-match ? State.accent.with-alpha(0.55) : Palette.border;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 10px;
+                spacing: 10px;
+                alignment: center;
+                Text {
+                    text: root.has-any-match
+                        ? "Highlighting settings matching \"\{root.search-query}\""
+                        : "No settings found matching \"\{root.search-query}\"";
+                    color: root.has-any-match ? Palette.text : Palette.muted;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                ActionBtn {
+                    label: "Clear";
+                    clicked => { Actions.search-input(""); }
+                }
+            }
+        }
+
+        // Settings panel container: padding 20px, background #171917 (Palette.raised), border-radius 10px.
         Rectangle {
             vertical-stretch: 1;
-            border-radius: 8px;
+            border-radius: 10px;
             background: Palette.raised;
             clip: true;
             settings-scroll := ScrollView {
                 content-width: self.visible-width;
-                VerticalLayout {
+                settings-content := VerticalLayout {
                     width: settings-scroll.visible-width;
                     padding: 20px;
                     spacing: 24px;
@@ -513,87 +709,115 @@ export component SettingsView inherits Rectangle {
                         Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Match the player to your desktop."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
-                        SettingComboRow {
+                        row-theme := SettingComboRow {
                             label: "Color theme";
                             description: "System, light, or dark.";
+                            keywords: "appearance colour dark light system";
+                            search-query: root.search-query;
                             options: ["System", "Light", "Dark"];
                             value: State.theme;
                             changed(value) => { Actions.set-setting("theme", value); }
                         }
-                        SettingComboRow {
+                        row-accent := SettingComboRow {
                             label: "Accent style";
                             description: "Keep the Music Player lime or let album artwork color the whole interface.";
+                            keywords: "color colour artwork theme palette";
+                            search-query: root.search-query;
                             options: ["Lime", "Album artwork"];
                             value: State.accent-mode == "Native" ? "Lime" : "Album artwork";
                             changed(value) => { Actions.set-setting("accent-mode", value == "Lime" ? "Native" : "Artwork"); }
                         }
-                        SettingSwitchRow {
+                        row-custom-accent := SettingSwitchRow {
                             label: "Use a custom accent";
                             description: "Choose a color for active controls.";
+                            keywords: "color colour theme highlight";
+                            search-query: root.search-query;
                             checked: State.accent-manual-enabled;
                             toggled(value) => { Actions.set-setting("accent-manual", value ? "true" : "false"); }
                         }
-                        SettingColorRow {
+                        row-accent-color := SettingColorRow {
                             label: "Custom accent color";
                             description: "Applied to controls when enabled; artwork still colors the interface.";
+                            keywords: "colour swatch palette";
+                            search-query: root.search-query;
                             swatch: State.accent-manual;
                             enabled: State.accent-manual-enabled;
                             setting: "accent-color";
                         }
-                        SettingComboRow {
+                        row-sel-mode := SettingComboRow {
                             label: "Text selection color";
                             description: "Follow the active theme accent or choose your own.";
+                            keywords: "highlight colour";
+                            search-query: root.search-query;
                             options: ["Follow theme", "Custom"];
                             value: State.selection-color-mode == "Theme" ? "Follow theme" : "Custom";
                             changed(value) => { Actions.set-setting("selection-color-mode", value == "Follow theme" ? "Theme" : "Custom"); }
                         }
-                        SettingColorRow {
+                        row-sel-color := SettingColorRow {
                             label: "Custom selection color";
                             description: "Used when text selection is set to Custom.";
+                            keywords: "highlight colour swatch";
+                            search-query: root.search-query;
                             swatch: State.selection-color-value;
                             enabled: State.selection-color-mode == "Custom";
                             setting: "selection-color";
                         }
-                        SettingSwitchRow {
+                        row-transparent := SettingSwitchRow {
                             label: "Transparent window";
-                            description: "Show the desktop behind the player. Off by default.";
+                            description: "Show Windows acrylic translucency behind the player. Off by default.";
+                            keywords: "acrylic mica blur glass backdrop translucency opacity";
+                            search-query: root.search-query;
                             checked: State.transparent-window;
                             toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
                         }
-                        SettingRangeRow {
+                        row-transparency := SettingRangeRow {
                             label: "Transparency";
                             description: "0% is opaque. The player always remains at least 40% solid.";
+                            keywords: "acrylic mica blur glass opacity";
+                            search-query: root.search-query;
                             value: State.window-transparency;
                             minimum: 0;
                             maximum: 60;
                             enabled: State.transparent-window;
                             setting: "window-transparency";
                         }
-                        SettingComboRow {
+                        row-motion := SettingComboRow {
                             label: "Navigation motion";
                             description: "Respect accessibility animation preferences.";
+                            keywords: "animation transition smooth subtle expressive";
+                            search-query: root.search-query;
                             options: ["Off", "Subtle", "Expressive"];
                             value: State.motion-style;
                             changed(value) => { Actions.set-setting("motion-style", value); }
                         }
-                        HorizontalLayout {
-                            height: 52px;
-                            spacing: 18px;
-                            SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; horizontal-stretch: 1; }
-                            VerticalLayout {
-                                alignment: center;
-                                horizontal-stretch: 0;
-                                HorizontalLayout {
-                                    spacing: 9px;
-                                    alignment: end;
-                                    for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
-                                        width: 24px;
-                                        height: 24px;
-                                        border-radius: 12px;
-                                        border-width: State.accent-preset-name == preset ? 2px : 0px;
-                                        border-color: #ffffff;
-                                        background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
-                                        TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                        row-presets := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Accent presets Quick choices custom accent Lime Sky Violet Rose Amber color colour", root.search-query);
+                            height: 54px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-presets.is-match ? 12px : 0px;
+                                padding-right: row-presets.is-match ? 8px : 0px;
+                                spacing: 18px;
+                                SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; highlighted: row-presets.is-match; horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 0;
+                                    HorizontalLayout {
+                                        spacing: 9px;
+                                        alignment: end;
+                                        for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
+                                            width: 24px;
+                                            height: 24px;
+                                            border-radius: 12px;
+                                            border-width: State.accent-preset-name == preset ? 2px : 0px;
+                                            border-color: #ffffff;
+                                            background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
+                                            TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                                        }
                                     }
                                 }
                             }
@@ -615,25 +839,74 @@ export component SettingsView inherits Rectangle {
                         Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Local folders and indexed tracks."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
-                        HorizontalLayout {
-                            height: 52px;
-                            SettingRow { label: "Indexed library"; description: "Total size of tracks currently indexed."; horizontal-stretch: 1; }
-                            Text { text: State.indexed-library-size; color: Palette.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                        row-indexed := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Indexed library total size tracks folders", root.search-query);
+                            height: 54px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-indexed.is-match ? 12px : 0px;
+                                padding-right: row-indexed.is-match ? 8px : 0px;
+                                SettingRow { label: "Indexed library"; description: "Total size of tracks currently indexed."; highlighted: row-indexed.is-match; horizontal-stretch: 1; }
+                                Text { text: State.indexed-library-size; color: Palette.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                            }
+                            if !row-indexed.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
                         }
-                        Rectangle { height: 1px; background: Palette.border; }
-                        SettingSwitchRow {
+                        row-backups := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Tag backups cleanup storage limit cache mb", root.search-query);
+                            height: 58px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-backups.is-match ? 12px : 0px;
+                                padding-right: row-backups.is-match ? 8px : 0px;
+                                spacing: 10px;
+                                SettingRow {
+                                    label: "Tag backups";
+                                    description: "Backups kept when editing tags or embedding lyrics · \{State.tag-backup-stats}";
+                                    highlighted: row-backups.is-match;
+                                    horizontal-stretch: 1;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    CustomSelect {
+                                        width: 96px;
+                                        options: ["50 MB", "100 MB", "250 MB", "500 MB"];
+                                        current-value: State.tag-backup-max-mb-label;
+                                        selected(value) => { Actions.set-setting("tag-backup-max-mb", value); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    ActionBtn {
+                                        label: "Clear";
+                                        clicked => { Actions.cleanup-tag-backups(); }
+                                    }
+                                }
+                            }
+                            if !row-backups.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+                        }
+                        row-dupes := SettingSwitchRow {
                             label: "Hide exact duplicates";
                             description: "Hide verified identical files in song, album, artist, genre, and folder views. Explicit queue and playlist entries are retained.";
+                            keywords: "duplicates library dedupe";
+                            search-query: root.search-query;
                             checked: State.hide-exact-duplicates;
                             toggled(value) => { Actions.set-setting("hide-exact-duplicates", value ? "true" : "false"); }
                         }
-                        SettingSwitchRow { label: "Artwork"; description: "Show this column when the window is wide enough."; checked: State.show-list-artwork; toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Artist"; description: "Show this column when the window is wide enough."; checked: State.show-list-artist; toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Album"; description: "Show this column when the window is wide enough."; checked: State.show-list-album; toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Added date"; description: "Show this column when the window is wide enough."; checked: State.show-list-added; toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Year"; description: "Show this column when the window is wide enough."; checked: State.show-list-year; toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Duration"; description: "Show this column when the window is wide enough."; checked: State.show-list-duration; toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); } }
-                        SettingSwitchRow { label: "Favorite button"; description: "Show this column when the window is wide enough."; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
+                        row-col-artwork := SettingSwitchRow { label: "Artwork"; description: "Show this column when the window is wide enough."; keywords: "columns song list cover"; search-query: root.search-query; checked: State.show-list-artwork; toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); } }
+                        row-col-artist := SettingSwitchRow { label: "Artist"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-artist; toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); } }
+                        row-col-album := SettingSwitchRow { label: "Album"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-album; toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); } }
+                        row-col-added := SettingSwitchRow { label: "Added date"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-added; toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); } }
+                        row-col-year := SettingSwitchRow { label: "Year"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-year; toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); } }
+                        row-col-duration := SettingSwitchRow { label: "Duration"; description: "Show this column when the window is wide enough."; keywords: "columns song list length time"; search-query: root.search-query; checked: State.show-list-duration; toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); } }
+                        row-col-fav := SettingSwitchRow { label: "Favorite button"; description: "Show this column when the window is wide enough."; keywords: "columns song list heart like"; search-query: root.search-query; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
 
                         Rectangle { height: 10px; }
                         if State.content-width <= 600 : VerticalLayout {
@@ -680,33 +953,43 @@ export component SettingsView inherits Rectangle {
                         Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Keep playback state and the queue easy to reach."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
-                        SettingSwitchRow {
+                        row-autoplay := SettingSwitchRow {
                             label: "Autoplay similar music";
                             description: "Automatically queue and play songs from similar genres, artists, and favorites when playback ends.";
+                            keywords: "similar radio queue end";
+                            search-query: root.search-query;
                             checked: State.autoplay-similar;
                             toggled(value) => { Actions.set-setting("autoplay-similar", value ? "true" : "false"); }
                         }
-                        SettingSwitchRow {
+                        row-open-panel := SettingSwitchRow {
                             label: "Open the Now Playing pane when a song starts";
                             description: "Show the current track and upcoming queue.";
+                            keywords: "right panel sidebar queue info";
+                            search-query: root.search-query;
                             checked: State.auto-open-side-panel;
                             toggled(value) => { Actions.set-setting("auto-open-side-panel", value ? "true" : "false"); }
                         }
-                        SettingSwitchRow {
+                        row-auto-lyrics := SettingSwitchRow {
                             label: "Automatically find lyrics";
                             description: "If no saved lyrics exist, look for a likely LRCLIB match when playback starts. Sends the track title and artist; manual search remains available.";
+                            keywords: "lrclib online synchronized lrc";
+                            search-query: root.search-query;
                             checked: State.auto-load-lyrics;
                             toggled(value) => { Actions.set-setting("auto-load-lyrics", value ? "true" : "false"); }
                         }
-                        SettingSwitchRow {
+                        row-seek-lyrics := SettingSwitchRow {
                             label: "Seek when selecting a lyric line";
                             description: "Jump playback to a timed lyric. Plain, untimed lyrics cannot seek.";
+                            keywords: "synced timestamp lrc jump";
+                            search-query: root.search-query;
                             checked: State.seek-from-lyrics;
                             toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
                         }
-                        SettingComboRow {
+                        row-lyrics-storage := SettingComboRow {
                             label: "Lyrics storage";
                             description: "Choose whether fetched or edited lyrics embed inside the audio file or save as an LRC file beside it.";
+                            keywords: "embed sidecar lrc file";
+                            search-query: root.search-query;
                             options: ["Embed in audio file", "Save beside audio file"];
                             value: State.lyrics-embed ? "Embed in audio file" : "Save beside audio file";
                             changed(value) => { Actions.set-setting("lyrics-storage-mode", value == "Save beside audio file" ? "sidecar" : "embed"); }
@@ -727,23 +1010,29 @@ export component SettingsView inherits Rectangle {
                         Text { text: "Advanced"; color: Palette.text; font-size: 15px; font-weight: 700; }
                         Text { text: "Application behavior, navigation, and diagnostics."; color: Palette.muted; font-size: 11px; }
                         Rectangle { height: 8px; }
-                        SettingSwitchRow {
+                        row-tray := SettingSwitchRow {
                             label: "Keep running in notification area";
                             description: "Closing the window keeps Music Player and playback running. Use the tray icon to reopen it or choose Quit to exit.";
+                            keywords: "tray minimize background close";
+                            search-query: root.search-query;
                             checked: State.minimize-to-tray;
                             toggled(value) => { Actions.set-setting("minimize-to-tray", value ? "true" : "false"); }
                         }
-                        SettingNumberRow {
+                        row-nav-width := SettingNumberRow {
                             label: "Navigation width";
                             description: "Expanded sidebar width in logical pixels.";
+                            keywords: "sidebar layout size";
+                            search-query: root.search-query;
                             value: State.navigation-width;
                             minimum: 180;
                             maximum: 360;
                             setting: "navigation-width";
                         }
-                        SettingNumberRow {
+                        row-browse-width := SettingNumberRow {
                             label: "Browse grid spacing";
                             description: "Spacing between album, artist, and playlist tiles.";
+                            keywords: "cards grid tiles width";
+                            search-query: root.search-query;
                             value: State.browse-width;
                             minimum: 180;
                             maximum: 480;
@@ -767,8 +1056,22 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
                         }
                         Rectangle { height: 10px; }
-                        SectionTitle { text: "Navigation order and visibility"; font-size: 12px; letter-spacing: 0px; }
-                        Text { text: "Drag the grip or use the arrows to reorder. Use the switch to hide a destination."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                        row-nav-order := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Navigation order and visibility sidebar drag reorder hide", root.search-query);
+                            height: nav-order-hdr.preferred-height + 8px;
+                            border-radius: 6px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            nav-order-hdr := VerticalLayout {
+                                padding-left: row-nav-order.is-match ? 10px : 0px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 2px;
+                                SectionTitle { text: "Navigation order and visibility"; font-size: 12px; letter-spacing: 0px; }
+                                Text { text: "Drag the grip or use the arrows to reorder. Use the switch to hide a destination."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                            }
+                        }
                         Rectangle { height: 6px; }
                         VerticalLayout {
                             spacing: 0px;
@@ -799,18 +1102,29 @@ export component SettingsView inherits Rectangle {
                                 }
                             }
                         }
-                        HorizontalLayout {
+                        row-version := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Latest release version update GitHub history", root.search-query);
                             height: 56px;
-                            SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · updates are never installed automatically."; horizontal-stretch: 1; }
-                            VerticalLayout {
-                                alignment: center;
-                                ActionBtn { label: State.update-tag == "" ? "Release history" : "View release"; clicked => { Actions.open-release(); } }
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            HorizontalLayout {
+                                padding-left: row-version.is-match ? 12px : 0px;
+                                padding-right: row-version.is-match ? 8px : 0px;
+                                SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · updates are never installed automatically."; highlighted: row-version.is-match; horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    ActionBtn { label: State.update-tag == "" ? "Release history" : "View release"; clicked => { Actions.open-release(); } }
+                                }
                             }
                         }
                         Rectangle { height: 1px; background: Palette.border; }
-                        SettingSwitchRow {
+                        row-updates := SettingSwitchRow {
                             label: "Check for updates automatically";
                             description: "Checks GitHub release metadata every six hours; installs are always manual.";
+                            keywords: "github release update version";
+                            search-query: root.search-query;
                             checked: State.check-updates;
                             toggled(value) => { Actions.set-setting("check-updates", value ? "true" : "false"); }
                         }
@@ -960,12 +1274,26 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }
                         }
                         Rectangle { height: 8px; }
-                        SectionTitle { text: "Privacy and network use"; font-size: 12px; letter-spacing: 0px; }
-                        Text {
-                            text: "Your music library stays on this device. Manual checks, and automatic checks when enabled, contact GitHub for release information. Searching LRCLIB sends the current track title and artist to LRCLIB to find matching lyrics.";
-                            color: Palette.muted;
-                            font-size: 10px;
-                            wrap: word-wrap;
+                        row-privacy := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Privacy and network use LRCLIB GitHub device", root.search-query);
+                            height: priv-col.preferred-height + 8px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            priv-col := VerticalLayout {
+                                padding-left: row-privacy.is-match ? 10px : 0px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 4px;
+                                SectionTitle { text: "Privacy and network use"; font-size: 12px; letter-spacing: 0px; }
+                                Text {
+                                    text: "Your music library stays on this device. Manual checks, and automatic checks when enabled, contact GitHub for release information. Searching LRCLIB sends the current track title and artist to LRCLIB to find matching lyrics.";
+                                    color: Palette.muted;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
                         }
                     }
                 }

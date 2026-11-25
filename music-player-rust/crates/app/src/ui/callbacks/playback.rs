@@ -17,11 +17,23 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 app.save_recent_search(&cur_search);
             }
             if let Some(track) = app.track_by_id(&id) {
-                let paths = app.context_paths_for_track_play(&track);
-                let index = paths
-                    .iter()
-                    .position(|p| p.eq_ignore_ascii_case(&track.path));
-                app.coordinator.queue_mut().replace(paths, index);
+                let mut paths = app.context_paths_for_track_play(&track);
+                let shuffle = app.coordinator.queue().shuffle;
+                let index = if shuffle {
+                    if let Some(pos) = paths.iter().position(|p| p.eq_ignore_ascii_case(&track.path)) {
+                        paths.remove(pos);
+                    }
+                    paths.insert(0, track.path.clone());
+                    app.coordinator.queue_mut().replace(paths, Some(0));
+                    app.coordinator.queue_mut().shuffle_upcoming(1);
+                    Some(0)
+                } else {
+                    let index = paths
+                        .iter()
+                        .position(|p| p.eq_ignore_ascii_case(&track.path));
+                    app.coordinator.queue_mut().replace(paths, index);
+                    index
+                };
                 app.play_track(track, false, index);
             }
         });
@@ -32,10 +44,16 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             let mut app = a.borrow_mut();
             app.set_view(&view, "", "", "");
             let paths = app.current_view_all_paths(Some(&view));
-            if let Some(path) = paths.first().cloned() {
-                if let Some(track) = app.store.get_track(&path).ok().flatten() {
-                    app.coordinator.queue_mut().replace(paths, Some(0));
-                    app.play_track(track, false, Some(0));
+            let shuffle = app.coordinator.queue().shuffle;
+            if !paths.is_empty() {
+                app.coordinator.queue_mut().replace(paths, Some(0));
+                if shuffle {
+                    app.coordinator.queue_mut().shuffle_upcoming(0);
+                }
+                if let Some(path) = app.coordinator.queue().entries().first().cloned() {
+                    if let Some(track) = app.store.get_track(&path).ok().flatten() {
+                        app.play_track(track, false, Some(0));
+                    }
                 }
             }
         });
@@ -62,23 +80,34 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_play_group(move |column, value| {
             let mut app = a.borrow_mut();
+            let hide_dupes = app
+                .settings
+                .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
             let query = music_player_core::TrackQuery {
                 group_column: Some(column.to_string()),
                 group_value: Some(value.to_string()),
-                sort: if column == "album" {
-                    music_player_core::TrackSort::TrackNumber
-                } else {
-                    music_player_core::TrackSort::Title
+                sort: match column.as_str() {
+                    "album" => music_player_core::TrackSort::TrackNumber,
+                    "artist" => music_player_core::TrackSort::Album,
+                    _ => music_player_core::TrackSort::Title,
                 },
+                hide_duplicates: hide_dupes,
                 page_size: 10_000,
                 ..Default::default()
             };
             if let Ok((tracks, _)) = app.store.query_track_page(&query) {
                 if !tracks.is_empty() {
                     let paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
+                    let shuffle = app.coordinator.queue().shuffle;
                     app.coordinator.queue_mut().replace(paths, Some(0));
-                    let first = tracks[0].clone();
-                    app.play_track(first, false, Some(0));
+                    if shuffle {
+                        app.coordinator.queue_mut().shuffle_upcoming(0);
+                    }
+                    if let Some(path) = app.coordinator.queue().entries().first().cloned() {
+                        if let Some(first) = app.store.get_track(&path).ok().flatten() {
+                            app.play_track(first, false, Some(0));
+                        }
+                    }
                 }
             }
         });

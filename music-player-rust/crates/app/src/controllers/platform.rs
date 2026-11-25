@@ -61,6 +61,24 @@ impl App {
         self.clear_stale_artwork();
         self.publish_about();
         self.publish_playback();
+        {
+            let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
+            std::thread::spawn(move || {
+                let removed = music_player_core::prune_backup_directory_to_bytes(
+                    &tag_backups_dir(),
+                    max_bytes,
+                );
+                if removed > 0 {
+                    let _ = slint::invoke_from_event_loop(|| {
+                        crate::with_app(|app| {
+                            if app.ui.global::<State>().get_view() == "Settings" {
+                                app.publish_settings();
+                            }
+                        });
+                    });
+                }
+            });
+        }
         if self.startup_scan_deferred {
             self.startup_scan_deferred = false;
             self.startup_scan();
@@ -196,29 +214,86 @@ impl App {
         light: bool,
         custom_color: Option<(u8, u8, u8)>,
     ) {
+        #[repr(C)]
+        struct DwmMargins {
+            cx_left_width: i32,
+            cx_right_width: i32,
+            cy_top_height: i32,
+            cy_bottom_height: i32,
+        }
+        #[link(name = "dwmapi")]
+        extern "system" {
+            fn DwmExtendFrameIntoClientArea(hwnd: isize, p_mar_inset: *const DwmMargins) -> i32;
+        }
+
         let dark_mode: u32 = if custom_color.is_some() || !light {
             1
         } else {
             0
         };
-        let caption_color: u32 = if let Some((r, g, b)) = custom_color {
+        let transparent_backdrop = self
+            .settings
+            .bool_or(music_player_core::settings::keys::TRANSPARENT_WINDOW, false)
+            && !self.ui.global::<State>().get_immersive_player_open();
+        let caption_color: u32 = if transparent_backdrop {
+            // DWMWA_COLOR_DEFAULT lets Win11 render native translucent caption behind Acrylic.
+            0xFFFFFFFF
+        } else if let Some((r, g, b)) = custom_color {
             ((b as u32) << 16) | ((g as u32) << 8) | (r as u32)
         } else if light {
             0x00E6EAE7
         } else {
             0x00090A09
         };
+        const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+        const DWMWCP_ROUND: u32 = 2;
         const DWMWA_TEXT_COLOR: u32 = 36;
+        const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+        const DWMSBT_NONE: u32 = 1;
+        const DWMSBT_TRANSIENTWINDOW: u32 = 3; // Win11 Desktop Acrylic blur
         let text_color: u32 = if dark_mode == 1 {
             0x00F6F8F7
         } else {
             0x00191D19
         };
+        let backdrop_type: u32 = if transparent_backdrop {
+            DWMSBT_TRANSIENTWINDOW
+        } else {
+            DWMSBT_NONE
+        };
+        let margins = if transparent_backdrop {
+            DwmMargins {
+                cx_left_width: -1,
+                cx_right_width: -1,
+                cy_top_height: -1,
+                cy_bottom_height: -1,
+            }
+        } else {
+            DwmMargins {
+                cx_left_width: 0,
+                cx_right_width: 0,
+                cy_top_height: 0,
+                cy_bottom_height: 0,
+            }
+        };
         unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &DWMWCP_ROUND as *const u32 as *const std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
             DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_USE_IMMERSIVE_DARK_MODE,
                 &dark_mode as *const u32 as *const std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &backdrop_type as *const u32 as *const std::ffi::c_void,
                 std::mem::size_of::<u32>() as u32,
             );
             DwmSetWindowAttribute(
@@ -658,6 +733,7 @@ impl App {
             "minimize-to-tray" => "minimizeToTray",
             "right-panel-open" => "rightPanelOpen",
             "right-panel-width" => "rightPanelWidth",
+            "tag-backup-max-mb" => "tagBackupMaxMb",
             _ => name,
         };
         let json_value = if matches!(value, "true" | "false") {
@@ -676,12 +752,29 @@ impl App {
             | "autoOpenPanel" | "autoLoadLyrics" | "seekFromLyrics" | "showArtwork"
             | "showArtist" | "showAlbum" | "showAdded" | "showYear" | "showDuration"
             | "showFavorite" | "checkUpdates" | "minimizeToTray" | "rightPanelOpen"
-            | "rightPanelWidth" => {
+            | "rightPanelWidth" | "tagBackupMaxMb" => {
                 if let Err(message) = self.settings.update_web_setting(web_name, &json_value) {
                     self.show_notice(message, NoticeSeverity::Warning);
                 }
             }
             _ => self.settings.set_raw(name, value),
+        }
+        // Enabling transparent window from 0% opacity immediately reveals Acrylic blur.
+        if name == "transparent-window"
+            && value == "true"
+            && self
+                .settings
+                .int_or(music_player_core::settings::keys::WINDOW_TRANSPARENCY, 0)
+                == 0
+        {
+            self.settings.set_raw(
+                music_player_core::settings::keys::WINDOW_TRANSPARENCY,
+                "22",
+            );
+        }
+        if name == "tag-backup-max-mb" {
+            let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
+            let _ = music_player_core::prune_backup_directory_to_bytes(&tag_backups_dir(), max_bytes);
         }
         // Keep the live UI in sync with settings without waiting for restart.
         self.publish_settings();

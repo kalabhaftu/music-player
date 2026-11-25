@@ -516,6 +516,29 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         });
     }
 
+    {
+        use slint::winit_030::{winit::event::WindowEvent, EventResult, WinitWindowAccessor};
+        let drop_queue: Rc<RefCell<Vec<PathBuf>>> = Rc::new(RefCell::new(Vec::new()));
+        let drop_timer = Rc::new(Timer::default());
+        let a = app.clone();
+        let dq = drop_queue.clone();
+        let dt = drop_timer.clone();
+        ui.window().on_winit_window_event(move |_win, event| {
+            if let WindowEvent::DroppedFile(path) = event {
+                dq.borrow_mut().push(path.clone());
+                let a2 = a.clone();
+                let dq2 = dq.clone();
+                dt.start(TimerMode::SingleShot, Duration::from_millis(40), move || {
+                    let paths = std::mem::take(&mut *dq2.borrow_mut());
+                    if !paths.is_empty() {
+                        a2.borrow_mut().handle_dropped_paths(&paths);
+                    }
+                });
+            }
+            EventResult::Propagate
+        });
+    }
+
     // Engine-room clock drives playback and background pollers.
     let clock = Timer::default();
     {

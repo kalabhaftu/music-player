@@ -125,13 +125,11 @@ if ($RebuildApp -or (-not (Test-Path $targetExe) -and -not (Test-Path $appExe)))
     }
 }
 
-# Ensure MusicPlayer.exe exists in release dir
-if (-not (Test-Path $targetExe)) {
-    if (Test-Path $appExe) {
-        Copy-Item -LiteralPath $appExe -Destination $targetExe -Force
-    } else {
-        throw "Neither MusicPlayer.exe nor music-player-app.exe found in $releaseDir"
-    }
+# Ensure MusicPlayer.exe in release dir matches the latest music-player-app.exe build
+if (Test-Path $appExe) {
+    Copy-Item -LiteralPath $appExe -Destination $targetExe -Force
+} elseif (-not (Test-Path $targetExe)) {
+    throw "Neither MusicPlayer.exe nor music-player-app.exe found in $releaseDir"
 }
 
 # Prepare portable payload
@@ -143,22 +141,33 @@ Write-Host "Staging portable payload in $payload..."
     -Architecture 'x64'
 
 # Sign first-party binaries if signing is available
+$tsaServers = @('http://ts.ssl.com', 'http://timestamp.sectigo.com', 'http://timestamp.digicert.com')
+$activeTsa = $tsaServers[0]
 if ($canSign) {
     Write-Host "Signing first-party executables and helper scripts..."
     $filesToSign = @(Get-ChildItem -LiteralPath $payload -File | Where-Object {
         $_.Name -like 'MusicPlayer*.exe' -or $_.Name -like 'music-player*.exe' -or $_.Name -like 'MusicPlayer*.dll' -or $_.Extension -eq '.ps1'
     })
     foreach ($file in $filesToSign) {
-        if ($file.Extension -eq '.ps1') {
-            $null = Set-AuthenticodeSignature -LiteralPath $file.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
-        } else {
-            & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 $certificate.Thumbprint /s My $file.FullName
-            if ($LASTEXITCODE -ne 0) {
-                # Fallback timestamp server
-                & $signtool sign /fd SHA256 /tr http://timestamp.sectigo.com /td SHA256 /sha1 $certificate.Thumbprint /s My $file.FullName
-                if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($file.Name)" }
+        $signed = $false
+        foreach ($tsa in $tsaServers) {
+            if ($file.Extension -eq '.ps1') {
+                $sigResult = Set-AuthenticodeSignature -LiteralPath $file.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer $tsa -ErrorAction SilentlyContinue
+                if ($sigResult -and $sigResult.SignerCertificate -and $sigResult.TimeStamperCertificate) {
+                    $activeTsa = $tsa
+                    $signed = $true
+                    break
+                }
+            } else {
+                & $signtool sign /fd SHA256 /tr $tsa /td SHA256 /sha1 $certificate.Thumbprint /s My $file.FullName
+                if ($LASTEXITCODE -eq 0) {
+                    $activeTsa = $tsa
+                    $signed = $true
+                    break
+                }
             }
         }
+        if (-not $signed) { throw "Signing failed: $($file.Name)" }
         & (Join-Path $scriptDir 'Assert-LocalSignature.ps1') -Path $file.FullName
     }
 }
@@ -186,7 +195,7 @@ $innoArgs = @(
     "/DOutputDir=$work"
 )
 if ($canSign) {
-    $signCommand = '$q' + $signtool + '$q sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 ' + $certificate.Thumbprint + ' /s My $f'
+    $signCommand = '$q' + $signtool + '$q sign /fd SHA256 /tr ' + $activeTsa + ' /td SHA256 /sha1 ' + $certificate.Thumbprint + ' /s My $f'
     $innoArgs += '/DSignedBuild'
     $innoArgs += "/Smusicplayer=$signCommand"
 }

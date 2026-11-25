@@ -83,14 +83,26 @@ impl App {
             );
             return;
         }
-        let Some(track) = self.store.get_track(&paths[0]).ok().flatten() else {
+        let effective_shuffle = shuffle || self.coordinator.queue().shuffle;
+        let mut ordered = paths;
+        if effective_shuffle && ordered.len() > 1 {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut h = DefaultHasher::new();
+            std::time::SystemTime::now().hash(&mut h);
+            let pick = (h.finish() as usize) % ordered.len();
+            if pick != 0 {
+                ordered.swap(0, pick);
+            }
+        }
+        let Some(track) = self.store.get_track(&ordered[0]).ok().flatten() else {
             return;
         };
-        self.view_paths = paths;
+        self.view_paths = ordered.clone();
         self.coordinator
             .queue_mut()
-            .replace(self.view_paths.clone(), Some(0));
-        if shuffle {
+            .replace(ordered, Some(0));
+        if effective_shuffle {
             self.coordinator.queue_mut().shuffle_upcoming(1);
         }
         self.play_track(track, false, Some(0));
@@ -143,7 +155,22 @@ impl App {
         match index {
             0 => {
                 if let Some(t) = self.track_by_id(&id) {
-                    self.play_track(t, true, None);
+                    let mut paths = self.context_paths_for_track_play(&t);
+                    let shuffle = self.coordinator.queue().shuffle;
+                    let q_idx = if shuffle {
+                        if let Some(pos) = paths.iter().position(|p| p.eq_ignore_ascii_case(&t.path)) {
+                            paths.remove(pos);
+                        }
+                        paths.insert(0, t.path.clone());
+                        self.coordinator.queue_mut().replace(paths, Some(0));
+                        self.coordinator.queue_mut().shuffle_upcoming(1);
+                        Some(0)
+                    } else {
+                        let pos = paths.iter().position(|p| p.eq_ignore_ascii_case(&t.path));
+                        self.coordinator.queue_mut().replace(paths, pos);
+                        pos
+                    };
+                    self.play_track(t, false, q_idx);
                 }
             }
             1 => {
@@ -286,12 +313,17 @@ impl App {
         let Some(track) = self.track_by_id(id) else {
             return;
         };
+        let clean_path = music_player_core::normalize_windows_path_str(&track.path);
         self.details_target = Some(track.path.clone());
         let details = self.metadata_engine.inspect_file(Path::new(&track.path)).ok();
         let mut rows = vec![
             DetailRowItem {
                 label: ss("File"),
-                value: ss(file_name(&track.path)),
+                value: ss(file_name(&clean_path)),
+            },
+            DetailRowItem {
+                label: ss("Location"),
+                value: ss(&clean_path),
             },
             DetailRowItem {
                 label: ss("Title"),
@@ -477,7 +509,8 @@ impl App {
             },
             ..TagEdit::default()
         };
-        let editor = TagEditor::new(tag_backups_dir());
+        let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
+        let editor = TagEditor::new(tag_backups_dir()).with_max_total_bytes(max_bytes);
         let target_path = path.clone();
         let edit_clone = edit.clone();
         std::thread::Builder::new()

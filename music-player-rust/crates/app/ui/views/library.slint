@@ -60,6 +60,7 @@ export component SongsView inherits Rectangle {
                 width: 100%;
                 height: 100%;
                 scrollable: true;
+                show-plays: State.view == "Most Played";
                 sort(column) => { Actions.sort-view(column); }
                 empty-text: State.view == "Videos" ? "No videos indexed. Enable video file types in scan exclusions." : "No tracks to show.";
             }

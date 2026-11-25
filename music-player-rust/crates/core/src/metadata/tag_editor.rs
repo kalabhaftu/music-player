@@ -37,6 +37,7 @@ use crate::metadata::tag_reader::{
 use crate::models::{TagBackup, TagEdit};
 
 const BACKUP_RETENTION_PER_TRACK: usize = 5;
+const DEFAULT_BACKUP_MAX_TOTAL_BYTES: u64 = 100 * 1024 * 1024;
 
 // ======================================================================
 // Container dispatch
@@ -105,13 +106,20 @@ impl SaveContainer {
 
 pub struct TagEditor {
     backup_directory: PathBuf,
+    max_total_bytes: u64,
 }
 
 impl TagEditor {
     pub fn new<P: AsRef<Path>>(backup_directory: P) -> Self {
         Self {
             backup_directory: backup_directory.as_ref().to_path_buf(),
+            max_total_bytes: DEFAULT_BACKUP_MAX_TOTAL_BYTES,
         }
+    }
+
+    pub fn with_max_total_bytes(mut self, max_bytes: u64) -> Self {
+        self.max_total_bytes = max_bytes;
+        self
     }
 
     pub fn backup_directory(&self) -> &Path {
@@ -120,10 +128,11 @@ impl TagEditor {
 
     /// Computes the 10-character hex suffix of the SHA-256 hash of the canonical full file path.
     pub fn backup_suffix<P: AsRef<Path>>(path: P) -> String {
-        let full_path = fs::canonicalize(path.as_ref())
-            .unwrap_or_else(|_| path.as_ref().to_path_buf())
-            .to_string_lossy()
-            .to_string();
+        let full_path = crate::normalize_windows_path(
+            fs::canonicalize(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf()),
+        )
+        .to_string_lossy()
+        .to_string();
         let mut hasher = Sha256::new();
         hasher.update(full_path.as_bytes());
         let hash = hasher.finalize();
@@ -327,7 +336,109 @@ impl TagEditor {
                 let _ = fs::remove_file(path);
             }
         }
+        if self.max_total_bytes > 0 {
+            let _ = prune_backup_directory_to_bytes(&self.backup_directory, self.max_total_bytes);
+        }
     }
+}
+
+/// Returns `(file_count, total_bytes)` for all `.bak` files in `dir`.
+pub fn backup_directory_stats(dir: &Path) -> (usize, u64) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return (0, 0);
+    };
+    let mut count = 0usize;
+    let mut bytes = 0u64;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("bak"))
+            .unwrap_or(false)
+        {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    count += 1;
+                    bytes = bytes.saturating_add(meta.len());
+                }
+            }
+        }
+    }
+    (count, bytes)
+}
+
+/// Removes all `.bak` files in `dir`, returning the number of removed files.
+pub fn clear_backup_directory(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("bak"))
+            .unwrap_or(false)
+        {
+            if fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
+/// Evicts oldest `.bak` files from `dir` until total byte size is at or below
+/// `max_bytes` (preserving at least the single newest backup file if non-empty).
+pub fn prune_backup_directory_to_bytes(dir: &Path, max_bytes: u64) -> usize {
+    if max_bytes == 0 {
+        return 0;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut files: Vec<(DateTime<Utc>, u64, PathBuf)> = Vec::new();
+    let mut total: u64 = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("bak"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let len = meta.len();
+        let stamp = TagEditor::parse_backup_stamp(&path);
+        total = total.saturating_add(len);
+        files.push((stamp, len, path));
+    }
+    if total <= max_bytes || files.len() <= 1 {
+        return 0;
+    }
+    // Sort oldest first so we evict the stalest backups first, always leaving the newest one.
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut removed = 0usize;
+    let limit = files.len().saturating_sub(1);
+    for (_, len, path) in files.into_iter().take(limit) {
+        if total <= max_bytes {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn backup_stage_path(backup_path: &Path) -> PathBuf {
@@ -455,14 +566,7 @@ fn full_path(path: &Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
-    let text = absolute.to_string_lossy();
-    let trimmed = text.trim_end_matches(['/', '\\']);
-    let trimmed = if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {
-        format!("{}\\", trimmed)
-    } else {
-        trimmed.to_string()
-    };
-    PathBuf::from(trimmed)
+    crate::normalize_windows_path(&absolute)
 }
 
 fn file_extension(path: &Path) -> String {

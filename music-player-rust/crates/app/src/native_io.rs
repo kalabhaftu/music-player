@@ -217,16 +217,46 @@ pub fn open_url(url: &str) {
 }
 
 pub fn open_in_explorer(path: &str) {
-    if path.is_empty() {
+    let clean = music_player_core::normalize_windows_path_str(path);
+    if clean.is_empty() {
         return;
     }
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::System::Com::{
+            CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{ILCreateFromPathW, ILFree, SHOpenFolderAndSelectItems};
+
+        let mut wide: Vec<u16> = clean.encode_utf16().collect();
+        wide.push(0);
+        unsafe {
+            let com = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let pidl = ILCreateFromPathW(PCWSTR(wide.as_ptr()));
+            let opened = if !pidl.is_null() {
+                let res = SHOpenFolderAndSelectItems(pidl, None, 0);
+                ILFree(Some(pidl as *const _));
+                res.is_ok()
+            } else {
+                false
+            };
+            if com.is_ok() {
+                CoUninitialize();
+            }
+            if opened {
+                return;
+            }
+        }
+    }
     let _ = std::process::Command::new("explorer")
-        .arg(format!("/select,{}", path))
+        .arg(format!("/select,{}", clean))
         .spawn();
 }
 
 pub fn open_folder(path: &Path) {
-    let _ = std::process::Command::new("explorer").arg(path).spawn();
+    let clean = music_player_core::normalize_windows_path(path);
+    let _ = std::process::Command::new("explorer").arg(clean).spawn();
 }
 
 struct ArtworkCache {

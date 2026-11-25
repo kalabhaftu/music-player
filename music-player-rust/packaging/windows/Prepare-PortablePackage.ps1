@@ -104,13 +104,12 @@ foreach ($entry in $entries) {
     Copy-Item -LiteralPath $entry.FullName -Destination $targetPath -Force
 }
 
-# Ensure MusicPlayer.exe is present in destination
+# Ensure MusicPlayer.exe in destination matches the latest music-player-app.exe build and omit duplicate Cargo exe
 $destMusicPlayer = Join-Path $destination 'MusicPlayer.exe'
 $destAppExe = Join-Path $destination 'music-player-app.exe'
-if (-not (Test-Path -LiteralPath $destMusicPlayer)) {
-    if (Test-Path -LiteralPath $destAppExe) {
-        Copy-Item -LiteralPath $destAppExe -Destination $destMusicPlayer -Force
-    }
+if (Test-Path -LiteralPath $destAppExe) {
+    Copy-Item -LiteralPath $destAppExe -Destination $destMusicPlayer -Force
+    Remove-Item -LiteralPath $destAppExe -Force
 }
 
 # Ensure Assets folder is copied (for installer icon and branding)

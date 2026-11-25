@@ -19,7 +19,10 @@ pub use artwork::{
 };
 pub use dff::{dff_id3_payload, read_dff_duration_ms};
 pub use palette::{extract_palette, ArtworkPalette, RgbColor};
-pub use tag_editor::{clean_stale_temp_files, TagEditor};
+pub use tag_editor::{
+    backup_directory_stats, clean_stale_temp_files, clear_backup_directory,
+    prune_backup_directory_to_bytes, TagEditor,
+};
 pub use tag_reader::{
     custom_field_format, inspect_file, read_additional_standard_fields, read_custom_fields,
     read_tags, read_tags_in_cache, set_artwork_extraction_enabled, ExtractedTags, TrackDetails,

@@ -332,7 +332,13 @@ impl App {
                 )
             })
             .unwrap_or_default()));
-        state.set_info_location(ss(&track.path));
+        let clean_path = music_player_core::normalize_windows_path_str(&track.path);
+        let folder_path = Path::new(&clean_path)
+            .parent()
+            .map(|p| music_player_core::normalize_windows_path_str(&p.to_string_lossy()))
+            .unwrap_or_default();
+        state.set_info_location(ss(clean_path));
+        state.set_info_folder(ss(folder_path));
     }
 
     pub(crate) fn track_to_ui(
@@ -742,11 +748,28 @@ impl App {
 
     fn publish_settings_inner(&mut self, refresh_devices: bool) {
         use music_player_core::settings::keys as k;
-        self.publish_appearance();
         let s = &self.settings;
         let state = self.ui.global::<State>();
         state.set_transparent_window(s.bool_or(k::TRANSPARENT_WINDOW, false));
         state.set_window_transparency(s.int_or(k::WINDOW_TRANSPARENCY, 0) as i32);
+        let (backup_count, backup_bytes) =
+            music_player_core::backup_directory_stats(&tag_backups_dir());
+        let backup_stats = if backup_count == 0 {
+            "No backups stored".to_string()
+        } else {
+            format!(
+                "{} file{} · {}",
+                backup_count,
+                if backup_count == 1 { "" } else { "s" },
+                fmt_bytes(backup_bytes)
+            )
+        };
+        state.set_tag_backup_stats(ss(backup_stats));
+        state.set_tag_backup_max_mb_label(ss(format!("{} MB", s.tag_backup_max_mb())));
+        drop(state);
+        self.publish_appearance();
+        let s = &self.settings;
+        let state = self.ui.global::<State>();
         state.set_accent_color(ss(s
             .raw(k::ACCENT_COLOR)
             .unwrap_or_else(|| "#b7ff2d".into())));
@@ -1303,10 +1326,29 @@ impl App {
             None
         };
 
+        let is_artist_ctx = view.eq_ignore_ascii_case("Artist")
+            || group_column.eq_ignore_ascii_case("artist");
         let mut paths = if let Some(q) = query {
             self.store
                 .query_track_page(&q)
-                .map(|(tracks, _)| tracks.into_iter().map(|t| t.path).collect())
+                .map(|(mut tracks, _)| {
+                    if is_artist_ctx {
+                        let target_album = track.album.trim();
+                        tracks.sort_by(|a, b| {
+                            let a_same = !target_album.is_empty()
+                                && a.album.eq_ignore_ascii_case(target_album);
+                            let b_same = !target_album.is_empty()
+                                && b.album.eq_ignore_ascii_case(target_album);
+                            b_same
+                                .cmp(&a_same)
+                                .then_with(|| a.album.to_lowercase().cmp(&b.album.to_lowercase()))
+                                .then_with(|| a.track_number.cmp(&b.track_number))
+                                .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+                                .then_with(|| a.path.to_lowercase().cmp(&b.path.to_lowercase()))
+                        });
+                    }
+                    tracks.into_iter().map(|t| t.path).collect()
+                })
                 .unwrap_or_else(|_| self.current_view_all_paths(None))
         } else {
             self.current_view_all_paths(None)
@@ -1403,6 +1445,10 @@ impl App {
                 if *epoch == self.library_epoch {
                     self.view_paths = cached_paths.clone();
                     self.id_to_path = cached_id_map.clone();
+                    if let Some(current) = &self.current {
+                        self.id_to_path.insert(current.id(), current.path.clone());
+                        self.id_to_path.insert(current.path.clone(), current.path.clone());
+                    }
                     let state = self.ui.global::<State>();
                     state.set_tracks(ui_model(cached_items.clone()).into());
                     state.set_tracks_total(*cached_total as i32);
@@ -1817,6 +1863,10 @@ impl App {
 
     pub(crate) fn publish_playlist(&mut self, playlist_id: &str, playing: &str) {
         self.id_to_path.clear();
+        if let Some(current) = &self.current {
+            self.id_to_path.insert(current.id(), current.path.clone());
+            self.id_to_path.insert(current.path.clone(), current.path.clone());
+        }
         let Some(playlist) = self.store.get_playlist(playlist_id).ok().flatten() else {
             let state = self.ui.global::<State>();
             state.set_playlist_name(ss("Playlist not found."));
@@ -1987,7 +2037,9 @@ impl App {
 
     pub(crate) fn save_lyrics_for_path(&self, path: &str, text: &str, embed: bool) -> bool {
         if embed {
+            let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
             if TagEditor::new(tag_backups_dir())
+                .with_max_total_bytes(max_bytes)
                 .save(
                     path,
                     &TagEdit {
@@ -2210,9 +2262,11 @@ impl App {
             let track_path = path.to_string();
             let store = self.store.clone();
             let embed = self.should_embed_lyrics();
+            let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
             std::thread::spawn(move || {
                 let stored = if embed {
                     TagEditor::new(tag_backups_dir())
+                        .with_max_total_bytes(max_bytes)
                         .save(
                             &track_path,
                             &TagEdit {
@@ -2498,6 +2552,10 @@ impl App {
                     .collect();
                 self.view_paths = tracks.iter().map(|t| t.path.clone()).collect();
                 self.id_to_path.clear();
+                if let Some(current) = &self.current {
+                    self.id_to_path.insert(current.id(), current.path.clone());
+                    self.id_to_path.insert(current.path.clone(), current.path.clone());
+                }
                 for t in &tracks {
                     self.id_to_path.insert(t.id(), t.path.clone());
                     self.id_to_path.insert(t.path.clone(), t.path.clone());
