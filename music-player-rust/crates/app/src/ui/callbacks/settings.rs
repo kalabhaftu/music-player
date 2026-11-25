@@ -350,12 +350,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive_player(move || {
-            use slint::winit_030::WinitWindowAccessor;
             let app = a.borrow();
-            if app.ui.window().is_fullscreen() {
-                app.ui.window().set_fullscreen(false);
-                app.ui.window().with_winit_window(|win| win.set_fullscreen(None));
-            }
+            let was_fullscreen = app.ui.global::<State>().get_immersive_fullscreen();
             let state = app.ui.global::<State>();
             state.set_immersive_fullscreen(false);
             state.set_immersive_player_open(false);
@@ -363,22 +359,30 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             drop(state);
             app.sync_window_mode();
             app.publish_appearance();
+            if was_fullscreen {
+                let a2 = a.clone();
+                slint::Timer::single_shot(std::time::Duration::from_millis(35), move || {
+                    a2.borrow().sync_window_mode();
+                });
+            }
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>()
             .on_toggle_immersive_fullscreen(move || {
-                use slint::winit_030::WinitWindowAccessor;
                 let app = a.borrow();
-                let fullscreen = !app.ui.window().is_fullscreen();
-                app.ui.window().set_fullscreen(fullscreen);
-                if !fullscreen {
-                    app.ui.window().with_winit_window(|win| win.set_fullscreen(None));
-                }
+                let state = app.ui.global::<State>();
+                let fullscreen = !state.get_immersive_fullscreen();
+                state.set_immersive_fullscreen(fullscreen);
+                drop(state);
                 app.sync_window_mode();
                 if !fullscreen {
                     app.publish_appearance();
+                    let a2 = a.clone();
+                    slint::Timer::single_shot(std::time::Duration::from_millis(35), move || {
+                        a2.borrow().sync_window_mode();
+                    });
                 }
             });
     }

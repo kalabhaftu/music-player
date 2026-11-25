@@ -645,34 +645,28 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 width: 100%;
                 spacing: 6px;
                 HorizontalLayout {
-                    Text { text: State.current-time; color: #ffffffad; font-size: 12px; font-weight: 550; horizontal-stretch: 1; vertical-alignment: center; }
-                    imm-rt-btn := Rectangle {
-                        width: imm-rt-label.preferred-width + 8px;
-                        height: 22px;
-                        border-radius: 4px;
-                        background: imm-rt-ta.has-hover ? #ffffff1c : transparent;
-                        imm-rt-ta := TouchArea {
+                    Text {
+                        text: State.current-time;
+                        color: #ffffffad;
+                        font-size: 12px;
+                        font-weight: 550;
+                        vertical-alignment: center;
+                        TouchArea {
                             mouse-cursor: pointer;
                             clicked => { Actions.toggle-remaining-time(); }
                         }
-                        imm-rt-label := Text {
-                            x: 4px;
-                            height: parent.height;
-                            text: State.total-time;
-                            color: imm-rt-ta.has-hover ? #ffffff : #ffffffad;
-                            font-size: 12px;
-                            font-weight: 550;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
-                        }
-                        DelayedTooltip {
-                            text: State.show-remaining-time ? "Remaining time — click for duration" : "Total duration — click for remaining";
-                            active: imm-rt-ta.has-hover;
-                            pressed: imm-rt-ta.pressed;
-                            anchor-x: imm-rt-btn.absolute-position.x;
-                            anchor-y: imm-rt-btn.absolute-position.y;
-                            anchor-width: parent.width;
-                            anchor-height: parent.height;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: State.total-time;
+                        color: #ffffffad;
+                        font-size: 12px;
+                        font-weight: 550;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Actions.toggle-remaining-time(); }
                         }
                     }
                 }

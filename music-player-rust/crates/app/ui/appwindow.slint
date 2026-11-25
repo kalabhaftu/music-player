@@ -32,6 +32,8 @@ export {
 export component AppWindow inherits Window {
     title: State.current-title == "" ? "Music Player" : "\{State.current-title} — \{State.current-artist} | Music Player";
     icon: @image-url("../assets/MusicPlayer-dark.png");
+    no-frame: State.immersive-player-open;
+    full-screen: State.immersive-fullscreen;
     min-width: 720px;
     min-height: 500px;
     preferred-width: 1024px;

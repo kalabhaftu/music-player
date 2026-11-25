@@ -167,6 +167,10 @@ export component PlayerBar inherits Rectangle {
                 font-size: State.window-width <= 650 ? 8px : 9px;
                 vertical-alignment: center;
                 horizontal-alignment: right;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Actions.toggle-remaining-time(); }
+                }
             }
             PlayerSlider {
                 horizontal-stretch: 1;
@@ -191,33 +195,15 @@ export component PlayerBar inherits Rectangle {
                     reject
                 }
             }
-            rt-btn := Rectangle {
-                min-width: max(30px, rt-label.preferred-width + 6px);
-                height: 18px;
-                border-radius: 4px;
-                background: rt-ta.has-hover ? Palette.overlay : transparent;
-                rt-ta := TouchArea {
+            Text {
+                text: State.total-time;
+                color: #747b74;
+                font-size: State.window-width <= 650 ? 8px : 9px;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                TouchArea {
                     mouse-cursor: pointer;
                     clicked => { Actions.toggle-remaining-time(); }
-                }
-                rt-label := Text {
-                    x: 3px;
-                    width: parent.width - 6px;
-                    height: parent.height;
-                    text: State.total-time;
-                    color: rt-ta.has-hover ? Palette.text : #747b74;
-                    font-size: State.window-width <= 650 ? 8px : 9px;
-                    horizontal-alignment: left;
-                    vertical-alignment: center;
-                }
-                DelayedTooltip {
-                    text: State.show-remaining-time ? "Remaining time — click for duration" : "Total duration — click for remaining";
-                    active: rt-ta.has-hover;
-                    pressed: rt-ta.pressed;
-                    anchor-x: rt-btn.absolute-position.x;
-                    anchor-y: rt-btn.absolute-position.y;
-                    anchor-width: parent.width;
-                    anchor-height: parent.height;
                 }
             }
         }

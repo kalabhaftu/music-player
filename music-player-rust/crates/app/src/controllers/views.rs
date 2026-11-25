@@ -95,9 +95,10 @@ impl App {
         }
     }
 
-    /// Synchronizes native OS window decorations across Normal, Windowed Immersive,
-    /// and Fullscreen Immersive modes. Must only be invoked once the winit window exists
-    /// (after the event loop has started).
+    /// Synchronizes window-maximized state and requests a redraw when switching
+    /// between Normal, Windowed Immersive, and Fullscreen Immersive modes.
+    /// Native decorations and fullscreen state are driven directly by `AppWindow`'s
+    /// `no-frame` and `full-screen` bindings so Slint never overrides `set_decorations`.
     pub(crate) fn sync_window_mode(&self) {
         use slint::winit_030::WinitWindowAccessor;
         if !self.ui.window().has_winit_window() {
@@ -105,17 +106,15 @@ impl App {
         }
         let state = self.ui.global::<State>();
         let immersive_open = state.get_immersive_player_open();
-        let fullscreen = self.ui.window().is_fullscreen();
-        state.set_immersive_fullscreen(fullscreen);
-        let target_decorations = !immersive_open;
+        let fullscreen = state.get_immersive_fullscreen();
 
         self.ui.window().with_winit_window(|win| {
-            // Avoid touching decorations while in OS fullscreen; fullscreen itself hides chrome.
             if !fullscreen {
-                win.set_decorations(target_decorations);
+                win.set_decorations(!immersive_open);
             }
             state.set_window_maximized(win.is_maximized());
         });
+        self.ui.window().request_redraw();
     }
 
     // ---- State publication --------------------------------------------------
