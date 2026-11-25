@@ -473,6 +473,21 @@ impl LibraryStore {
         })
     }
 
+    pub fn discover_unconfigured_music_roots(
+        &self,
+        configured_roots: &[String],
+        ignored_directories: &[String],
+    ) -> Vec<String> {
+        let Ok(conn) = self.read_conn() else {
+            return Vec::new();
+        };
+        availability::discover_unconfigured_music_roots(
+            &conn,
+            configured_roots,
+            ignored_directories,
+        )
+    }
+
     pub fn prepare_duplicate_fingerprints(&self) -> Result<usize> {
         self.write(|conn| crate::duplicates::DuplicateDetector::prepare_fingerprints(conn))
     }

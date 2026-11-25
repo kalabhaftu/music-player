@@ -1126,6 +1126,196 @@ impl App {
 
     // ---- View data (port of MainWindow.WebUi.Data.cs query layer) -----------
 
+    pub(crate) fn should_hide_duplicates(&self, view: &str) -> bool {
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+        hide_dupes
+            && matches!(
+                view,
+                "Songs"
+                    | "Search"
+                    | "Album"
+                    | "Artist"
+                    | "Genre"
+                    | "Folder"
+                    | "Favorites"
+                    | "Most Played"
+                    | "Recently Played"
+                    | "Recently Added"
+                    | "With Lyrics"
+                    | "Videos"
+            )
+    }
+
+    pub(crate) fn current_view_all_paths(&self, override_view: Option<&str>) -> Vec<String> {
+        let state = self.ui.global::<State>();
+        let view = override_view
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| state.get_view().to_string());
+        let search = state.get_view_search().to_string();
+        let group_column = state.get_view_group_column().to_string();
+        let group_value = state.get_view_group_value().to_string();
+        let playlist_id = state.get_view_playlist_id().to_string();
+        let sort_name = state.get_view_sort().to_string();
+        let descending = state.get_view_descending();
+        drop(state);
+
+        if view == "Playlist" && !playlist_id.trim().is_empty() {
+            if let Ok(Some(pl)) = self.store.get_playlist(&playlist_id) {
+                return pl.paths.into_iter().filter(|p| Path::new(p).exists()).collect();
+            }
+            return Vec::new();
+        }
+        let video_extensions = self.video_extensions();
+        let query = TrackQuery {
+            favorites: view == "Favorites",
+            most_played: view == "Most Played",
+            recently_played: view == "Recently Played",
+            with_lyrics: view == "With Lyrics",
+            search: if view == "Search" && !search.trim().is_empty() {
+                Some(search)
+            } else {
+                None
+            },
+            group_column: if matches!(view.as_str(), "Album" | "Artist" | "Genre" | "Folder") {
+                Some(group_column)
+            } else {
+                None
+            },
+            group_value: if matches!(view.as_str(), "Album" | "Artist" | "Genre" | "Folder") {
+                Some(group_value)
+            } else {
+                None
+            },
+            extension_filter: if view == "Videos" {
+                Some(if video_extensions.is_empty() {
+                    vec![".__no_video_files__".into()]
+                } else {
+                    video_extensions
+                })
+            } else {
+                None
+            },
+            hide_duplicates: self.should_hide_duplicates(&view),
+            sort: song_sort(
+                if view == "Search" {
+                    "Title"
+                } else {
+                    &sort_name
+                },
+                song_sort(&default_sort_for_view(&view).0, TrackSort::Title),
+            ),
+            descending: view != "Search" && descending,
+            offset: 0,
+            page_size: 100_000,
+            ..TrackQuery::default()
+        };
+        let Ok((tracks, _)) = self.store.query_track_page(&query) else {
+            return self.view_paths.clone();
+        };
+        tracks
+            .into_iter()
+            .filter(|t| Path::new(&t.path).exists())
+            .map(|t| t.path)
+            .collect()
+    }
+
+    pub(crate) fn context_paths_for_track_play(&self, track: &Track) -> Vec<String> {
+        let state = self.ui.global::<State>();
+        let view = state.get_view().to_string();
+        let group_column = state.get_view_group_column().to_string();
+        let group_value = state.get_view_group_value().to_string();
+        drop(state);
+
+        let hide_dupes = self
+            .settings
+            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
+
+        let query = if view.eq_ignore_ascii_case("Album")
+            || group_column.eq_ignore_ascii_case("album")
+        {
+            let album = if !group_value.trim().is_empty() {
+                group_value
+            } else {
+                track.album.clone()
+            };
+            if album.trim().is_empty() {
+                None
+            } else {
+                Some(TrackQuery {
+                    group_column: Some("album".into()),
+                    group_value: Some(album),
+                    sort: TrackSort::TrackNumber,
+                    descending: false,
+                    hide_duplicates: hide_dupes,
+                    page_size: 10_000,
+                    ..TrackQuery::default()
+                })
+            }
+        } else if view.eq_ignore_ascii_case("Artist")
+            || group_column.eq_ignore_ascii_case("artist")
+        {
+            let artist = if !group_value.trim().is_empty() {
+                group_value
+            } else {
+                track.artist.clone()
+            };
+            if artist.trim().is_empty() {
+                None
+            } else {
+                Some(TrackQuery {
+                    group_column: Some("artist".into()),
+                    group_value: Some(artist),
+                    sort: TrackSort::PlayCount,
+                    descending: true,
+                    hide_duplicates: hide_dupes,
+                    page_size: 10_000,
+                    ..TrackQuery::default()
+                })
+            }
+        } else if view.eq_ignore_ascii_case("Folder")
+            || group_column.eq_ignore_ascii_case("folder")
+        {
+            let folder = if !group_value.trim().is_empty() {
+                group_value
+            } else {
+                Path::new(&track.path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            };
+            if folder.trim().is_empty() {
+                None
+            } else {
+                Some(TrackQuery {
+                    group_column: Some("folder".into()),
+                    group_value: Some(folder),
+                    sort: TrackSort::Title,
+                    descending: false,
+                    hide_duplicates: hide_dupes,
+                    page_size: 10_000,
+                    ..TrackQuery::default()
+                })
+            }
+        } else {
+            None
+        };
+
+        let mut paths = if let Some(q) = query {
+            self.store
+                .query_track_page(&q)
+                .map(|(tracks, _)| tracks.into_iter().map(|t| t.path).collect())
+                .unwrap_or_else(|_| self.current_view_all_paths(None))
+        } else {
+            self.current_view_all_paths(None)
+        };
+        if !paths.iter().any(|p| p.eq_ignore_ascii_case(&track.path)) {
+            paths.insert(0, track.path.clone());
+        }
+        paths
+    }
+
     pub(crate) fn refresh_view(&mut self) {
         let state = self.ui.global::<State>();
         let view = state.get_view().to_string();
@@ -1201,9 +1391,6 @@ impl App {
             state.set_page_loading(false);
             return;
         }
-        let hide_dupes = self
-            .settings
-            .bool_or(music_player_core::settings::keys::HIDE_DUPLICATES, true);
         let cache_key = format!(
             "{}:{}:{}:{}:{}:{}:{}",
             view, search, group_column, group_value, sort_name, descending, self.tracks_offset
@@ -1267,7 +1454,7 @@ impl App {
             } else {
                 None
             },
-            hide_duplicates: hide_dupes && matches!(view.as_str(), "Songs" | "Search"),
+            hide_duplicates: self.should_hide_duplicates(&view),
             sort: song_sort(
                 if view == "Search" {
                     "Title"

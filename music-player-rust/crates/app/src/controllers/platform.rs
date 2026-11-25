@@ -547,6 +547,11 @@ impl App {
             match command {
                 os::MediaCommand::Open => {
                     let _ = self.ui.show();
+                    if let Ok(handle) = self.ui.window().window_handle().window_handle() {
+                        if let RawWindowHandle::Win32(win32) = handle.as_raw() {
+                            os::restore_window(win32.hwnd.get());
+                        }
+                    }
                 }
                 os::MediaCommand::Previous => {
                     self.cancel_crossfade();
@@ -603,9 +608,12 @@ impl App {
                 }
                 os::MediaCommand::Next => self.advance_queue(false),
                 os::MediaCommand::Quit => {
+                    self.allow_quit = true;
+                    self.close_video_window(false);
                     self.save_session();
                     let _ = self.store.checkpoint_wal();
                     let _ = self.ui.hide();
+                    let _ = slint::quit_event_loop();
                 }
             }
         }

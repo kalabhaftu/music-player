@@ -260,3 +260,80 @@ pub fn normalize_path(path: &str) -> String {
     }
     out
 }
+
+/// Scans indexed tracks for active folders on accessible storage (e.g. a
+/// `Music` ancestor folder or sibling of an ignored folder) that are not
+/// already covered by any configured root or ignored exclusion.
+/// Port of `LibraryStore.DiscoverUnconfiguredMusicRoots`.
+pub fn discover_unconfigured_music_roots(
+    conn: &Connection,
+    configured_roots: &[String],
+    ignored_directories: &[String],
+) -> Vec<String> {
+    let root_prefixes: Vec<String> = configured_roots
+        .iter()
+        .filter(|r| !r.trim().is_empty())
+        .map(|r| normalize_path(r))
+        .collect();
+    let ignored_prefixes: Vec<String> = ignored_directories
+        .iter()
+        .filter(|i| !i.trim().is_empty())
+        .map(|i| normalize_path(i))
+        .collect();
+    let ignored_parents: HashSet<String> = ignored_directories
+        .iter()
+        .filter(|i| !i.trim().is_empty())
+        .filter_map(|i| {
+            Path::new(&normalize_path(i))
+                .parent()
+                .map(|p| p.to_string_lossy().to_lowercase())
+        })
+        .collect();
+
+    let mut discovered = Vec::new();
+    let mut seen_lower = HashSet::new();
+    let Ok(mut stmt) = conn.prepare("SELECT DISTINCT path FROM tracks") else {
+        return discovered;
+    };
+    let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) else {
+        return discovered;
+    };
+
+    for track_path in rows.flatten() {
+        if root_prefixes.iter().any(|r| is_within_root(r, &track_path)) {
+            continue;
+        }
+        if ignored_prefixes.iter().any(|i| is_within_root(i, &track_path)) {
+            continue;
+        }
+        let Some(mut cursor) = Path::new(&track_path).parent().map(|p| p.to_path_buf()) else {
+            continue;
+        };
+        let mut candidate: Option<String> = None;
+        loop {
+            let Some(parent) = cursor.parent() else {
+                break;
+            };
+            if parent == cursor {
+                break;
+            }
+            let current_str = cursor.to_string_lossy().to_string();
+            let name_is_music = cursor
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.eq_ignore_ascii_case("Music"))
+                .unwrap_or(false);
+            if name_is_music || ignored_parents.contains(&current_str.to_lowercase()) {
+                candidate = Some(current_str);
+                break;
+            }
+            cursor = parent.to_path_buf();
+        }
+        if let Some(root) = candidate {
+            if Path::new(&root).is_dir() && seen_lower.insert(root.to_lowercase()) {
+                discovered.push(root);
+            }
+        }
+    }
+    discovered
+}

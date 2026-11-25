@@ -293,3 +293,24 @@ fn test_video_extension_defaults_and_crossfade_rejection() {
     assert!(!engine.is_video_path("song.flac"));
     assert_eq!(engine.start_crossfade("next.mp4", 3000), CrossfadeOutcome::Rejected);
 }
+
+#[test]
+fn test_discover_unconfigured_music_roots() {
+    let store = LibraryStore::in_memory().unwrap();
+    let temp = std::env::temp_dir().join(format!("mp_roots_{}", std::process::id()));
+    let music_dir = temp.join("Music");
+    let sub_dir = music_dir.join("Album");
+    std::fs::create_dir_all(&sub_dir).unwrap();
+    let track = music_player_core::Track::unavailable_placeholder(
+        &sub_dir.join("song.mp3").to_string_lossy(),
+    );
+    store.upsert_tracks(&[track]).unwrap();
+
+    let found = store.discover_unconfigured_music_roots(&[], &[]);
+    assert!(
+        found.iter().any(|p| p.eq_ignore_ascii_case(&music_dir.to_string_lossy())),
+        "Expected discovered Music root in {:?}",
+        found
+    );
+    let _ = std::fs::remove_dir_all(&temp);
+}

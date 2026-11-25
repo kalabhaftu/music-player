@@ -76,7 +76,14 @@ component SmartPlaylistTile inherits Rectangle {
                     colorize: Palette.accent-ink;
                 }
 
-                TouchArea { clicked => { Actions.play-view(root.card.id); } }
+                TouchArea {
+                    width: 44px;
+                    height: 44px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    mouse-cursor: pointer;
+                    clicked => { Actions.play-view(root.card.id); }
+                }
             }
         }
 
@@ -186,6 +193,11 @@ component PlaylistTile inherits Rectangle {
                 }
 
                 TouchArea {
+                    width: 44px;
+                    height: 44px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    mouse-cursor: pointer;
                     clicked => {
                         if (root.card.is-smart) { Actions.play-view(root.card.id); }
                         else { Actions.play-playlist(root.card.id); }

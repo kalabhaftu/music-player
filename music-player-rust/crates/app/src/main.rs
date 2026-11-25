@@ -212,6 +212,7 @@ pub(crate) struct App {
     pub(crate) track_cache: HashMap<String, Track>,
     pub(crate) startup_scan_deferred: bool,
     pub(crate) started: bool,
+    pub(crate) allow_quit: bool,
     pub(crate) library_epoch: u64,
     pub(crate) query_generation: u64,
     pub(crate) track_view_cache: HashMap<String, (u64, Vec<TrackItem>, Vec<String>, HashMap<String, String>, i64)>,
@@ -356,6 +357,7 @@ impl App {
             track_cache: HashMap::new(),
             startup_scan_deferred: true,
             started: false,
+            allow_quit: false,
             library_epoch: 0,
             query_generation: 0,
             track_view_cache: HashMap::new(),
@@ -456,6 +458,26 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     // Show UI and dismiss splash immediately for instantaneous launch
     ui.show()?;
     drop(startup);
+
+    // Intercept window close button to keep running in the Windows notification
+    // area when `minimize-to-tray` is enabled (matching TrayIconService.cs).
+    {
+        let a = app.clone();
+        let ui_weak = ui.as_weak();
+        ui.window().on_close_requested(move || {
+            let mut app_ref = a.borrow_mut();
+            let minimize_to_tray = app_ref.ui.global::<State>().get_minimize_to_tray();
+            if minimize_to_tray && !app_ref.allow_quit && app_ref.os.is_some() {
+                app_ref.save_session();
+                if let Some(ui) = ui_weak.upgrade() {
+                    let _ = ui.hide();
+                }
+                slint::CloseRequestResponse::KeepWindowShown
+            } else {
+                slint::CloseRequestResponse::HideWindow
+            }
+        });
+    }
 
     let hwnd = ui
         .window()

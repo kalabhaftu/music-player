@@ -859,6 +859,53 @@ impl App {
         tracks
     }
 
+    pub(crate) fn ensure_external_parent_folders_tracked(&mut self, paths: &[String]) {
+        let configured = self.settings.library_roots();
+        let temp_dir = std::env::temp_dir()
+            .to_string_lossy()
+            .trim_end_matches(['/', '\\'])
+            .to_lowercase();
+        let mut new_roots = Vec::new();
+        for raw in paths {
+            let Ok(abs) = std::fs::canonicalize(Path::new(raw)) else {
+                continue;
+            };
+            let Some(folder) = abs.parent() else {
+                continue;
+            };
+            if !folder.is_dir() {
+                continue;
+            }
+            let folder_str = folder.to_string_lossy().to_string();
+            let folder_clean = folder_str.trim_end_matches(['/', '\\']).to_string();
+            // Skip temporary directories and bare drive roots (e.g. "C:\").
+            if folder_clean.to_lowercase().starts_with(&temp_dir)
+                || (folder_clean.len() <= 3 && folder_clean.ends_with(':'))
+            {
+                continue;
+            }
+            let covered = configured.iter().any(|root| {
+                let r = root.trim_end_matches(['/', '\\']);
+                r.eq_ignore_ascii_case(&folder_clean)
+                    || music_player_core::db::availability::is_within_root(root, &folder_clean)
+            });
+            if !covered
+                && !new_roots
+                    .iter()
+                    .any(|n: &String| n.eq_ignore_ascii_case(&folder_clean))
+            {
+                new_roots.push(folder_clean);
+            }
+        }
+        if !new_roots.is_empty() {
+            let mut merged = configured;
+            merged.extend(new_roots.iter().cloned());
+            self.settings.set_library_roots(&merged);
+            self.load_roots();
+            self.start_scan(&new_roots, false);
+        }
+    }
+
     pub(crate) fn play_external_files(&mut self, paths: &[String]) {
         let tracks = self.read_external_tracks(paths);
         if tracks.is_empty() {
@@ -868,6 +915,7 @@ impl App {
             );
             return;
         }
+        self.ensure_external_parent_folders_tracked(paths);
         let opened_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
         let current_path = self.current.as_ref().map(|t| t.path.as_str());
         let existing_queue: Vec<String> = self.coordinator.queue().entries().to_vec();
@@ -903,6 +951,7 @@ impl App {
             );
             return;
         }
+        self.ensure_external_parent_folders_tracked(paths);
         let track_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
         let retained = self.current.as_ref().map(|t| t.path.as_str());
         self.coordinator

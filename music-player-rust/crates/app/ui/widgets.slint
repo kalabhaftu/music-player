@@ -1459,6 +1459,10 @@ export component HomeCardTile inherits Rectangle {
                     colorize: Palette.accent-ink;
                 }
                 fab-area := TouchArea {
+                    width: 44px;
+                    height: 44px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
                     mouse-cursor: pointer;
                     clicked => { root.play(); }
                 }

@@ -8,15 +8,14 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_play_track(move |id| {
-            let app = a.borrow();
+            let mut app = a.borrow_mut();
             if let Some(track) = app.track_by_id(&id) {
-                drop(app);
-                let view_paths = a.borrow().view_paths.clone();
-                let mut app = a.borrow_mut();
-                app.coordinator
-                    .queue_mut()
-                    .replace(view_paths.clone(), None);
-                app.play_track(track, false, None);
+                let paths = app.context_paths_for_track_play(&track);
+                let index = paths
+                    .iter()
+                    .position(|p| p.eq_ignore_ascii_case(&track.path));
+                app.coordinator.queue_mut().replace(paths, index);
+                app.play_track(track, false, index);
             }
         });
     }
@@ -25,10 +24,11 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         ui.global::<Actions>().on_play_view(move |view| {
             let mut app = a.borrow_mut();
             app.set_view(&view, "", "", "");
-            let paths = app.view_paths.clone();
-            if let Some(path) = paths.first() {
-                if let Some(track) = app.store.get_track(path).ok().flatten() {
-                    app.play_track(track, true, Some(0));
+            let paths = app.current_view_all_paths(Some(&view));
+            if let Some(path) = paths.first().cloned() {
+                if let Some(track) = app.store.get_track(&path).ok().flatten() {
+                    app.coordinator.queue_mut().replace(paths, Some(0));
+                    app.play_track(track, false, Some(0));
                 }
             }
         });
@@ -38,7 +38,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         ui.global::<Actions>().on_shuffle_view(move |view| {
             let mut app = a.borrow_mut();
             app.set_view(&view, "", "", "");
-            let paths = app.view_paths.clone();
+            let paths = app.current_view_all_paths(Some(&view));
             if !paths.is_empty() {
                 app.coordinator.queue_mut().replace(paths, Some(0));
                 app.coordinator.queue_mut().set_shuffle(true);

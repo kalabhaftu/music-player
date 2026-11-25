@@ -8,26 +8,52 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_scan_library(move || {
-            let roots = a.borrow().settings.library_roots();
+            let mut app = a.borrow_mut();
+            let mut roots = app.settings.library_roots();
+            let ignored = app.settings.ignored_directories();
+            let extra = app.store.discover_unconfigured_music_roots(&roots, &ignored);
+            if !extra.is_empty() {
+                for r in extra {
+                    if !roots.iter().any(|existing| existing.eq_ignore_ascii_case(&r)) {
+                        roots.push(r);
+                    }
+                }
+                app.settings.set_library_roots(&roots);
+                app.load_roots();
+            }
             if roots.is_empty() {
+                drop(app);
                 if let Some(path) = pick_folder() {
                     a.borrow_mut().add_root(&path);
                 }
             } else {
-                a.borrow_mut().start_scan(&roots, false);
+                app.start_scan(&roots, false);
             }
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_rebuild_library_index(move || {
-            let roots = a.borrow().settings.library_roots();
+            let mut app = a.borrow_mut();
+            let mut roots = app.settings.library_roots();
+            let ignored = app.settings.ignored_directories();
+            let extra = app.store.discover_unconfigured_music_roots(&roots, &ignored);
+            if !extra.is_empty() {
+                for r in extra {
+                    if !roots.iter().any(|existing| existing.eq_ignore_ascii_case(&r)) {
+                        roots.push(r);
+                    }
+                }
+                app.settings.set_library_roots(&roots);
+                app.load_roots();
+            }
             if roots.is_empty() {
+                drop(app);
                 if let Some(path) = pick_folder() {
                     a.borrow_mut().add_root(&path);
                 }
             } else {
-                a.borrow_mut().start_scan(&roots, true);
+                app.start_scan(&roots, true);
             }
         });
     }

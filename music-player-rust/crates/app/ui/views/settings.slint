@@ -410,6 +410,12 @@ component SettingNavOrderRow inherits Rectangle {
 export component SettingsView inherits Rectangle {
     property <length> scroll-pos: -settings-scroll.content-y;
     property <bool> is-scrolled: root.scroll-pos > 24px;
+    property <string> watched-section: State.settings-section;
+    changed watched-section => {
+        if (self.watched-section != root.active-tab) {
+            root.jump-to(self.watched-section);
+        }
+    }
     property <string> active-tab:
         root.scroll-pos >= about-section.y - 60px ? "About" :
         root.scroll-pos >= advanced-section.y - 60px ? "Advanced" :

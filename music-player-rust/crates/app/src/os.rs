@@ -593,7 +593,7 @@ unsafe fn show_tray_menu(hwnd: HWND) {
     let next: Vec<u16> = "Next\0".encode_utf16().collect();
     let quit: Vec<u16> = "Quit Music Player\0".encode_utf16().collect();
 
-    AppendMenuW(menu, MF_STRING, 0, header_wide.as_ptr());
+    AppendMenuW(menu, 0x0001 | 0x0002, 0, header_wide.as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
     AppendMenuW(menu, MF_STRING, TM_OPEN, open.as_ptr());
     AppendMenuW(menu, MF_STRING, TM_PREVIOUS, previous.as_ptr());
@@ -647,3 +647,19 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARA
     }
     CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
 }
+
+#[cfg(windows)]
+pub fn restore_window(hwnd: isize) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_RESTORE};
+    if hwnd == 0 {
+        return;
+    }
+    unsafe {
+        let h = hwnd as HWND;
+        let _ = ShowWindow(h, SW_RESTORE);
+        let _ = SetForegroundWindow(h);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn restore_window(_hwnd: isize) {}
