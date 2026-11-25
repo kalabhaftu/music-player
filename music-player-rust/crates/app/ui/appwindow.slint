@@ -22,18 +22,18 @@ import { FramelessWindowChrome } from "shell/frameless_chrome.slint";
 
 // Export globals and DTO structs to the Rust host.
 export { State, Actions } from "state.slint";
+export { VideoWindow } from "video_window.slint";
 export {
     TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem,
     ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem,
     GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem,
-    AboutComponentItem, ReleaseItem,
+    AboutComponentItem, ReleaseItem, VideoSubtitleItem,
 } from "models.slint";
 
 export component AppWindow inherits Window {
     title: State.current-title == "" ? "Music Player" : "\{State.current-title} — \{State.current-artist} | Music Player";
     icon: @image-url("../assets/MusicPlayer-dark.png");
     no-frame: State.immersive-player-open;
-    full-screen: State.immersive-fullscreen;
     min-width: 720px;
     min-height: 500px;
     preferred-width: 1024px;
@@ -98,7 +98,21 @@ export component AppWindow inherits Window {
                 return accept;
             }
 
+            // Global F1 or ? (when not typing in search/modal): toggle Help & shortcuts modal
+            if (event.text == Key.F1) {
+                if (State.modal == "help") {
+                    Actions.close-modal();
+                } else {
+                    Actions.open-modal("help");
+                }
+                return accept;
+            }
+
             if (State.modal == "" && !State.context-visible && !topbar.search-has-focus) {
+                if (event.text == "?") {
+                    Actions.open-modal("help");
+                    return accept;
+                }
                 // Space: toggle play/pause
                 if (event.text == " ") {
                     Actions.toggle-play();
@@ -185,6 +199,8 @@ export component AppWindow inherits Window {
     }
 
     VerticalLayout {
+        width: 100%;
+        height: 100%;
         HorizontalLayout {
             vertical-stretch: 1;
             NavRail { }
@@ -204,7 +220,7 @@ export component AppWindow inherits Window {
             }
             RightPanel { }
         }
-        PlayerBar { }
+        PlayerBar { vertical-stretch: 0; }
     }
 
     PanelResizeHandle { available-width: parent.width; available-height: parent.height - 88px; }

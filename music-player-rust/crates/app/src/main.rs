@@ -14,6 +14,7 @@ mod os_shell;
 mod splash;
 mod ui;
 mod updates;
+mod video_window;
 
 #[cfg(test)]
 mod app_tests;
@@ -198,7 +199,11 @@ pub(crate) struct App {
     pub(crate) log_folder: PathBuf,
     pub(crate) os: Option<os::OsIntegration>,
     pub(crate) os_attached: bool,
+    pub(crate) video_host: Option<video_window::VideoHost>,
     pub(crate) audio_devices: Vec<os_shell::AudioOutputDevice>,
+    pub(crate) vlc_prep: Option<std::thread::JoinHandle<Option<music_player_core::audio::PreparedVlc>>>,
+    pub(crate) deferred_audio_pending: bool,
+    pub(crate) pending_session_resume: Option<(Track, u64)>,
     pub(crate) search_debounce: Option<(Instant, String)>,
     pub(crate) update_rx: Option<Receiver<UpdateOutcome>>,
     pub(crate) artwork_repair_rx: Option<Receiver<usize>>,
@@ -235,7 +240,7 @@ impl App {
         let crossfade_ms = settings.crossfade_seconds() as u64 * 1000;
         let coordinator =
             PlaybackCoordinator::with_crossfade_ms(QueueCoordinator::new(), crossfade_ms);
-        let mut engine = music_player_core::AudioEngine::new();
+        let engine = music_player_core::AudioEngine::deferred();
         let mut eq_preset = settings.eq_current();
         if eq_preset.trim().is_empty() {
             eq_preset = "Off".into();
@@ -252,23 +257,6 @@ impl App {
                 settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP),
             )
         };
-        let selected_device = settings
-            .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
-            .unwrap_or_default();
-        if !selected_device.trim().is_empty() {
-            let direct_sound =
-                os_shell::direct_sound_device_id(&selected_device).unwrap_or_default();
-            let _ = engine.set_audio_output_device(&direct_sound);
-        }
-        if eq_preset == "Off" {
-            engine.apply_equalizer(None, None, NEUTRAL_EQUALIZER_PREAMP);
-        } else if eq_preset.eq_ignore_ascii_case("Custom")
-            || settings.saved_eq_preset(&eq_preset).is_some()
-        {
-            engine.apply_equalizer(None, Some(eq_bands), eq_preamp);
-        } else {
-            engine.apply_equalizer(Some(&eq_preset), Some(eq_bands), eq_preamp);
-        }
         let now = Instant::now();
         let (prefetch_lyrics_tx, prefetch_lyrics_rx) = mpsc::channel();
         static WATCHER_WAKE_PENDING: std::sync::atomic::AtomicBool =
@@ -355,7 +343,11 @@ impl App {
             log_folder,
             os: os::OsIntegration::start(),
             os_attached: false,
+            video_host: None,
             audio_devices: Vec::new(),
+            vlc_prep: None,
+            deferred_audio_pending: true,
+            pending_session_resume: None,
             search_debounce: None,
             update_rx: None,
             artwork_repair_rx: None,
@@ -411,13 +403,20 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     if let Some(splash) = &startup {
         splash.set_status("Preparing your library…");
     }
+    // Pre-warm LibVLC plugin initialization off the UI thread in parallel with window creation.
+    let vlc_prep = std::thread::Builder::new()
+        .name("vlc-prewarm".into())
+        .spawn(music_player_core::AudioEngine::prepare_vlc)
+        .ok();
     let ui = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new(ui.clone_strong())));
+    app.borrow_mut().vlc_prep = vlc_prep;
     APP_INSTANCE.with(|cell| *cell.borrow_mut() = Some(app.clone()));
 
     if !cli_args.is_empty() {
         let (verb, paths) = os::parse_activation_args(&cli_args);
         if !paths.is_empty() {
+            app.borrow_mut().ensure_audio_engine_ready();
             if verb == "addtoqueue" {
                 app.borrow_mut().add_external_files_to_queue(&paths);
             } else if verb == "createplaylist" {
@@ -470,8 +469,17 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         .unwrap_or(0);
     native_io::restore_window_placement(hwnd, &app.borrow().store);
 
-    // Startup runs on the first 250 ms clock tick (after the first frame), and
-    // the engine-room clock drives playback from there.
+    // Run heavy non-critical hydration (LibVLC attach, audio device discovery,
+    // session track pre-open, smart playlist counts, background scan) right after the
+    // first frame paints so the window opens nearly instantaneously.
+    {
+        let a = app.clone();
+        Timer::single_shot(Duration::from_millis(16), move || {
+            a.borrow_mut().complete_deferred_startup();
+        });
+    }
+
+    // Engine-room clock drives playback and background pollers.
     let clock = Timer::default();
     {
         let a = app.clone();
@@ -485,6 +493,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     os_shell::detach();
     {
         let mut app_borrow = app.borrow_mut();
+        app_borrow.close_video_window(false);
         app_borrow.scan.cancel();
         if app_borrow.eq_dirty {
             app_borrow.settings.set_eq_state(

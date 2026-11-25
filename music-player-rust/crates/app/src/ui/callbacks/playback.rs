@@ -171,37 +171,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     }
     {
         let a = app.clone();
-        ui.global::<Actions>().on_toggle_play(move || {
-            let mut app = a.borrow_mut();
-            if app.current.is_none() {
-                let paths = app.view_paths.clone();
-                if let Some(path) = paths.first() {
-                    if let Some(track) = app.store.get_track(path).ok().flatten() {
-                        app.coordinator.queue_mut().replace(paths, Some(0));
-                        app.play_track(track, false, Some(0));
-                        return;
-                    }
-                }
-                return;
-            }
-            app.cancel_crossfade();
-            let is_playing = app.engine.is_playing();
-            let position = app.engine.position_ms();
-            let duration = app.engine.duration_ms();
-            let has_ended = duration > 0 && position >= duration;
-            let current = app.current.clone();
-            let resolver = app.resolver();
-            let result = if is_playing {
-                app.coordinator.pause(current.as_ref())
-            } else if has_ended || (duration > 0 && position + 250 >= duration) {
-                let index = app.coordinator.queue().current_index();
-                app.coordinator
-                    .start_track(current.as_ref().unwrap(), false, index, &[], &resolver)
-            } else {
-                app.coordinator.resume(current.as_ref())
-            };
-            app.apply_result(result);
-        });
+        ui.global::<Actions>()
+            .on_toggle_play(move || a.borrow_mut().toggle_play_pause());
     }
     {
         let a = app.clone();
@@ -227,6 +198,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         ui.global::<Actions>().on_stop(move || {
             let mut app = a.borrow_mut();
             app.cancel_crossfade();
+            app.close_video_window(false);
             let _ = app.engine.stop();
             app.publish_playback();
         });
@@ -238,17 +210,8 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     }
     {
         let a = app.clone();
-        ui.global::<Actions>().on_previous(move || {
-            let mut app = a.borrow_mut();
-            app.cancel_crossfade();
-            let position = app.engine.position_ms();
-            let current = app.current.clone();
-            let resolver = app.resolver();
-            let result = app
-                .coordinator
-                .previous(current.as_ref(), position, &resolver);
-            app.apply_result(result);
-        });
+        ui.global::<Actions>()
+            .on_previous(move || a.borrow_mut().previous_track());
     }
     {
         let a = app.clone();
@@ -327,16 +290,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_volume_changed(move |value| {
-            let mut app = a.borrow_mut();
-            app.volume = (value as u32).clamp(0, 100);
-            if app.volume > 0 {
-                app.unmuted_volume = None;
-            }
-            let vol = app.volume;
-            let _ = app.engine.set_volume(vol);
-            app.pending_volume = Some(app.volume);
-            app.last_vol_debounce = Instant::now();
-            app.publish_playback();
+            a.borrow_mut().set_volume(value.clamp(0, 100) as u32);
         });
     }
     {

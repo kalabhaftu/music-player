@@ -63,7 +63,7 @@ impl App {
         use music_player_core::settings::keys as k;
         let auto_load = self.settings.bool_or(k::AUTO_LOAD_LYRICS, true);
         for path in entries.iter().skip(upcoming_start).take(3) {
-            if self.lyrics_cache.contains_key(path) {
+            if self.is_video_path(path) || self.lyrics_cache.contains_key(path) {
                 continue;
             }
             let sidecar_raw = read_sidecar(path);
@@ -157,6 +157,59 @@ impl App {
         }
     }
 
+    pub(crate) fn toggle_play_pause(&mut self) {
+        if self.current.is_none() {
+            let paths = self.view_paths.clone();
+            if let Some(path) = paths.first() {
+                if let Some(track) = self.store.get_track(path).ok().flatten() {
+                    self.coordinator.queue_mut().replace(paths, Some(0));
+                    self.play_track(track, false, Some(0));
+                }
+            }
+            return;
+        }
+        self.cancel_crossfade();
+        let is_playing = self.engine.is_playing();
+        let position = self.engine.position_ms();
+        let duration = self.engine.duration_ms();
+        let has_ended = duration > 0 && position >= duration;
+        let current = self.current.clone();
+        let resolver = self.resolver();
+        let result = if is_playing {
+            self.coordinator.pause(current.as_ref())
+        } else if has_ended || (duration > 0 && position + 250 >= duration) {
+            let index = self.coordinator.queue().current_index();
+            self.coordinator
+                .start_track(current.as_ref().unwrap(), false, index, &[], &resolver)
+        } else {
+            self.coordinator.resume(current.as_ref())
+        };
+        self.apply_result(result);
+    }
+
+    pub(crate) fn previous_track(&mut self) {
+        self.cancel_crossfade();
+        let position = self.engine.position_ms();
+        let current = self.current.clone();
+        let resolver = self.resolver();
+        let result = self
+            .coordinator
+            .previous(current.as_ref(), position, &resolver);
+        self.apply_result(result);
+    }
+
+    pub(crate) fn set_volume(&mut self, value: u32) {
+        self.volume = value.clamp(0, 100);
+        if self.volume > 0 {
+            self.unmuted_volume = None;
+        }
+        let vol = self.volume;
+        let _ = self.engine.set_volume(vol);
+        self.pending_volume = Some(self.volume);
+        self.last_vol_debounce = Instant::now();
+        self.publish_playback();
+    }
+
     pub(crate) fn play_track(&mut self, track: Track, reset_queue: bool, index: Option<usize>) {
         self.cancel_crossfade();
         let resolver = self.resolver();
@@ -171,6 +224,7 @@ impl App {
         match result.kind {
             K::NoChange => {}
             K::TrackStarted => {
+                self.ensure_audio_engine_ready();
                 let Some(path) = result.track_path.clone() else {
                     return;
                 };
@@ -181,6 +235,16 @@ impl App {
                 self.crossfade_source_index = None;
                 if self.availability.mark_available(&path) {
                     self.refresh_view();
+                }
+                let is_video = self.is_video_path(&path);
+                if is_video {
+                    let resolved = self
+                        .resolve_track(&path)
+                        .unwrap_or_else(|| Track::unavailable_placeholder(&path));
+                    let surface = self.ensure_video_window(&resolved);
+                    self.engine.set_video_surface_handle(surface);
+                } else {
+                    self.close_video_window(false);
                 }
                 if let Err(err) = self.engine.play_track(&path) {
                     self.show_notice(
@@ -196,6 +260,11 @@ impl App {
                 self.listening.reset_for_track();
                 if let Some(track) = self.resolve_track(&path) {
                     self.update_current_track(&track);
+                    if is_video {
+                        if let Some(ref host) = self.video_host {
+                            host.set_track(&track, self.engine.video_rate());
+                        }
+                    }
                 }
                 self.prefetch_upcoming_tracks();
                 if result.persist_session {
@@ -213,6 +282,13 @@ impl App {
                 self.publish_playback();
             }
             K::Resumed => {
+                self.ensure_audio_engine_ready();
+                if self.engine.is_video_mode() && self.video_host.is_none() {
+                    if let Some(track) = self.current.clone() {
+                        let surface = self.ensure_video_window(&track);
+                        self.engine.set_video_surface_handle(surface);
+                    }
+                }
                 let _ = self.engine.resume();
                 self.listening
                     .mark_resumed(self.engine.position_ms() as i64);
@@ -250,6 +326,7 @@ impl App {
             }
             K::StopPlayback => {
                 self.cancel_crossfade();
+                self.close_video_window(false);
                 let _ = self.engine.stop();
                 if result.queue_changed {
                     self.publish_queue(true);
@@ -617,11 +694,8 @@ impl App {
             .and_then(|p| self.store.get_track(p).ok().flatten());
         if let Some(track) = current {
             self.update_current_track(&track);
-            if self.engine.play_track(&track.path).is_ok() {
-                let _ = self.engine.pause();
-                let _ = self.engine.seek(session.position_ms);
-                self.listening.restore_paused(session.position_ms as i64);
-            }
+            self.listening.restore_paused(session.position_ms as i64);
+            self.pending_session_resume = Some((track, session.position_ms));
         } else if let Some(ref path) = saved_current_path {
             // If the saved track is unavailable but still in the queue, keep
             // the coordinator/app current path aligned with the session.
@@ -733,7 +807,7 @@ impl App {
         let mut tracks = Vec::new();
         for path in paths {
             let p = Path::new(path);
-            if !music_player_core::is_supported_audio(p) {
+            if !music_player_core::is_supported_audio(p) && !self.is_video_path(path) {
                 continue;
             }
             if let Ok(Some(existing)) = self.store.get_track(path) {

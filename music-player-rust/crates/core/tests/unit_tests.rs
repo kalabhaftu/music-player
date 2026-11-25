@@ -264,7 +264,7 @@ fn test_vlc_runtime_eq_and_dual_volume() {
 
     std::thread::sleep(Duration::from_millis(250));
     assert!((engine.perceived_volume() - 0.5625).abs() < 1e-6);
-    assert!(engine.is_playing() || engine.position_ms() >= 0);
+    assert!(engine.is_playing() || engine.duration_ms() > 0 || engine.position_ms() > 0 || engine.vlc_is_available());
 
     let out = engine.begin_crossfade(&wav2.to_string_lossy(), 800);
     assert!(
@@ -276,4 +276,20 @@ fn test_vlc_runtime_eq_and_dual_volume() {
     let _ = engine.stop();
     let _ = std::fs::remove_file(&wav1);
     let _ = std::fs::remove_file(&wav2);
+}
+
+#[test]
+fn test_video_extension_defaults_and_crossfade_rejection() {
+    let store = LibraryStore::in_memory().unwrap();
+    let settings = PlayerSettings::new(store);
+    assert!(settings.is_extension_enabled(".mp3"));
+    assert!(settings.is_extension_enabled(".flac"));
+    assert!(!settings.is_extension_enabled(".mp4"));
+    assert!(!settings.is_extension_enabled(".mkv"));
+
+    let mut engine = AudioEngine::deferred();
+    assert!(engine.is_video_path("clip.mp4"));
+    assert!(engine.is_video_path("clip.MKV"));
+    assert!(!engine.is_video_path("song.flac"));
+    assert_eq!(engine.start_crossfade("next.mp4", 3000), CrossfadeOutcome::Rejected);
 }

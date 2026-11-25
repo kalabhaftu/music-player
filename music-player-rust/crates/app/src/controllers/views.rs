@@ -97,8 +97,7 @@ impl App {
 
     /// Synchronizes window-maximized state and requests a redraw when switching
     /// between Normal, Windowed Immersive, and Fullscreen Immersive modes.
-    /// Native decorations and fullscreen state are driven directly by `AppWindow`'s
-    /// `no-frame` and `full-screen` bindings so Slint never overrides `set_decorations`.
+    /// Native decorations are kept aligned with `AppWindow.no-frame`.
     pub(crate) fn sync_window_mode(&self) {
         use slint::winit_030::WinitWindowAccessor;
         if !self.ui.window().has_winit_window() {
@@ -114,6 +113,28 @@ impl App {
             }
             state.set_window_maximized(win.is_maximized());
         });
+        self.ui.window().request_redraw();
+    }
+
+    /// Re-synchronizes Win32 non-client frame and OpenGL surface geometry after
+    /// winit processes a decoration or fullscreen transition.
+    pub(crate) fn settle_window_mode(&self) {
+        self.sync_window_mode();
+        if self.ui.global::<State>().get_immersive_fullscreen() {
+            return;
+        }
+        let hwnd = self
+            .ui
+            .window()
+            .window_handle()
+            .window_handle()
+            .ok()
+            .and_then(|handle| match handle.as_raw() {
+                RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        native_io::refresh_window_frame(hwnd, true);
         self.ui.window().request_redraw();
     }
 
@@ -200,6 +221,8 @@ impl App {
             state.set_repeat_a(ss(""));
             state.set_repeat_b(ss(""));
         }
+        drop(state);
+        self.sync_video_window();
     }
 
     pub(crate) fn update_current_track(&mut self, track: &Track) {
@@ -705,7 +728,15 @@ impl App {
         state.set_playlist_names(ui_model(names).into());
     }
 
+    pub(crate) fn publish_settings_initial(&mut self) {
+        self.publish_settings_inner(false);
+    }
+
     pub(crate) fn publish_settings(&mut self) {
+        self.publish_settings_inner(true);
+    }
+
+    fn publish_settings_inner(&mut self, refresh_devices: bool) {
         use music_player_core::settings::keys as k;
         self.publish_appearance();
         let s = &self.settings;
@@ -761,7 +792,7 @@ impl App {
         state.set_recent_searches(
             ui_model(s.recent_searches().into_iter().map(ss).collect::<Vec<_>>()).into(),
         );
-        self.publish_eq();
+        self.publish_eq_state(refresh_devices);
         self.publish_exclusions();
         self.publish_navigation();
     }
@@ -844,10 +875,6 @@ impl App {
         state.set_navigation_settings(ui_model(nav_settings).into());
     }
 
-    pub(crate) fn coordinator_eq_name(&self) -> String {
-        self.eq_preset.clone()
-    }
-
     pub(crate) fn publish_eq_sliders(&self) {
         let bands: Vec<EqBandItem> = EQUALIZER_BANDS
             .iter()
@@ -871,6 +898,10 @@ impl App {
     }
 
     pub(crate) fn publish_eq(&mut self) {
+        self.publish_eq_state(true);
+    }
+
+    pub(crate) fn publish_eq_state(&mut self, refresh_devices: bool) {
         if self.eq_preset == "Off" {
             self.eq_bands = [0.0; 10];
             self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
@@ -887,7 +918,9 @@ impl App {
             }
         }
         let mut devices: Vec<String> = vec!["System default".into()];
-        self.audio_devices = os_shell::audio_output_devices();
+        if refresh_devices {
+            self.audio_devices = os_shell::audio_output_devices();
+        }
         for device in &self.audio_devices {
             devices.push(device.name.clone());
         }
@@ -899,7 +932,8 @@ impl App {
             .settings
             .raw(music_player_core::settings::keys::AUDIO_OUTPUT_NAME)
             .unwrap_or_else(|| "System default".into());
-        if !stored_id.trim().is_empty()
+        if refresh_devices
+            && !stored_id.trim().is_empty()
             && !self
                 .audio_devices
                 .iter()
@@ -943,19 +977,21 @@ impl App {
         exts.sort();
         let items: Vec<ExtensionItem> = exts
             .into_iter()
-            .map(|e| ExtensionItem {
-                extension: ss(&e),
-                kind: ss(kinds.get(&e).cloned().unwrap_or_else(|| {
-                    if matches!(
-                        e.as_str(),
-                        ".mp4" | ".m4v" | ".mkv" | ".avi" | ".mov" | ".wmv" | ".webm"
-                    ) {
+            .map(|e| {
+                let kind = kinds.get(&e).cloned().unwrap_or_else(|| {
+                    if music_player_core::settings::is_video_extension_default(&e) {
                         "Video".into()
                     } else {
                         "Audio".into()
                     }
-                })),
-                enabled: *enabled.get(&e).unwrap_or(&true),
+                });
+                let is_video = kind.eq_ignore_ascii_case("Video");
+                let is_enabled = *enabled.get(&e).unwrap_or(&(!is_video));
+                ExtensionItem {
+                    extension: ss(&e),
+                    kind: ss(kind),
+                    enabled: is_enabled,
+                }
             })
             .collect();
         let ignored: Vec<SharedString> = self
@@ -1766,6 +1802,16 @@ impl App {
         self.lyrics_timed = false;
         self.lyrics_active = -1;
         self.auto_lyrics_rx = None;
+
+        if self.is_video_path(&track.path) {
+            let state = self.ui.global::<State>();
+            state.set_lyrics_lines(ui_model(Vec::<LyricLineItem>::new()).into());
+            state.set_lyrics_source(ss("Video tracks do not use song lyrics."));
+            state.set_lyrics_timed(false);
+            state.set_lyrics_active_line(-1);
+            state.set_lyrics_scroll_paused(false);
+            return;
+        }
 
         // Match LyricsFiles.cs: check sidecar and embedded; timed beats untimed!
         let sidecar = read_sidecar(&track.path);

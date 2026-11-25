@@ -1,0 +1,374 @@
+import { State } from "state.slint";
+import { VideoSubtitleItem } from "models.slint";
+import { Palette, IcBtn, PlayerSlider, CustomSelect } from "widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component VideoWindow inherits Window {
+    in property <string> video-title: "Video Playback";
+    in property <bool> is-playing: false;
+    in property <float> progress: 0.0;
+    in property <string> current-time: "0:00";
+    in property <string> total-time: "0:00";
+    in property <int> volume: 75;
+    in-out property <string> speed: "1x";
+    in property <bool> repeat-current: false;
+    in property <bool> is-fullscreen: false;
+    in-out property <bool> subtitle-menu-open: false;
+    in property <[VideoSubtitleItem]> subtitles;
+    in property <bool> has-subtitles: false;
+    in property <int> selected-subtitle-id: -1;
+    out property <length> transport-height: root.is-fullscreen ? 0px : 96px;
+
+    callback toggle-play();
+    callback previous();
+    callback next();
+    callback seek-fraction(float);
+    callback seek-relative(int);
+    callback volume-changed(int);
+    callback speed-selected(string);
+    callback toggle-repeat();
+    callback open-subtitles();
+    callback select-subtitle(int);
+    callback take-snapshot();
+    callback toggle-fullscreen();
+    callback exit-fullscreen();
+    callback surface-resized(int, int);
+
+    title: root.video-title;
+    icon: @image-url("../assets/MusicPlayer-dark.png");
+    preferred-width: 960px;
+    preferred-height: 620px;
+    min-width: 560px;
+    min-height: 380px;
+    full-screen: root.is-fullscreen;
+    background: #000000;
+
+    changed width => { root.surface-resized(round(self.width / 1px), round(max(0px, self.height - root.transport-height) / 1px)); }
+    changed height => { root.surface-resized(round(self.width / 1px), round(max(0px, self.height - root.transport-height) / 1px)); }
+    changed transport-height => { root.surface-resized(round(self.width / 1px), round(max(0px, self.height - root.transport-height) / 1px)); }
+
+    forward-focus: v-keys;
+
+    v-keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                if (root.subtitle-menu-open) {
+                    root.subtitle-menu-open = false;
+                    return accept;
+                }
+                if (root.is-fullscreen) {
+                    root.exit-fullscreen();
+                    return accept;
+                }
+            }
+            if (event.text == Key.F11) {
+                root.toggle-fullscreen();
+                return accept;
+            }
+            if (event.text == " ") {
+                root.toggle-play();
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                root.seek-relative(event.modifiers.shift ? -10 : -5);
+                return accept;
+            }
+            if (event.text == Key.RightArrow) {
+                root.seek-relative(event.modifiers.shift ? 10 : 5);
+                return accept;
+            }
+            if (event.text == Key.UpArrow) {
+                root.volume-changed(min(100, root.volume + 5));
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.volume-changed(max(0, root.volume - 5));
+                return accept;
+            }
+            reject
+        }
+    }
+
+    VerticalLayout {
+        // Video stage covered by child native Win32 HWND when non-zero
+        stage := Rectangle {
+            vertical-stretch: 1;
+            background: #000000;
+        }
+
+        if !root.is-fullscreen : Rectangle {
+            height: 96px;
+            background: Palette.panel;
+            border-width: 1px;
+            border-color: Palette.border;
+
+            VerticalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 8px;
+                padding-bottom: 10px;
+                spacing: 6px;
+
+                // Timeline seek row
+                HorizontalLayout {
+                    height: 24px;
+                    spacing: 10px;
+                    Text {
+                        text: root.current-time;
+                        color: Palette.muted;
+                        font-size: 11px;
+                        width: 44px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                    seek-slider := PlayerSlider {
+                        horizontal-stretch: 1;
+                        value: root.progress;
+                        changed(frac) => { root.seek-fraction(frac); }
+                    }
+                    Text {
+                        text: root.total-time;
+                        color: Palette.muted;
+                        font-size: 11px;
+                        width: 44px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Controls row
+                HorizontalLayout {
+                    height: 44px;
+                    spacing: 8px;
+                    alignment: space-between;
+
+                    // Left: Transport buttons
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/skip-back.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                tooltip: "Previous track";
+                                clicked => { root.previous(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 38px;
+                                height: 38px;
+                                border-radius: 19px;
+                                background: play-area.has-hover ? #ffffff : #f0f2ef;
+                                play-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.toggle-play(); }
+                                }
+                                Image {
+                                    source: root.is-playing ? @image-url("../assets/icons/pause.svg") : @image-url("../assets/icons/play.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    x: (parent.width - self.width) / 2 + (root.is-playing ? 0px : 1px);
+                                    y: (parent.height - self.height) / 2;
+                                    colorize: #0a0b0a;
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/skip-forward.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                tooltip: "Next track";
+                                clicked => { root.next(); }
+                            }
+                        }
+                    }
+
+                    // Center: Volume slider
+                    HorizontalLayout {
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: root.volume == 0 ? @image-url("../assets/icons/mute.svg") : @image-url("../assets/icons/volume.svg");
+                                width: 15px;
+                                height: 15px;
+                                colorize: Palette.muted;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            width: 110px;
+                            PlayerSlider {
+                                value: root.volume / 100.0;
+                                changed(frac) => { root.volume-changed(round(frac * 100)); }
+                            }
+                        }
+                    }
+
+                    // Right: Speed, Repeat, Subtitles, Snapshot, Fullscreen
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: end;
+
+                        VerticalLayout {
+                            alignment: center;
+                            CustomSelect {
+                                width: 78px;
+                                options: ["0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x"];
+                                current-value: root.speed;
+                                selected(val) => {
+                                    root.speed = val;
+                                    root.speed-selected(val);
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/repeat.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                active: root.repeat-current;
+                                tooltip: root.repeat-current ? "Repeat this video" : "Repeat off";
+                                clicked => { root.toggle-repeat(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/lyrics.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                active: root.selected-subtitle-id != -1;
+                                tooltip: "Subtitles";
+                                clicked => { root.open-subtitles(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/disc.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                tooltip: "Save frame screenshot";
+                                clicked => { root.take-snapshot(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IcBtn {
+                                icon: @image-url("../assets/icons/expand.svg");
+                                icon-size: 15px;
+                                width: 32px;
+                                height: 32px;
+                                tooltip: "Full screen (F11)";
+                                clicked => { root.toggle-fullscreen(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Subtitle selection popup overlay
+    if root.subtitle-menu-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        TouchArea { clicked => { root.subtitle-menu-open = false; } }
+        Rectangle {
+            x: parent.width - self.width - 18px;
+            y: max(12px, parent.height - root.transport-height - self.height - 8px);
+            width: 240px;
+            height: min(260px, max(82px, sub-col.preferred-height + 12px));
+            border-radius: 8px;
+            background: Palette.panel-3;
+            border-width: 1px;
+            border-color: Palette.border;
+            clip: true;
+
+            ScrollView {
+                x: 4px;
+                y: 6px;
+                width: parent.width - 8px;
+                height: parent.height - 12px;
+                content-width: self.visible-width;
+                content-height: sub-col.preferred-height;
+
+                sub-col := VerticalLayout {
+                    width: parent.visible-width;
+                    spacing: 2px;
+
+                    Rectangle {
+                        height: 30px;
+                        border-radius: 5px;
+                        background: off-area.has-hover ? Palette.hover : transparent;
+                        off-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.subtitle-menu-open = false;
+                                root.select-subtitle(-1);
+                            }
+                        }
+                        Text {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            text: root.selected-subtitle-id == -1 ? "✓ Off" : "Off";
+                            color: root.selected-subtitle-id == -1 ? State.accent : Palette.text-strong;
+                            font-size: 11px;
+                        }
+                    }
+
+                    if root.subtitles.length == 0 : Rectangle {
+                        height: 32px;
+                        Text {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            text: "No embedded or sidecar subtitles";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            overflow: elide;
+                        }
+                    }
+
+                    for sub in root.subtitles : Rectangle {
+                        height: 30px;
+                        border-radius: 5px;
+                        background: sub-area.has-hover ? Palette.hover : transparent;
+                        sub-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.subtitle-menu-open = false;
+                                root.select-subtitle(sub.id);
+                            }
+                        }
+                        Text {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            text: sub.selected ? "✓ \{sub.name}" : sub.name;
+                            color: sub.selected ? State.accent : Palette.text-strong;
+                            font-size: 11px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

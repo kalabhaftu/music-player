@@ -7,17 +7,65 @@ impl App {
         self.started = true;
         LocalAppLog::shared().info("startup", "Music Player starting");
         music_player_core::clean_stale_temp_files(&tag_backups_dir());
-        self.publish_settings();
-        self.refresh_playlists();
+        self.publish_settings_initial();
         self.load_roots();
         self.restore_session();
-        self.clear_stale_artwork();
         self.restore_view_context();
         self.refresh_view();
         self.publish_playback();
         self.publish_queue(true);
         self.publish_scan();
+    }
+
+    pub(crate) fn ensure_audio_engine_ready(&mut self) {
+        if !self.deferred_audio_pending {
+            return;
+        }
+        self.deferred_audio_pending = false;
+        if let Some(handle) = self.vlc_prep.take() {
+            let prepared = handle.join().ok().flatten();
+            self.engine.attach_prepared_vlc(prepared);
+        }
+        let video_exts = self.all_video_extensions();
+        self.engine.set_video_extensions(&video_exts);
+
+        let selected_device = self
+            .settings
+            .raw(music_player_core::settings::keys::AUDIO_OUTPUT_DEVICE)
+            .unwrap_or_default();
+        if !selected_device.trim().is_empty() {
+            let direct_sound = os_shell::direct_sound_device_id(&selected_device).unwrap_or_default();
+            let _ = self.engine.set_audio_output_device(&direct_sound);
+        }
+        self.apply_equalizer();
+    }
+
+    pub(crate) fn complete_deferred_startup(&mut self) {
+        self.ensure_audio_engine_ready();
+        if let Some((track, pos_ms)) = self.pending_session_resume.take() {
+            let still_current = self
+                .current
+                .as_ref()
+                .map(|c| c.path.eq_ignore_ascii_case(&track.path))
+                .unwrap_or(false);
+            if still_current
+                && !self.is_video_path(&track.path)
+                && self.engine.play_track(&track.path).is_ok()
+            {
+                let _ = self.engine.pause();
+                let _ = self.engine.seek(pos_ms);
+            }
+        }
+        self.publish_eq_state(true);
+        self.refresh_playlists();
+        self.clear_stale_artwork();
         self.publish_about();
+        self.publish_playback();
+        if self.startup_scan_deferred {
+            self.startup_scan_deferred = false;
+            self.startup_scan();
+            self.check_updates_if_enabled();
+        }
     }
 
     /// Restores missing artwork cache files for indexed tracks without
@@ -266,7 +314,21 @@ impl App {
 
         // Native end-of-track event (port of Playback_TrackEnded).
         if self.engine.take_end_reached() {
-            self.advance_queue(true);
+            let repeat_video = self.engine.is_video_mode()
+                && self
+                    .video_host
+                    .as_ref()
+                    .map(|h| h.repeat_current)
+                    .unwrap_or(false);
+            if repeat_video {
+                if let Some(track) = self.current.clone() {
+                    if self.engine.play_track(&track.path).is_ok() {
+                        self.listening.reset_for_track();
+                    }
+                }
+            } else {
+                self.advance_queue(true);
+            }
         }
         if self.engine.take_encountered_error() {
             if let Some(track) = self.current.clone() {
@@ -300,8 +362,9 @@ impl App {
             }
         }
 
-        // Crossfade window: duration - position <= fadeMs + 1500.
+        // Crossfade window: duration - position <= fadeMs + 1500. Skipped for video tracks.
         if self.engine.is_playing()
+            && !self.engine.is_video_mode()
             && self.coordinator.queue().repeat_mode != RepeatMode::Track
             && self.coordinator.queue().repeat_a_ms().is_none()
             && !self.crossfade_in_progress
@@ -315,13 +378,21 @@ impl App {
                         .unwrap_or(false)
                 })
                 .unwrap_or(false)
-            && self.coordinator.queue().next_index(true).is_some()
             && crossfade_ms > 0
             && duration > 0
             && duration.saturating_sub(position) <= crossfade_ms + 1500
         {
             if let Some(next) = self.coordinator.queue().next_index(true) {
-                self.start_crossfade(next, crossfade_ms);
+                let next_is_video = self
+                    .coordinator
+                    .queue()
+                    .entries()
+                    .get(next)
+                    .map(|p| self.is_video_path(p))
+                    .unwrap_or(false);
+                if !next_is_video {
+                    self.start_crossfade(next, crossfade_ms);
+                }
             }
         }
 

@@ -39,36 +39,63 @@ impl App {
             .iter()
             .map(|e| e.to_string())
             .collect();
+        let kinds = self.settings.extension_types();
         for (ext, enabled) in self.settings.extension_enabled() {
+            let lower = ext.to_lowercase();
             if enabled {
-                set.insert(ext.to_lowercase());
+                set.insert(lower);
             } else {
-                set.remove(&ext.to_lowercase());
+                set.remove(&lower);
             }
         }
-        for extension in [".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".webm"] {
-            if self.settings.is_extension_enabled(extension) {
-                set.insert(extension.to_string());
+        // Video types and Video-classified custom types stay off by default unless explicitly enabled.
+        for ext in self.all_video_extensions() {
+            if self.settings.is_extension_enabled(&ext) {
+                set.insert(ext);
             } else {
-                set.remove(extension);
+                set.remove(&ext);
+            }
+        }
+        for (ext, kind) in kinds {
+            let lower = ext.to_lowercase();
+            if kind.eq_ignore_ascii_case("Video") && !self.settings.is_extension_enabled(&lower) {
+                set.remove(&lower);
             }
         }
         set
     }
 
     pub(crate) fn video_extensions(&self) -> Vec<String> {
+        let mut extensions = self.all_video_extensions();
+        extensions.retain(|extension| self.settings.is_extension_enabled(extension));
+        extensions
+    }
+
+    pub(crate) fn all_video_extensions(&self) -> Vec<String> {
         let defaults = [".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
-        let enabled = self.settings.extension_enabled();
         let kinds = self.settings.extension_types();
         let mut extensions: Vec<String> = defaults.iter().map(|ext| (*ext).to_string()).collect();
+        for ext in music_player_core::scanner::scan::VIDEO_EXTENSIONS {
+            let dotted = format!(".{ext}");
+            if !extensions.contains(&dotted) {
+                extensions.push(dotted);
+            }
+        }
         extensions.extend(kinds.iter().filter_map(|(extension, kind)| {
             kind.eq_ignore_ascii_case("Video")
                 .then(|| extension.to_ascii_lowercase())
         }));
         extensions.sort();
         extensions.dedup();
-        extensions.retain(|extension| enabled.get(extension).copied().unwrap_or(true));
         extensions
+    }
+
+    pub(crate) fn is_video_path(&self, path: &str) -> bool {
+        let Some(ext) = Path::new(path).extension().and_then(|e| e.to_str()) else {
+            return false;
+        };
+        let dotted = format!(".{}", ext.to_ascii_lowercase());
+        self.all_video_extensions().contains(&dotted)
     }
 
     pub(crate) fn startup_scan(&mut self) {

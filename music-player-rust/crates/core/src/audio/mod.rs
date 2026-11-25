@@ -11,7 +11,7 @@ pub use coordinator::{
 };
 pub use engine::{
     crossfade_volumes, vlc_event, vlc_state, AudioEngine, CrossfadeOutcome, EventFlags,
-    PlaybackStatus,
+    PlaybackStatus, PreparedVlc, VideoSubtitleTrack,
 };
 pub use equalizer::{
     canonical_preset_by_name, canonical_preset_names, EqualizerState, CANONICAL_PRESETS,

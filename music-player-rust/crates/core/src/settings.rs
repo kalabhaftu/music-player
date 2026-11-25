@@ -186,11 +186,16 @@ impl PlayerSettings {
     }
 
     pub fn is_extension_enabled(&self, ext: &str) -> bool {
+        let normalized = ext.trim().to_ascii_lowercase();
         let map = self.extension_enabled();
-        match map.get(ext.to_lowercase().as_str()) {
-            Some(enabled) => *enabled,
-            None => true,
+        if let Some(enabled) = map.get(normalized.as_str()) {
+            return *enabled;
         }
+        let types = self.extension_types();
+        if let Some(kind) = types.get(normalized.as_str()) {
+            return !kind.eq_ignore_ascii_case("Video");
+        }
+        !is_video_extension_default(&normalized)
     }
 
     // --- Validation & update ----------------------------------------------
@@ -533,6 +538,11 @@ impl PlayerSettings {
             0
         }
     }
+}
+
+pub fn is_video_extension_default(ext: &str) -> bool {
+    let normalized = ext.trim().trim_start_matches('.').to_ascii_lowercase();
+    crate::scanner::scan::VIDEO_EXTENSIONS.contains(&normalized.as_str())
 }
 
 pub fn is_hex_color(value: &str) -> bool {

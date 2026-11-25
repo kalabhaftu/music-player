@@ -750,6 +750,61 @@ pub fn restore_window_placement(hwnd: isize, store: &music_player_core::LibraryS
     }
 }
 
+/// Forces Win32/DWM and the OpenGL window surface to re-evaluate the client rectangle
+/// after toggling native window decorations (`WM_NCCALCSIZE`), preventing a stale
+/// top-edge offset or viewport size mismatch.
+pub fn refresh_window_frame(hwnd: isize, nudge_size: bool) {
+    if hwnd == 0 {
+        return;
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::Foundation::RECT;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowRect, IsZoomed, SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOSIZE, SWP_NOZORDER,
+        };
+        let hwnd = hwnd as _;
+        if nudge_size && IsZoomed(hwnd) == 0 {
+            let mut rect: RECT = std::mem::zeroed();
+            if GetWindowRect(hwnd, &mut rect) != 0 {
+                let w = rect.right - rect.left;
+                let h = rect.bottom - rect.top;
+                if w > 0 && h > 0 {
+                    SetWindowPos(
+                        hwnd,
+                        std::ptr::null_mut(),
+                        rect.left,
+                        rect.top,
+                        w,
+                        h + 1,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                    SetWindowPos(
+                        hwnd,
+                        std::ptr::null_mut(),
+                        rect.left,
+                        rect.top,
+                        w,
+                        h,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                    return;
+                }
+            }
+        }
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
+
 /// Returns the free bytes available to the user on the drive containing `path`.
 pub fn available_disk_space_bytes(path: &Path) -> Option<u64> {
     #[cfg(windows)]

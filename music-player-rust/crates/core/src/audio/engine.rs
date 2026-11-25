@@ -1,10 +1,33 @@
-use std::ffi::{c_char, c_void, CString, CStr};
+use std::collections::HashSet;
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::equalizer::{NEUTRAL_EQUALIZER_PREAMP, EQUALIZER_BANDS, EQUALIZER_PREAMP_LIMIT};
+use super::equalizer::{EQUALIZER_BANDS, EQUALIZER_PREAMP_LIMIT, NEUTRAL_EQUALIZER_PREAMP};
+
+/// Video subtitle track entry returned by LibVLC SPU enumeration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoSubtitleTrack {
+    pub id: i32,
+    pub name: String,
+}
+
+#[repr(C)]
+struct VlcTrackDescription {
+    id: i32,
+    name: *const c_char,
+    next: *mut VlcTrackDescription,
+}
+
+/// Opaque initialized LibVLC instance ready to attach to `AudioEngine`.
+pub struct PreparedVlc(VlcContext);
+
+// SAFETY: `PreparedVlc` contains only a freshly constructed, unplayed `libvlc_instance_t`
+// handle with no active `PlayerHandle` instances or thread-bound state; moving it once
+// to the owner UI thread after initialization on a background worker is safe.
+unsafe impl Send for PreparedVlc {}
 
 /// VLC Windows volume scale cubes the slider value; crossfade gains are
 /// converted back into that scale (see `crossfade_volumes`).
@@ -195,6 +218,16 @@ struct VlcContext {
     fn_equalizer_band_frequency: unsafe extern "C" fn(u32) -> f32,
     fn_player_set_rate: unsafe extern "C" fn(*mut c_void, f32) -> i32,
     fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32,
+
+    // Video surface / subtitle / snapshot function pointers
+    fn_media_player_set_hwnd: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
+    fn_video_get_spu: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    fn_video_set_spu: Option<unsafe extern "C" fn(*mut c_void, i32) -> i32>,
+    fn_video_get_spu_description:
+        Option<unsafe extern "C" fn(*mut c_void) -> *mut VlcTrackDescription>,
+    fn_track_description_list_release: Option<unsafe extern "C" fn(*mut VlcTrackDescription)>,
+    fn_video_take_snapshot:
+        Option<unsafe extern "C" fn(*mut c_void, u32, *const c_char, u32, u32) -> i32>,
 }
 
 impl Drop for VlcContext {
@@ -287,6 +320,14 @@ pub struct AudioEngine {
     equalizer_preamp: f32,
     /// Playback rate (0.5x to 2.0x, normal 1.0)
     playback_rate: f32,
+    /// Separate playback rate remembered for video playback (0.5x to 2.0x).
+    video_playback_rate: f32,
+    /// Video extensions set for detecting video playback tracks.
+    video_extensions: HashSet<String>,
+    /// True when the active media is a video file.
+    video_track: bool,
+    /// Native Win32 HWND of the child video host surface (`0` when detached).
+    video_hwnd: isize,
     /// DirectSound device GUID selected in Settings (empty = system default).
     audio_output_device: String,
     /// Flags used when LibVLC is unavailable and playback runs through MCI.
@@ -301,6 +342,24 @@ impl Default for AudioEngine {
 }
 
 impl AudioEngine {
+    fn default_video_extensions() -> HashSet<String> {
+        crate::scanner::scan::VIDEO_EXTENSIONS
+            .iter()
+            .map(|ext| format!(".{}", ext.to_ascii_lowercase()))
+            .collect()
+    }
+
+    /// Initializes LibVLC on a background thread so UI construction can run in parallel.
+    pub fn prepare_vlc() -> Option<PreparedVlc> {
+        Self::try_init_vlc().map(PreparedVlc)
+    }
+
+    /// Non-blocking constructor: skips synchronous `libvlc_new()` so startup can
+    /// paint the main window immediately and attach `PreparedVlc` via `attach_vlc`.
+    pub fn deferred() -> Self {
+        Self::with_vlc(None)
+    }
+
     pub fn new() -> Self {
         let vlc = Self::try_init_vlc();
         if vlc.is_none() {
@@ -309,6 +368,10 @@ impl AudioEngine {
                 "LibVLC is unavailable. Audio playback will fall back to platform native audio (MCI).",
             );
         }
+        Self::with_vlc(vlc)
+    }
+
+    fn with_vlc(vlc: Option<VlcContext>) -> Self {
         Self {
             current_path: None,
             duration_ms: 0,
@@ -325,10 +388,48 @@ impl AudioEngine {
             equalizer_bands: None,
             equalizer_preamp: NEUTRAL_EQUALIZER_PREAMP,
             playback_rate: 1.0,
+            video_playback_rate: 1.0,
+            video_extensions: Self::default_video_extensions(),
+            video_track: false,
+            video_hwnd: 0,
             audio_output_device: String::new(),
             fallback_flags: EventFlags::default(),
             mci_last_position: AtomicU64::new(0),
         }
+    }
+
+    pub fn attach_prepared_vlc(&mut self, prepared: Option<PreparedVlc>) {
+        if self.vlc.is_none() {
+            self.vlc = prepared.map(|p| p.0);
+        }
+    }
+
+    pub fn set_video_extensions(&mut self, extensions: &[String]) {
+        let mut set = Self::default_video_extensions();
+        for ext in extensions {
+            let trimmed = ext.trim().to_ascii_lowercase();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with('.') {
+                set.insert(trimmed);
+            } else {
+                set.insert(format!(".{trimmed}"));
+            }
+        }
+        self.video_extensions = set;
+    }
+
+    pub fn is_video_path(&self, path: &str) -> bool {
+        let Some(ext) = Path::new(path).extension().and_then(|e| e.to_str()) else {
+            return false;
+        };
+        let dotted = format!(".{}", ext.to_ascii_lowercase());
+        self.video_extensions.contains(&dotted)
+    }
+
+    pub fn is_video_mode(&self) -> bool {
+        self.video_track
     }
 
     fn try_init_vlc() -> Option<VlcContext> {
@@ -537,6 +638,37 @@ impl AudioEngine {
         let fn_player_get_rate: unsafe extern "C" fn(*mut c_void) -> f32 =
             get_sym!(lib, b"libvlc_media_player_get_rate");
 
+        let fn_media_player_set_hwnd: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)> = lib
+            .get(b"libvlc_media_player_set_hwnd")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_video_get_spu: Option<unsafe extern "C" fn(*mut c_void) -> i32> = lib
+            .get(b"libvlc_video_get_spu")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_video_set_spu: Option<unsafe extern "C" fn(*mut c_void, i32) -> i32> = lib
+            .get(b"libvlc_video_set_spu")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_video_get_spu_description: Option<
+            unsafe extern "C" fn(*mut c_void) -> *mut VlcTrackDescription,
+        > = lib
+            .get(b"libvlc_video_get_spu_description")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_track_description_list_release: Option<
+            unsafe extern "C" fn(*mut VlcTrackDescription),
+        > = lib
+            .get(b"libvlc_track_description_list_release")
+            .ok()
+            .map(|symbol| *symbol);
+        let fn_video_take_snapshot: Option<
+            unsafe extern "C" fn(*mut c_void, u32, *const c_char, u32, u32) -> i32,
+        > = lib
+            .get(b"libvlc_video_take_snapshot")
+            .ok()
+            .map(|symbol| *symbol);
+
         const ARGS: &[&[u8]] = &[
             b"--aout=directsound\0",
             b"--directx-volume=0\0",
@@ -597,13 +729,31 @@ impl AudioEngine {
                 fn_equalizer_band_frequency,
                 fn_player_set_rate,
                 fn_player_get_rate,
+                fn_media_player_set_hwnd,
+                fn_video_get_spu,
+                fn_video_set_spu,
+                fn_video_get_spu_description,
+                fn_track_description_list_release,
+                fn_video_take_snapshot,
             })
         }
     }
 
-    /// Applies the DirectSound output/device selection to a freshly created
-    /// player, mirroring PlaybackService.ConfigureAudioOutputCore (device before output).
-    unsafe fn apply_audio_output(vlc: &VlcContext, player: *mut c_void, device: &str) {
+    /// Applies the DirectSound (audio) or MMDevice (video) output/device
+    /// selection to a freshly created player, mirroring `ConfigureAudioOutputCore`.
+    unsafe fn apply_audio_output(
+        vlc: &VlcContext,
+        player: *mut c_void,
+        device: &str,
+        is_video: bool,
+    ) {
+        if is_video {
+            if let Some(output_set) = vlc.fn_audio_output_set {
+                let name = CString::new("mmdevice").unwrap();
+                let _ = (output_set)(player, name.as_ptr());
+            }
+            return;
+        }
         if let Some(device_set) = vlc.fn_audio_output_device_set {
             let module = CString::new("directx").unwrap();
             let device = CString::new(device).unwrap_or_default();
@@ -613,6 +763,52 @@ impl AudioEngine {
             let name = CString::new("directsound").unwrap();
             let _ = (output_set)(player, name.as_ptr());
         }
+    }
+
+    fn find_nearby_subtitle_files(video_path: &str) -> Vec<PathBuf> {
+        let p = Path::new(video_path);
+        let Some(dir) = p.parent() else {
+            return Vec::new();
+        };
+        let Some(media_name) = p.file_stem().and_then(|s| s.to_str()) else {
+            return Vec::new();
+        };
+        if media_name.trim().is_empty() || !dir.is_dir() {
+            return Vec::new();
+        }
+        let media_lower = media_name.to_ascii_lowercase();
+        let dot_prefix = format!("{media_lower}.");
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let mut exact = Vec::new();
+        let mut prefixed = Vec::new();
+        for entry in entries.flatten() {
+            let candidate = entry.path();
+            if !candidate.is_file() {
+                continue;
+            }
+            let Some(ext) = candidate.extension().and_then(|e| e.to_str()) else {
+                continue;
+            };
+            if !matches!(ext.to_ascii_lowercase().as_str(), "srt" | "ass" | "ssa" | "vtt") {
+                continue;
+            }
+            let Some(sub_stem) = candidate.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let sub_lower = sub_stem.to_ascii_lowercase();
+            if sub_lower == media_lower {
+                exact.push(candidate);
+            } else if sub_lower.starts_with(&dot_prefix) {
+                prefixed.push(candidate);
+            }
+        }
+        exact.sort_by(|a, b| a.to_string_lossy().to_lowercase().cmp(&b.to_string_lossy().to_lowercase()));
+        prefixed.sort_by(|a, b| a.to_string_lossy().to_lowercase().cmp(&b.to_string_lossy().to_lowercase()));
+        exact.extend(prefixed);
+        exact.truncate(8);
+        exact
     }
 
     /// Creates a player for `media` and attaches EndReached, EncounteredError,
@@ -664,7 +860,7 @@ impl AudioEngine {
     /// Creates media for a path; `.ogg`/`.oga` get VLC's bundled FFmpeg
     /// demuxer because the native Ogg reader can report EOF right after a
     /// time seek (mirrors `SetMedia`).
-    unsafe fn create_media(vlc: &VlcContext, path: &str) -> Result<*mut c_void, String> {
+    unsafe fn create_media(vlc: &VlcContext, path: &str, is_video: bool) -> Result<*mut c_void, String> {
         let c_path = CString::new(path.as_bytes()).map_err(|e| format!("Invalid path: {}", e))?;
         let media = (vlc.fn_media_new_path)(vlc.instance, c_path.as_ptr());
         if media.is_null() {
@@ -679,12 +875,20 @@ impl AudioEngine {
             let option = CString::new(":demux=avformat").unwrap();
             (vlc.fn_media_add_option)(media, option.as_ptr());
         }
+        if is_video {
+            for sub in Self::find_nearby_subtitle_files(path) {
+                if let Ok(opt) = CString::new(format!(":sub-file={}", sub.to_string_lossy())) {
+                    (vlc.fn_media_add_option)(media, opt.as_ptr());
+                }
+            }
+        }
         Ok(media)
     }
 
     pub fn play_track<P: AsRef<Path>>(&mut self, path: P) -> Result<(), String> {
         let path_ref = path.as_ref();
         let path_str = path_ref.to_string_lossy().to_string();
+        let is_video = self.is_video_path(&path_str);
 
         self.cancel_crossfade_core();
         self.media_generation += 1;
@@ -693,13 +897,20 @@ impl AudioEngine {
         let eq_preset = self.equalizer_preset.clone();
         let eq_bands = self.equalizer_bands;
         let eq_preamp = self.equalizer_preamp;
+        let rate = if is_video {
+            self.video_playback_rate
+        } else {
+            self.playback_rate
+        };
+        let video_hwnd = if is_video { self.video_hwnd } else { 0 };
+        self.video_track = is_video;
 
         if let Some(ref mut vlc) = self.vlc {
             unsafe {
                 // Release the previous player and media (stop, detach, release).
                 vlc.active = None;
 
-                let media = Self::create_media(vlc, &path_str)?;
+                let media = Self::create_media(vlc, &path_str, is_video)?;
                 let handle = match Self::create_player_handle(vlc, media) {
                     Some(handle) => handle,
                     None => {
@@ -709,9 +920,12 @@ impl AudioEngine {
                 };
                 handle.flags.generation.store(generation, Ordering::SeqCst);
 
-                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
+                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device, is_video);
+                if let Some(set_hwnd) = vlc.fn_media_player_set_hwnd {
+                    (set_hwnd)(handle.player, video_hwnd as *mut c_void);
+                }
                 (vlc.fn_audio_set_volume)(handle.player, volume as i32);
-                (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
+                (vlc.fn_player_set_rate)(handle.player, rate);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
 
                 let played = (vlc.fn_player_play)(handle.player) == 0;
@@ -797,9 +1011,16 @@ impl AudioEngine {
             return Ok(());
         };
         let device = self.audio_output_device.clone();
+        let is_video = self.video_track;
+        let video_hwnd = if is_video { self.video_hwnd } else { 0 };
+        let rate = if is_video {
+            self.video_playback_rate
+        } else {
+            self.playback_rate
+        };
         unsafe {
             vlc.active = None;
-            let media = Self::create_media(vlc, &path)?;
+            let media = Self::create_media(vlc, &path, is_video)?;
             let handle = match Self::create_player_handle(vlc, media) {
                 Some(handle) => handle,
                 None => {
@@ -808,9 +1029,12 @@ impl AudioEngine {
                 }
             };
             handle.flags.generation.store(generation, Ordering::SeqCst);
-            Self::apply_audio_output(vlc, handle.player, &device);
+            Self::apply_audio_output(vlc, handle.player, &device, is_video);
+            if let Some(set_hwnd) = vlc.fn_media_player_set_hwnd {
+                (set_hwnd)(handle.player, video_hwnd as *mut c_void);
+            }
             (vlc.fn_audio_set_volume)(handle.player, volume as i32);
-            (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
+            (vlc.fn_player_set_rate)(handle.player, rate);
             Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
 
             if (vlc.fn_player_play)(handle.player) != 0 {
@@ -877,6 +1101,7 @@ impl AudioEngine {
 
     pub fn stop(&mut self) -> Result<(), String> {
         self.cancel_crossfade_core();
+        self.video_track = false;
         self.media_generation += 1;
         if let Some(ref vlc) = self.vlc {
             if let Some(ref active) = vlc.active {
@@ -1016,6 +1241,142 @@ impl AudioEngine {
             }
         }
         self.playback_rate
+    }
+
+    pub fn set_video_surface_handle(&mut self, hwnd: isize) {
+        self.video_hwnd = hwnd;
+        if let Some(ref vlc) = self.vlc {
+            if let Some(ref active) = vlc.active {
+                if let Some(set_hwnd) = vlc.fn_media_player_set_hwnd {
+                    let target = if self.video_track { hwnd } else { 0 };
+                    unsafe {
+                        (set_hwnd)(active.player, target as *mut c_void);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn video_rate(&self) -> f32 {
+        self.video_playback_rate
+    }
+
+    pub fn set_video_rate(&mut self, rate: f32) -> Result<(), String> {
+        let clamped = rate.clamp(0.5, 2.0);
+        self.video_playback_rate = clamped;
+        if !self.video_track {
+            return Ok(());
+        }
+        if let Some(ref vlc) = self.vlc {
+            if let Some(ref active) = vlc.active {
+                unsafe {
+                    if (vlc.fn_player_set_rate)(active.player, clamped) != 0 {
+                        return Err("LibVLC could not set video playback rate".into());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn video_subtitle_id(&self) -> i32 {
+        if !self.video_track {
+            return -1;
+        }
+        if let Some(ref vlc) = self.vlc {
+            if let Some(ref active) = vlc.active {
+                if let Some(get_spu) = vlc.fn_video_get_spu {
+                    return unsafe { (get_spu)(active.player) };
+                }
+            }
+        }
+        -1
+    }
+
+    pub fn video_subtitles(&self) -> Vec<VideoSubtitleTrack> {
+        if !self.video_track {
+            return Vec::new();
+        }
+        let Some(ref vlc) = self.vlc else {
+            return Vec::new();
+        };
+        let Some(ref active) = vlc.active else {
+            return Vec::new();
+        };
+        let Some(get_desc) = vlc.fn_video_get_spu_description else {
+            return Vec::new();
+        };
+        let mut tracks = Vec::new();
+        unsafe {
+            let head = (get_desc)(active.player);
+            let mut cursor = head;
+            while !cursor.is_null() {
+                let entry = &*cursor;
+                if entry.id != -1 {
+                    let name = if entry.name.is_null() {
+                        format!("Track {}", entry.id)
+                    } else {
+                        CStr::from_ptr(entry.name)
+                            .to_string_lossy()
+                            .trim()
+                            .to_string()
+                    };
+                    tracks.push(VideoSubtitleTrack {
+                        id: entry.id,
+                        name: if name.is_empty() {
+                            format!("Track {}", entry.id)
+                        } else {
+                            name
+                        },
+                    });
+                }
+                cursor = entry.next;
+            }
+            if !head.is_null() {
+                if let Some(release) = vlc.fn_track_description_list_release {
+                    (release)(head);
+                }
+            }
+        }
+        tracks
+    }
+
+    pub fn set_video_subtitle(&mut self, track_id: i32) -> bool {
+        if !self.video_track {
+            return false;
+        }
+        let Some(ref vlc) = self.vlc else {
+            return false;
+        };
+        let Some(ref active) = vlc.active else {
+            return false;
+        };
+        let Some(set_spu) = vlc.fn_video_set_spu else {
+            return false;
+        };
+        unsafe { (set_spu)(active.player, track_id) == 0 }
+    }
+
+    pub fn take_video_snapshot(&self, output_path: &Path) -> bool {
+        if !self.video_track {
+            return false;
+        }
+        let Some(ref vlc) = self.vlc else {
+            return false;
+        };
+        let Some(ref active) = vlc.active else {
+            return false;
+        };
+        let Some(snap) = vlc.fn_video_take_snapshot else {
+            return false;
+        };
+        if let Some(parent) = output_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let Ok(c_path) = CString::new(output_path.to_string_lossy().as_bytes()) else {
+            return false;
+        };
+        unsafe { (snap)(active.player, 0, c_path.as_ptr(), 0, 0) == 0 }
     }
 
     pub fn position_ms(&self) -> u64 {
@@ -1483,7 +1844,7 @@ impl AudioEngine {
     /// `CrossfadeOutcome::InProgress` immediately. Drive it forward every
     /// ~20 ms via `poll_crossfade()`.
     pub fn start_crossfade(&mut self, next_path: &str, fade_ms: u64) -> CrossfadeOutcome {
-        if fade_ms == 0 {
+        if fade_ms == 0 || self.video_track || self.is_video_path(next_path) {
             return CrossfadeOutcome::Rejected;
         }
         if self.vlc.is_none() || self.current_path.is_none() {
@@ -1507,7 +1868,7 @@ impl AudioEngine {
             };
             unsafe {
                 vlc.spare = None;
-                let media = match Self::create_media(vlc, next_path) {
+                let media = match Self::create_media(vlc, next_path, false) {
                     Ok(media) => media,
                     Err(error) => return CrossfadeOutcome::Failed(error),
                 };
@@ -1523,7 +1884,7 @@ impl AudioEngine {
                 self.media_generation += 1;
                 handle.flags.generation.store(self.media_generation, Ordering::SeqCst);
                 (vlc.fn_player_stop)(handle.player);
-                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device);
+                Self::apply_audio_output(vlc, handle.player, &self.audio_output_device, false);
                 let _ = (vlc.fn_audio_set_volume)(handle.player, 0);
                 (vlc.fn_player_set_rate)(handle.player, self.playback_rate);
                 Self::apply_equalizer_to_player(vlc, &eq_preset, &eq_bands, eq_preamp, handle.player);
