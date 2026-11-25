@@ -135,10 +135,16 @@ pub fn get_track_by_path(conn: &Connection, path: &str) -> Result<Option<Track>>
     let mut stmt = conn.prepare("SELECT * FROM tracks WHERE path = ?1")?;
     let mut rows = stmt.query(params![path])?;
     if let Some(row) = rows.next()? {
-        Ok(Some(row_to_track(row)?))
-    } else {
-        Ok(None)
+        return Ok(Some(row_to_track(row)?));
     }
+    if cfg!(windows) {
+        let mut nocase = conn.prepare("SELECT * FROM tracks WHERE path = ?1 COLLATE NOCASE LIMIT 1")?;
+        let mut nc_rows = nocase.query(params![path])?;
+        if let Some(row) = nc_rows.next()? {
+            return Ok(Some(row_to_track(row)?));
+        }
+    }
+    Ok(None)
 }
 
 pub fn get_tracks_by_paths(conn: &Connection, paths: &[String]) -> Result<Vec<Track>> {
@@ -506,11 +512,16 @@ fn build_view_where(query: &TrackQuery, use_fts: bool) -> (String, Vec<String>) 
         }
     }
     if let Some(term) = query.search.as_deref().map(str::trim) {
-        if !term.is_empty() && use_fts {
-            clauses.push(
-                "t.path IN (SELECT path FROM tracks_fts WHERE tracks_fts MATCH ?)".to_string(),
-            );
-            params.push(search::fts_query_string(term));
+        if !term.is_empty() {
+            let fts = search::fts_query_string(term);
+            if use_fts && !fts.is_empty() {
+                clauses.push(
+                    "t.path IN (SELECT path FROM tracks_fts WHERE tracks_fts MATCH ?)".to_string(),
+                );
+                params.push(fts);
+            } else {
+                search::push_unicode_search_clauses(term, "t", &mut clauses, &mut params);
+            }
         }
     }
 
@@ -523,21 +534,20 @@ pub fn query_track_page(
     conn: &Connection,
     query: &TrackQuery,
 ) -> Result<(Vec<Track>, i64)> {
-    let (where_sql, params) = build_view_where(query, true);
     let suppression = if query.hide_duplicates && fingerprints_present(conn) {
         duplicate_suppression_sql().to_string()
     } else {
         String::new()
     };
 
-    // FTS MATCH can be an empty/invalid expression for punctuation-only terms;
-    // fall back to a plain (non-FTS) where clause on error.
-    let attempt = || -> Result<(Vec<Track>, i64)> {
+    let run_query = |use_fts: bool, include_suppression: bool| -> Result<(Vec<Track>, i64)> {
+        let (where_sql, params) = build_view_where(query, use_fts);
+        let sup = if include_suppression { suppression.as_str() } else { "" };
         let order = order_expression(query.sort, query.descending);
         let sql = format!(
             "SELECT t.* FROM tracks t WHERE {}{} ORDER BY {} LIMIT ? OFFSET ?",
             where_sql,
-            suppression,
+            sup,
             order
         );
         let mut stmt = conn.prepare(&sql)?;
@@ -553,11 +563,7 @@ pub fn query_track_page(
             tracks.push(row_to_track(row)?);
         }
 
-        let count_sql = format!(
-            "SELECT COUNT(*) FROM tracks t WHERE {}{}",
-            where_sql,
-            suppression
-        );
+        let count_sql = format!("SELECT COUNT(*) FROM tracks t WHERE {}{}", where_sql, sup);
         let total: i64 = conn.query_row(
             &count_sql,
             rusqlite::params_from_iter(params.iter()),
@@ -566,38 +572,20 @@ pub fn query_track_page(
         Ok((tracks, total))
     };
 
-    match attempt() {
-        Ok(page) => Ok(page),
-        Err(_) => {
-            // Retire the FTS clause and retry, mirroring the original
-            // duplicate-suppression fallback logging/retry behavior.
-            let mut relaxed = query.clone();
-            relaxed.search = None;
-            let (where_sql, params) = build_view_where(&relaxed, false);
-            let order = order_expression(query.sort, query.descending);
-            let sql = format!(
-                "SELECT t.* FROM tracks t WHERE {} ORDER BY {} LIMIT ? OFFSET ?",
-                where_sql, order
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let mut bound: Vec<Box<dyn rusqlite::ToSql>> = params
-                .iter()
-                .map(|p| Box::new(p.clone()) as Box<dyn rusqlite::ToSql>)
-                .collect();
-            bound.push(Box::new(query.page_size.max(1) as i64));
-            bound.push(Box::new(query.offset as i64));
-            let mut rows = stmt.query(rusqlite::params_from_iter(bound.iter().map(|b| b.as_ref())))?;
-            let mut tracks = Vec::new();
-            while let Some(row) = rows.next()? {
-                tracks.push(row_to_track(row)?);
-            }
-            let count_sql = format!("SELECT COUNT(*) FROM tracks t WHERE {}", where_sql);
-            let total: i64 =
-                conn.query_row(&count_sql, rusqlite::params_from_iter(params.iter()), |r| {
-                    r.get(0)
-                })?;
-            Ok((tracks, total))
+    let has_search = query
+        .search
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+
+    match run_query(true, true) {
+        Ok((tracks, total)) if !has_search || total > 0 => Ok((tracks, total)),
+        Ok(empty) => {
+            let _ = empty;
+            run_query(false, true).or_else(|_| run_query(false, false))
         }
+        Err(_) if has_search => run_query(false, true).or_else(|_| run_query(false, false)),
+        Err(_) => run_query(false, false),
     }
 }
 

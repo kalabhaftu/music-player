@@ -689,6 +689,16 @@ pub fn extract_artwork_palette(path: &Path) -> Option<ArtworkPalette> {
     Some(palette)
 }
 
+/// Pre-computes both the dominant palette and blurred backdrop into memory caches
+/// on a background worker thread so song transitions update the UI without delay.
+pub fn prewarm_artwork_assets(path: &Path) {
+    if !path.is_file() {
+        return;
+    }
+    let _ = extract_artwork_palette(path);
+    let _ = load_blurred_backdrop(path);
+}
+
 pub fn save_window_placement(hwnd: isize, store: &music_player_core::LibraryStore) {
     if hwnd == 0 {
         return;

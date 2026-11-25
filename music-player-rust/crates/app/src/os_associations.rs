@@ -126,9 +126,19 @@ pub fn register_associations() -> Result<(), String> {
     set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationDescription"), "Offline music library and player")?;
     set_key_value(CAPABILITIES_SUBKEY, Some("ApplicationIcon"), &icon_ref)?;
 
-    // Application shell open registration
+    // Application shell open & COM DropTarget registration
+    let play_clsid = crate::shell_drop::PLAY_CLSID_STR;
+    let queue_clsid = crate::shell_drop::QUEUE_CLSID_STR;
+    let playlist_clsid = crate::shell_drop::PLAYLIST_CLSID_STR;
+    for clsid in [play_clsid, queue_clsid, playlist_clsid] {
+        let server_key = format!("Software\\Classes\\CLSID\\{clsid}\\LocalServer32");
+        set_key_value(&server_key, None, &format!("\"{exe_str}\" --shell-drop-target"))?;
+        set_key_value(&server_key, Some("ServerExecutable"), exe_str)?;
+    }
+
     set_key_value(&format!("{app_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""))?;
     set_key_value(&format!("{app_key}\\shell\\open"), Some("MultiSelectModel"), "Player")?;
+    set_key_value(&format!("{app_key}\\shell\\open\\DropTarget"), Some("CLSID"), play_clsid)?;
     set_key_value(&format!("{app_key}\\DefaultIcon"), None, &icon_ref)?;
 
     // Clean up legacy .mp4 registration if upgrading from earlier version
@@ -158,18 +168,21 @@ pub fn register_associations() -> Result<(), String> {
         set_key_value(&prog_key, Some("TypeOverlay"), &icon_ref)?;
         set_key_value(&format!("{prog_key}\\shell\\open\\command"), None, &format!("\"{exe_str}\" \"%1\""))?;
         set_key_value(&format!("{prog_key}\\shell\\open"), Some("MultiSelectModel"), "Player")?;
+        set_key_value(&format!("{prog_key}\\shell\\open\\DropTarget"), Some("CLSID"), play_clsid)?;
 
-        // Context-menu actions: Add to Queue & Create Playlist
+        // Context-menu actions: Add to Queue & Create Playlist (COM DropTarget captures full multi-select)
         let add_queue_key = format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerAddToQueue");
         set_key_value(&add_queue_key, None, "Add to Music Player queue")?;
         set_key_value(&add_queue_key, Some("Icon"), &icon_ref)?;
         set_key_value(&add_queue_key, Some("MultiSelectModel"), "Player")?;
+        set_key_value(&format!("{add_queue_key}\\DropTarget"), Some("CLSID"), queue_clsid)?;
         set_key_value(&format!("{add_queue_key}\\command"), None, &format!("\"{exe_str}\" --add-to-queue \"%1\""))?;
 
         let playlist_key = format!("Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\MusicPlayerCreatePlaylist");
         set_key_value(&playlist_key, None, "Create Music Player playlist")?;
         set_key_value(&playlist_key, Some("Icon"), &icon_ref)?;
         set_key_value(&playlist_key, Some("MultiSelectModel"), "Player")?;
+        set_key_value(&format!("{playlist_key}\\DropTarget"), Some("CLSID"), playlist_clsid)?;
         set_key_value(&format!("{playlist_key}\\command"), None, &format!("\"{exe_str}\" --create-playlist \"%1\""))?;
     }
 
@@ -189,6 +202,13 @@ pub fn unregister_associations() -> Result<(), String> {
     delete_tree(&app_key);
     delete_tree(CAPABILITIES_SUBKEY);
     delete_tree(INTEGRATION_ROOT);
+    for clsid in [
+        crate::shell_drop::PLAY_CLSID_STR,
+        crate::shell_drop::QUEUE_CLSID_STR,
+        crate::shell_drop::PLAYLIST_CLSID_STR,
+    ] {
+        delete_tree(&format!("Software\\Classes\\CLSID\\{clsid}"));
+    }
 
     // Remove RegisteredApplications value
     if let Some(hkey) = open_existing_key(HKEY_CURRENT_USER, REG_APP_KEY) {

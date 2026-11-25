@@ -92,8 +92,19 @@ pub struct ActivationPayload {
 pub fn parse_activation_args(args: &[String]) -> (String, Vec<String>) {
     let mut verb = "play".to_string();
     let mut paths = Vec::new();
-    for arg in args {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
         let lower = arg.to_lowercase();
+        if lower == "--file-request" {
+            if let Some(token) = args.get(i + 1) {
+                if let Some(req) = crate::shell_drop::read_file_request(token) {
+                    return (req.verb, req.paths);
+                }
+            }
+            i += 2;
+            continue;
+        }
         if lower == "--add-to-queue" || lower == "addtoqueue" {
             verb = "addtoqueue".to_string();
         } else if lower == "--create-playlist" || lower == "createplaylist" {
@@ -101,6 +112,7 @@ pub fn parse_activation_args(args: &[String]) -> (String, Vec<String>) {
         } else if !arg.starts_with("--") {
             paths.push(arg.clone());
         }
+        i += 1;
     }
     (verb, paths)
 }

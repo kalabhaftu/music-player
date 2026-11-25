@@ -14,6 +14,20 @@ pub fn register_query_functions(conn: &Connection) {
         },
     )
     .ok();
+    conn.create_scalar_function(
+        "musicplayer_contains",
+        2,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let haystack: String = ctx.get::<Option<String>>(0)?.unwrap_or_default();
+            let needle: String = ctx.get::<Option<String>>(1)?.unwrap_or_default();
+            if needle.is_empty() {
+                return Ok(true);
+            }
+            Ok(haystack.to_lowercase().contains(&needle.to_lowercase()))
+        },
+    )
+    .ok();
 }
 
 /// Trimmed parent directory of a track path ("" when none).

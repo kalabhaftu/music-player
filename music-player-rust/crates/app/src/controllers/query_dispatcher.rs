@@ -1,4 +1,5 @@
 use crate::*;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -73,7 +74,7 @@ pub(crate) struct QueryTask {
 }
 
 struct DispatcherState {
-    pending_task: Option<QueryTask>,
+    pending_tasks: VecDeque<QueryTask>,
     shutdown: bool,
 }
 
@@ -88,7 +89,7 @@ impl QueryDispatcher {
         let latest_generation = Arc::new(AtomicU64::new(0));
         let state = Arc::new((
             Mutex::new(DispatcherState {
-                pending_task: None,
+                pending_tasks: VecDeque::new(),
                 shutdown: false,
             }),
             Condvar::new(),
@@ -115,7 +116,9 @@ impl QueryDispatcher {
         self.latest_generation.store(task.generation, Ordering::Release);
         let (lock, cvar) = &*self.state;
         if let Ok(mut guard) = lock.lock() {
-            guard.pending_task = Some(task);
+            let gen = task.generation;
+            guard.pending_tasks.retain(|t| t.generation >= gen);
+            guard.pending_tasks.push_back(task);
             cvar.notify_one();
         }
     }
@@ -132,7 +135,7 @@ impl QueryDispatcher {
                     Ok(g) => g,
                     Err(_) => break,
                 };
-                while guard.pending_task.is_none() && !guard.shutdown {
+                while guard.pending_tasks.is_empty() && !guard.shutdown {
                     match cvar.wait(guard) {
                         Ok(g) => guard = g,
                         Err(_) => return,
@@ -141,7 +144,7 @@ impl QueryDispatcher {
                 if guard.shutdown {
                     break;
                 }
-                match guard.pending_task.take() {
+                match guard.pending_tasks.pop_front() {
                     Some(t) => t,
                     None => continue,
                 }

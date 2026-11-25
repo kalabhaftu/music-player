@@ -9,6 +9,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_play_track(move |id| {
             let mut app = a.borrow_mut();
+            let state = app.ui.global::<State>();
+            let cur_view = state.get_view().to_string();
+            let cur_search = state.get_view_search().to_string();
+            drop(state);
+            if cur_view == "Search" && cur_search.trim().chars().count() >= 2 {
+                app.save_recent_search(&cur_search);
+            }
             if let Some(track) = app.track_by_id(&id) {
                 let paths = app.context_paths_for_track_play(&track);
                 let index = paths
@@ -79,13 +86,21 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_open_group(move |column, value| {
+            let mut app = a.borrow_mut();
+            let state = app.ui.global::<State>();
+            let cur_view = state.get_view().to_string();
+            let cur_search = state.get_view_search().to_string();
+            drop(state);
+            if cur_view == "Search" && cur_search.trim().chars().count() >= 2 {
+                app.save_recent_search(&cur_search);
+            }
             let view = match column.as_str() {
                 "album" => "Album",
                 "artist" => "Artist",
                 "genre" => "Genre",
                 _ => "Folder",
             };
-            a.borrow_mut().set_view(view, "", &value, "");
+            app.set_view(view, "", &value, "");
         });
     }
     {
@@ -322,6 +337,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 .toggle_shuffle(&paths, current.as_deref());
             app.publish_queue(true);
             app.publish_playback();
+            app.save_session();
         });
     }
     {
@@ -331,6 +347,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.cancel_crossfade();
             app.coordinator.queue_mut().cycle_repeat_mode();
             app.publish_playback();
+            app.save_session();
         });
     }
     {

@@ -560,17 +560,19 @@ export component VerticalEqSlider inherits Rectangle {
         }
     }
 
-    // Circular Thumb
+    // Circular Thumb (fixed size prevents hover/drag center-shift jitter)
     Rectangle {
         x: (parent.width - self.width) / 2;
         y: clamp(10px + (1.0 - clamp((root.current-val - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - self.height / 2, 0px, parent.height - self.height);
-        width: area.has-hover || area.pressed ? 16px : 14px;
-        height: self.width;
-        border-radius: self.width / 2;
-        background: #ffffff;
+        width: 15px;
+        height: 15px;
+        border-radius: 7.5px;
+        background: area.pressed ? State.accent : #ffffff;
+        border-width: area.has-hover ? 1px : 0px;
+        border-color: State.accent;
         drop-shadow-blur: 4px;
         drop-shadow-color: #00000050;
-        animate width { duration: 100ms; }
+        animate background { duration: 100ms; }
     }
 }
 
@@ -700,7 +702,6 @@ export component CustomSelect inherits Rectangle {
                         item-area := TouchArea {
                             mouse-cursor: pointer;
                             clicked => {
-                                root.current-value = opt;
                                 root.current-index = idx;
                                 popup.close();
                                 root.selected(opt);
@@ -932,30 +933,27 @@ export component TrackRow inherits Rectangle {
             min-width: 0px;
             spacing: 6px;
 
-            Rectangle {
+            VerticalLayout {
                 horizontal-stretch: 1;
                 min-width: 0px;
-                VerticalLayout {
-                    width: parent.width;
-                    y: (parent.height - self.preferred-height) / 2;
-                    spacing: 3px;
+                alignment: center;
+                spacing: 3px;
 
-                    Text {
-                        min-width: 0px;
-                        text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
-                        color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
-                        font-size: 12px;
-                        font-weight: 650;
-                        overflow: elide;
-                        animate color { duration: 150ms; }
-                    }
-                    if State.show-list-artist : Text {
-                        min-width: 0px;
-                        text: root.track.artist;
-                        color: Palette.muted;
-                        font-size: 10px;
-                        overflow: elide;
-                    }
+                Text {
+                    min-width: 0px;
+                    text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
+                    color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
+                    font-size: 12px;
+                    font-weight: 650;
+                    overflow: elide;
+                    animate color { duration: 150ms; }
+                }
+                if State.show-list-artist : Text {
+                    min-width: 0px;
+                    text: root.track.artist;
+                    color: Palette.muted;
+                    font-size: 10px;
+                    overflow: elide;
                 }
             }
 
@@ -1011,8 +1009,8 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        if root.show-album && State.show-list-album && State.content-avail-width > 480px : Rectangle {
-            width: max(80px, State.content-avail-width * 0.22);
+        if root.show-album && State.show-list-album && State.content-avail-width > 380px : Rectangle {
+            width: clamp(State.content-avail-width * 0.21, 76px, 190px);
             album-area := TouchArea {
                 clicked => { Actions.set-view("Album", "", root.track.album, ""); }
             }
@@ -1028,20 +1026,20 @@ export component TrackRow inherits Rectangle {
             }
         }
 
-        if State.show-list-added && root.show-added && State.content-avail-width > 680px : Text {
+        if State.show-list-added && root.show-added && State.content-avail-width > 470px : Text {
             text: root.track.added;
             color: Palette.text-subtle;
             font-size: 11px;
             overflow: elide;
-            width: 100px;
+            width: 86px;
             vertical-alignment: center;
         }
 
-        if State.show-list-year && root.show-year && State.content-avail-width > 760px : Text {
+        if State.show-list-year && root.show-year && State.content-avail-width > 720px : Text {
             text: root.track.year;
             color: Palette.text-subtle;
             font-size: 11px;
-            width: 70px;
+            width: 56px;
             vertical-alignment: center;
         }
 
@@ -1108,25 +1106,25 @@ export component TrackHeader inherits Rectangle {
             sort => { root.sort(root.first-sort); }
         }
 
-        if root.show-album && State.show-list-album && State.content-avail-width > 480px : HeaderCell {
+        if root.show-album && State.show-list-album && State.content-avail-width > 380px : HeaderCell {
             label: "ALBUM";
-            width: max(80px, State.content-avail-width * 0.22);
+            width: clamp(State.content-avail-width * 0.21, 76px, 190px);
             active: root.active-sort == "Album";
             descending: root.descending;
             sort => { root.sort("Album"); }
         }
 
-        if State.show-list-added && root.show-added && State.content-avail-width > 680px : HeaderCell {
+        if State.show-list-added && root.show-added && State.content-avail-width > 470px : HeaderCell {
             label: "ADDED";
-            width: 100px;
+            width: 86px;
             active: root.active-sort == "Added";
             descending: root.descending;
             sort => { root.sort("Added"); }
         }
 
-        if State.show-list-year && root.show-year && State.content-avail-width > 760px : HeaderCell {
+        if State.show-list-year && root.show-year && State.content-avail-width > 720px : HeaderCell {
             label: "YEAR";
-            width: 70px;
+            width: 56px;
             active: root.active-sort == "Year";
             descending: root.descending;
             sort => { root.sort("Year"); }

@@ -1980,7 +1980,9 @@ impl AudioEngine {
                     }
                 }
                 let remaining = self.remaining_playback_ms(machine.requested_fade_ms);
-                if remaining <= machine.requested_fade_ms {
+                // Pre-unpause ~500ms before the ramp window so LibVLC/DirectSound
+                // refills buffers silently before audible fade-in begins.
+                if remaining <= machine.requested_fade_ms + 500 {
                     if let Some(vlc) = self.vlc.as_ref() {
                         if let Some(ref spare) = vlc.spare {
                             unsafe {
@@ -2011,14 +2013,16 @@ impl AudioEngine {
                 let (playing, time, failed) = self.spare_playback_snapshot();
                 if playing && time > 0 {
                     let remaining = self.remaining_playback_ms(machine.requested_fade_ms);
-                    machine.fade_ms = if remaining > 0 {
-                        machine.requested_fade_ms.min(remaining)
-                    } else {
-                        machine.requested_fade_ms.min(200)
-                    };
-                    machine.stage = CrossfadeStage::Ramping {
-                        ramp_start: Instant::now(),
-                    };
+                    if remaining <= machine.requested_fade_ms {
+                        machine.fade_ms = if remaining > 0 {
+                            machine.requested_fade_ms.min(remaining)
+                        } else {
+                            machine.requested_fade_ms.min(200)
+                        };
+                        machine.stage = CrossfadeStage::Ramping {
+                            ramp_start: Instant::now(),
+                        };
+                    }
                     self.crossfade_machine = Some(machine);
                     None
                 } else if failed || resumed_at.elapsed() > Duration::from_secs(3) {

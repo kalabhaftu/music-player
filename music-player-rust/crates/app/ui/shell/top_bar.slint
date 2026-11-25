@@ -336,16 +336,19 @@ export component ToolsMenuOverlay inherits Rectangle {
     background: #00000000;
     TouchArea { clicked => { State.tools-menu-open = false; } }
     Rectangle {
-        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 210px - (State.window-width <= 700 ? 8px : 16px));
-        y: 60px;
-        width: 210px;
-        height: 122px;
+        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 216px - (State.window-width <= 700 ? 8px : 16px));
+        y: 58px;
+        width: 216px;
+        height: menu-col.preferred-height + 2px;
         border-radius: 8px;
         background: Palette.panel;
         border-width: 1px;
         border-color: Palette.border;
-        VerticalLayout {
-            padding: 5px;
+        drop-shadow-blur: 14px;
+        drop-shadow-color: #00000050;
+        clip: true;
+        menu-col := VerticalLayout {
+            padding: 6px;
             spacing: 2px;
             ToolMenuRow { label: "Settings"; icon: @image-url("../../assets/icons/settings.svg"); clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
             ToolMenuRow { label: "Scan library"; icon: @image-url("../../assets/icons/refresh.svg"); clicked => { Actions.scan-library(); State.tools-menu-open = false; } }

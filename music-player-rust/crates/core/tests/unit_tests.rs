@@ -314,3 +314,78 @@ fn test_discover_unconfigured_music_roots() {
     );
     let _ = std::fs::remove_dir_all(&temp);
 }
+
+#[test]
+fn test_normal_eq_preset_is_zero_db() {
+    let normal = canonical_preset_by_name("Normal").expect("Normal alias should resolve");
+    let flat = canonical_preset_by_name("Flat").expect("Flat preset should exist");
+    assert_eq!(normal, [0.0; 10]);
+    assert_eq!(normal, flat);
+}
+
+#[test]
+fn test_case_insensitive_search_with_trigram_fts_fallback() {
+    let store = LibraryStore::in_memory().unwrap();
+    let mut track = music_player_core::Track::unavailable_placeholder(
+        r"C:\Music\Bob Marley - Three Little Birds.mp3",
+    );
+    track.title = "Three Little Birds".to_string();
+    track.artist = "Bob Marley".to_string();
+    track.album = "Exodus".to_string();
+    track.unavailable = false;
+    store.upsert_tracks(&[track]).unwrap();
+
+    for needle in ["bob", "BOB", "Bob", "mArLeY"] {
+        let found = store.search(needle, 20).unwrap();
+        assert_eq!(
+            found.len(),
+            1,
+            "Expected case-insensitive search match for '{}', got {:?}",
+            needle,
+            found
+        );
+        let (paged, total) = store
+            .query_track_page(&music_player_core::TrackQuery {
+                search: Some(needle.to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(total, 1, "Expected TrackQuery total=1 for '{}'", needle);
+        assert_eq!(paged.len(), 1);
+    }
+}
+
+#[test]
+fn test_settings_crossfade_eq_and_lyrics_mode_persist_on_reopen() {
+    let db_path = std::env::temp_dir().join(format!("mp_persist_{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&db_path);
+    {
+        let store = LibraryStore::open(&db_path).unwrap();
+        let settings = PlayerSettings::new(store.clone());
+        settings.set_raw(keys::CROSSFADE_SECONDS, "5");
+        settings.set_raw(keys::LYRICS_STORAGE_MODE, "embed");
+        settings.set_eq_state(
+            "Off",
+            [3.5, 2.0, 0.0, -1.5, 0.0, 1.0, 2.5, 3.0, 1.5, 0.5],
+            12.0412,
+        );
+        store.checkpoint_wal().unwrap();
+    }
+    {
+        let store = LibraryStore::open(&db_path).unwrap();
+        let settings = PlayerSettings::new(store);
+        assert_eq!(settings.crossfade_seconds(), 5);
+        assert_eq!(
+            settings.raw(keys::LYRICS_STORAGE_MODE).as_deref(),
+            Some("embed")
+        );
+        assert_eq!(settings.eq_current(), "Off");
+        assert_eq!(
+            settings.eq_bands(),
+            Some([3.5, 2.0, 0.0, -1.5, 0.0, 1.0, 2.5, 3.0, 1.5, 0.5])
+        );
+    }
+    let _ = std::fs::remove_file(&db_path);
+    let _ = std::fs::remove_file(format!("{}-wal", db_path.display()));
+    let _ = std::fs::remove_file(format!("{}-shm", db_path.display()));
+}

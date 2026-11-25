@@ -21,6 +21,7 @@ pub mod keys {
     pub const AUTOPLAY_SIMILAR: &str = "autoplay-similar";
     pub const AUTO_OPEN_PANEL: &str = "auto-open-side-panel";
     pub const AUTO_LOAD_LYRICS: &str = "auto-load-lyrics";
+    pub const LYRICS_STORAGE_MODE: &str = "lyrics-storage-mode";
     pub const SEEK_FROM_LYRICS: &str = "seek-from-lyrics";
     pub const SHOW_ARTWORK: &str = "show-list-artwork";
     pub const SHOW_REMAINING_TIME: &str = "show-remaining-time";

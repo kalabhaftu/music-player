@@ -408,13 +408,12 @@ component SettingNavOrderRow inherits Rectangle {
 }
 
 export component SettingsView inherits Rectangle {
-    property <length> scroll-pos: -settings-scroll.content-y;
-    property <bool> is-scrolled: root.scroll-pos > 24px;
+    // Track scroll position read-only for the active tab underline; never feed it back
+    // into any parent geometry above `settings-scroll` (doing so recurses in Slint layout).
+    property <length> scroll-pos: max(0px, -settings-scroll.content-y);
     property <string> watched-section: State.settings-section;
     changed watched-section => {
-        if (self.watched-section != root.active-tab) {
-            root.jump-to(self.watched-section);
-        }
+        root.scroll-only-to(self.watched-section);
     }
     property <string> active-tab:
         root.scroll-pos >= about-section.y - 60px ? "About" :
@@ -423,8 +422,7 @@ export component SettingsView inherits Rectangle {
         root.scroll-pos >= library-section.y - 60px ? "Library" :
         "Appearance";
 
-    function jump-to(section: string) {
-        State.settings-section = section;
+    function scroll-only-to(section: string) {
         if (section == "Appearance") {
             settings-scroll.content-y = 0px;
         } else if (section == "Library") {
@@ -438,26 +436,28 @@ export component SettingsView inherits Rectangle {
         }
     }
 
+    function jump-to(section: string) {
+        State.settings-section = section;
+        root.scroll-only-to(section);
+    }
+
     VerticalLayout {
-        padding-top: root.is-scrolled ? 12px : 20px;
+        padding-top: 20px;
         padding-left: 24px;
         padding-right: 24px;
         padding-bottom: 24px;
-        spacing: root.is-scrolled ? 8px : 12px;
-        animate padding-top { duration: 180ms; easing: ease-out; }
-        animate spacing { duration: 180ms; easing: ease-out; }
+        spacing: 12px;
 
         VerticalLayout {
-            spacing: root.is-scrolled ? 0px : 4px;
+            spacing: 4px;
             Text {
                 text: "Settings";
                 color: Palette.text;
-                font-size: root.is-scrolled ? 20px : 30px;
+                font-size: 28px;
                 font-weight: 700;
                 letter-spacing: -0.65px;
-                animate font-size { duration: 180ms; easing: ease-out; }
             }
-            if !root.is-scrolled : Text {
+            Text {
                 text: "Choose how Music Player looks and behaves.";
                 color: Palette.muted;
                 font-size: 12px;
@@ -469,6 +469,7 @@ export component SettingsView inherits Rectangle {
             height: 46px;
             border-radius: 8px;
             background: Palette.raised;
+            animate background { duration: 350ms; easing: ease-in-out; }
             clip: true;
 
             tabs-flick := Flickable {
@@ -702,6 +703,13 @@ export component SettingsView inherits Rectangle {
                             description: "Jump playback to a timed lyric. Plain, untimed lyrics cannot seek.";
                             checked: State.seek-from-lyrics;
                             toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
+                        }
+                        SettingComboRow {
+                            label: "Lyrics storage";
+                            description: "Choose whether fetched or edited lyrics embed inside the audio file or save as an LRC file beside it.";
+                            options: ["Embed in audio file", "Save beside audio file"];
+                            value: State.lyrics-embed ? "Embed in audio file" : "Save beside audio file";
+                            changed(value) => { Actions.set-setting("lyrics-storage-mode", value == "Save beside audio file" ? "sidecar" : "embed"); }
                         }
                         Rectangle { height: 10px; }
                         HorizontalLayout {

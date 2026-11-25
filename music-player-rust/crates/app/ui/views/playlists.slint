@@ -97,10 +97,16 @@ component SmartPlaylistTile inherits Rectangle {
                 font-weight: 750;
                 overflow: elide;
             }
-            if root.card.description != "" : Text {
-                text: root.card.description;
+            Text {
+                text: root.card.track-count == 1 ? "1 song" : "\{root.card.track-count} songs";
                 color: Palette.muted;
                 font-size: 11px;
+                overflow: elide;
+            }
+            if root.card.description != "" : Text {
+                text: root.card.description;
+                color: Palette.muted-2;
+                font-size: 10px;
                 overflow: elide;
             }
         }
@@ -216,7 +222,7 @@ component PlaylistTile inherits Rectangle {
                 font-weight: 750;
                 overflow: elide;
             }
-            if root.card.track-count > 0 : Text {
+            Text {
                 text: root.card.track-count == 1 ? "1 song" : "\{root.card.track-count} songs";
                 color: Palette.muted;
                 font-size: 11px;

@@ -266,11 +266,15 @@ impl App {
             .map(|image| (true, image))
             .unwrap_or((false, Image::default()));
         state.set_current_cover(cover);
-        let blurred = track
-            .artwork_path
-            .as_deref()
-            .and_then(|p| native_io::load_blurred_backdrop(Path::new(p)))
-            .unwrap_or_else(Image::default);
+        let blurred = if state.get_immersive_player_open() {
+            track
+                .artwork_path
+                .as_deref()
+                .and_then(|p| native_io::load_blurred_backdrop(Path::new(p)))
+                .unwrap_or_else(Image::default)
+        } else {
+            Image::default()
+        };
         state.set_current_blurred_backdrop(blurred);
         let slot = gradient_slot(if track.album.is_empty() {
             &track.title
@@ -768,6 +772,7 @@ impl App {
         state.set_auto_open_side_panel(s.bool_or(k::AUTO_OPEN_PANEL, true));
         state.set_auto_load_lyrics(s.bool_or(k::AUTO_LOAD_LYRICS, true));
         state.set_seek_from_lyrics(s.bool_or(k::SEEK_FROM_LYRICS, true));
+        state.set_lyrics_embed(self.should_embed_lyrics());
         state.set_show_remaining_time(s.bool_or(k::SHOW_REMAINING_TIME, false));
         state.set_show_list_artwork(s.bool_or(k::SHOW_ARTWORK, true));
         state.set_show_list_artist(s.bool_or(k::SHOW_ARTIST, true));
@@ -902,11 +907,7 @@ impl App {
     }
 
     pub(crate) fn publish_eq_state(&mut self, refresh_devices: bool) {
-        if self.eq_preset == "Off" {
-            self.eq_bands = [0.0; 10];
-            self.eq_preamp = music_player_core::NEUTRAL_EQUALIZER_PREAMP;
-        }
-        let mut presets: Vec<String> = vec!["Off".into(), "Custom".into()];
+        let mut presets: Vec<String> = vec!["Off".into(), "Custom".into(), "Normal".into()];
         for p in self.engine.built_in_preset_names() {
             if !presets.iter().any(|existing| existing.eq_ignore_ascii_case(&p)) {
                 presets.push(p);
@@ -1510,9 +1511,6 @@ impl App {
         if matches!(view.as_str(), "Album" | "Artist" | "Genre" | "Folder") {
             self.publish_detail_hero(&view, &group_value);
         }
-        if view == "Search" {
-            self.publish_search_counts(&search);
-        }
         if view == "Duplicates" && !self.duplicate_fingerprints_ready {
             self.start_duplicate_load();
         }
@@ -1980,7 +1978,30 @@ impl App {
         state.set_artist_albums_have_more(total > self.artist_album_items.len() as i64);
     }
 
-    // ---- Lyrics -------------------------------------------------------------
+    pub(crate) fn should_embed_lyrics(&self) -> bool {
+        self.settings
+            .raw(music_player_core::settings::keys::LYRICS_STORAGE_MODE)
+            .map(|v| !v.eq_ignore_ascii_case("sidecar"))
+            .unwrap_or(true)
+    }
+
+    pub(crate) fn save_lyrics_for_path(&self, path: &str, text: &str, embed: bool) -> bool {
+        if embed {
+            if TagEditor::new(tag_backups_dir())
+                .save(
+                    path,
+                    &TagEdit {
+                        lyrics: Some(text.to_string()),
+                        ..TagEdit::default()
+                    },
+                )
+                .is_ok()
+            {
+                return true;
+            }
+        }
+        write_sidecar(path, text).is_ok()
+    }
 
     pub(crate) fn load_lyrics(&mut self, track: &Track) {
         self.lyrics_target = Some(track.path.clone());
@@ -2086,7 +2107,9 @@ impl App {
 
         // Check in-memory cache
         let now = Instant::now();
-        if let Some((cached_at, cached_match)) = self.lyrics_cache.get(&track.path).cloned() {
+        if let Some((cached_at, cached_match, already_persisted)) =
+            self.lyrics_cache.get(&track.path).cloned()
+        {
             let duration = if cached_match.as_ref().map(|m| m.timed).unwrap_or(false) {
                 std::time::Duration::from_secs(30 * 60)
             } else {
@@ -2095,7 +2118,11 @@ impl App {
             if now.duration_since(cached_at) < duration {
                 if let Some(matched) = cached_match {
                     if !has_local_lyrics || matched.timed {
-                        self.apply_online_lyrics_match(&matched, &track.path, false);
+                        self.apply_online_lyrics_match(&matched, &track.path, !already_persisted);
+                        if !already_persisted {
+                            self.lyrics_cache
+                                .insert(track.path.clone(), (cached_at, Some(matched), true));
+                        }
                         return;
                     }
                 } else if !has_local_lyrics {
@@ -2182,16 +2209,21 @@ impl App {
             let text_to_save = matched.raw.clone();
             let track_path = path.to_string();
             let store = self.store.clone();
+            let embed = self.should_embed_lyrics();
             std::thread::spawn(move || {
-                let stored = TagEditor::new(tag_backups_dir())
-                    .save(
-                        &track_path,
-                        &TagEdit {
-                            lyrics: Some(text_to_save.clone()),
-                            ..TagEdit::default()
-                        },
-                    )
-                    .is_ok();
+                let stored = if embed {
+                    TagEditor::new(tag_backups_dir())
+                        .save(
+                            &track_path,
+                            &TagEdit {
+                                lyrics: Some(text_to_save.clone()),
+                                ..TagEdit::default()
+                            },
+                        )
+                        .is_ok()
+                } else {
+                    false
+                };
                 if !stored {
                     let _ = write_sidecar(&track_path, &text_to_save);
                 }
@@ -2319,12 +2351,16 @@ impl App {
             }
         }
 
-        while let Ok((path, matched)) = self.prefetch_lyrics_rx.try_recv() {
+        while let Ok((path, matched, already_local)) = self.prefetch_lyrics_rx.try_recv() {
             self.lyrics_in_flight.remove(&path.to_lowercase());
-            self.lyrics_cache.insert(path.clone(), (Instant::now(), matched.clone()));
+            self.lyrics_cache.insert(path.clone(), (Instant::now(), matched.clone(), already_local));
             if self.lyrics_target.as_deref() == Some(&path) && !self.lyrics_timed {
                 if let Some(m) = matched {
-                    self.apply_online_lyrics_match(&m, &path, true);
+                    self.apply_online_lyrics_match(&m, &path, !already_local);
+                    if !already_local {
+                        self.lyrics_cache
+                            .insert(path.clone(), (Instant::now(), Some(m), true));
+                    }
                 } else {
                     self.ui.global::<State>().set_lyrics_searching(false);
                 }
@@ -2336,11 +2372,13 @@ impl App {
                 self.auto_lyrics_rx = None;
                 self.lyrics_in_flight.remove(&path.to_lowercase());
                 let matched_opt = result.as_ref().ok().cloned().flatten();
+                let is_target = self.lyrics_target.as_deref() == Some(&path);
+                let persist_now = is_target && !self.lyrics_timed && matched_opt.is_some();
                 self.lyrics_cache
-                    .insert(path.clone(), (Instant::now(), matched_opt.clone()));
+                    .insert(path.clone(), (Instant::now(), matched_opt.clone(), persist_now));
 
                 // Only apply if the track being viewed / played is still this track
-                if self.lyrics_target.as_deref() == Some(&path) {
+                if is_target {
                     let state = self.ui.global::<State>();
                     state.set_lyrics_searching(false);
 

@@ -92,7 +92,17 @@ if ($Unregister) {
 
     Set-DefaultValue "$appKey\shell\open\command" "`"$executable`" `"%1`""
     Set-StringValue "$appKey\shell\open" 'MultiSelectModel' 'Player'
+    Set-StringValue "$appKey\shell\open\DropTarget" 'CLSID' '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C101}'
     Set-DefaultValue "$appKey\DefaultIcon" "`"$executable`",0"
+
+    foreach ($clsid in @(
+        '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C101}',
+        '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C102}',
+        '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C103}'
+    )) {
+        Set-DefaultValue "HKCU:\Software\Classes\CLSID\$clsid\LocalServer32" "`"$executable`" --shell-drop-target"
+        Set-StringValue "HKCU:\Software\Classes\CLSID\$clsid\LocalServer32" 'ServerExecutable' $executable
+    }
 
     foreach ($extension in $extensions) {
         $cleanExt = $extension.TrimStart('.')
@@ -104,17 +114,20 @@ if ($Unregister) {
         Set-DefaultValue "HKCU:\Software\Classes\$progId\DefaultIcon" "`"$executable`",0"
         Set-DefaultValue "HKCU:\Software\Classes\$progId\shell\open\command" "`"$executable`" `"%1`""
         Set-StringValue "HKCU:\Software\Classes\$progId\shell\open" 'MultiSelectModel' 'Player'
+        Set-StringValue "HKCU:\Software\Classes\$progId\shell\open\DropTarget" 'CLSID' '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C101}'
 
         $queueKey = "HKCU:\Software\Classes\SystemFileAssociations\$extension\shell\MusicPlayerAddToQueue"
         Set-DefaultValue $queueKey 'Add to Music Player queue'
         Set-StringValue $queueKey 'Icon' "`"$executable`",0"
         Set-StringValue $queueKey 'MultiSelectModel' 'Player'
+        Set-StringValue "$queueKey\DropTarget" 'CLSID' '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C102}'
         Set-DefaultValue "$queueKey\command" "`"$executable`" --add-to-queue `"%1`""
 
         $playKey = "HKCU:\Software\Classes\SystemFileAssociations\$extension\shell\MusicPlayerCreatePlaylist"
         Set-DefaultValue $playKey 'Create Music Player playlist'
         Set-StringValue $playKey 'Icon' "`"$executable`",0"
         Set-StringValue $playKey 'MultiSelectModel' 'Player'
+        Set-StringValue "$playKey\DropTarget" 'CLSID' '{A3B79A2E-C313-45F7-BB02-F9F4B0E4C103}'
         Set-DefaultValue "$playKey\command" "`"$executable`" --create-playlist `"%1`""
     }
     Refresh-ShellAssociations

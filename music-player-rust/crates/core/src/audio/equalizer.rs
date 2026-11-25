@@ -90,6 +90,9 @@ pub fn canonical_preset_by_name(name: &str) -> Option<[f32; 10]> {
             return Some(gains);
         }
     }
+    if trimmed.eq_ignore_ascii_case("Normal") {
+        return canonical_preset_by_name("Flat");
+    }
     // Handle aliases like "Bass Booster", "Treble Booster", "Vocal Booster", "Vocal", "RnB"
     if trimmed.eq_ignore_ascii_case("Bass Booster") {
         return canonical_preset_by_name("Bass Boost");

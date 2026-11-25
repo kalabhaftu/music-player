@@ -17,12 +17,12 @@ export component PlayerBar inherits Rectangle {
 
     // Centered controls column: dead-center in wide layouts, scaled smoothly at tighter widths
     center-col := VerticalLayout {
-        width: clamp(240px, State.window-width * 0.40 * 1px, 500px);
+        width: clamp(240px, State.window-width * 0.38 * 1px, 480px);
         x: (parent.width - self.width) / 2;
-        y: 10px;
-        height: parent.height - 20px;
+        y: 8px;
+        height: parent.height - 16px;
         alignment: center;
-        spacing: 7px;
+        spacing: 5px;
 
         HorizontalLayout {
             alignment: center;
@@ -159,12 +159,14 @@ export component PlayerBar inherits Rectangle {
 
         HorizontalLayout {
             width: 100%;
-            spacing: State.window-width <= 650 ? 4px : 8px;
+            height: 18px;
+            spacing: State.window-width <= 650 ? 6px : 10px;
 
             Text {
                 text: State.current-time;
-                color: #747b74;
-                font-size: State.window-width <= 650 ? 8px : 9px;
+                color: Palette.muted;
+                font-size: State.window-width <= 650 ? 9px : 11px;
+                min-width: State.window-width <= 650 ? 28px : 34px;
                 vertical-alignment: center;
                 horizontal-alignment: right;
                 TouchArea {
@@ -172,33 +174,37 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.toggle-remaining-time(); }
                 }
             }
-            PlayerSlider {
+            VerticalLayout {
+                alignment: center;
                 horizontal-stretch: 1;
                 min-width: 40px;
-                scrollable: false;
-                commit-on-release: true;
-                minimum: 0.0;
-                maximum: 1.0;
-                value: State.progress;
-                fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
-                track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
-                thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
-                preview(val) => { Actions.preview-seek-fraction(val); }
-                finished(val) => { Actions.seek-fraction(val); }
-                scrolled(event) => {
-                    if (!State.has-track) { return reject; }
-                    let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
-                    if (delta != 0) {
-                        Actions.seek-wheel(delta);
-                        return accept;
+                PlayerSlider {
+                    scrollable: false;
+                    commit-on-release: true;
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    value: State.progress;
+                    fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                    track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                    thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                    preview(val) => { Actions.preview-seek-fraction(val); }
+                    finished(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        if (!State.has-track) { return reject; }
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-wheel(delta);
+                            return accept;
+                        }
+                        reject
                     }
-                    reject
                 }
             }
             Text {
                 text: State.total-time;
-                color: #747b74;
-                font-size: State.window-width <= 650 ? 8px : 9px;
+                color: Palette.muted;
+                font-size: State.window-width <= 650 ? 9px : 11px;
+                min-width: State.window-width <= 650 ? 28px : 34px;
                 horizontal-alignment: left;
                 vertical-alignment: center;
                 TouchArea {
@@ -302,7 +308,7 @@ export component PlayerBar inherits Rectangle {
             spacing: State.window-width <= 650 ? 2px : (State.window-width <= 1060 ? 4px : 7px);
             alignment: end;
 
-            if State.window-width > 940 : VerticalLayout {
+            if State.window-width > 860 : VerticalLayout {
                 alignment: center;
                 IcBtn {
                     width: 30px;
@@ -328,7 +334,7 @@ export component PlayerBar inherits Rectangle {
                     clicked => { Actions.set-view("Queue", "", "", ""); }
                 }
             }
-            if State.window-width > 940 : VerticalLayout {
+            if State.window-width > 860 : VerticalLayout {
                 alignment: center;
                 IcBtn {
                     width: 30px;

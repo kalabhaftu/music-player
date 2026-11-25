@@ -161,54 +161,65 @@ export component SearchView inherits Rectangle {
                     clicked => { Actions.clear-recent-searches(); }
                 }
             }
-            HorizontalLayout {
-                spacing: 8px;
-                for term in State.recent-searches : Rectangle {
-                    height: 28px;
-                    border-radius: 99px;
-                    background: Palette.panel-2;
-                    border-width: 1px;
-                    border-color: Palette.border-soft;
+            recent-flick := Flickable {
+                height: 32px;
+                width: 100%;
+                interactive: recent-row.preferred-width > self.width;
+                content-width: max(self.width, recent-row.preferred-width);
+                content-height: 32px;
 
-                    HorizontalLayout {
-                        padding-left: 10px;
-                        padding-right: 6px;
-                        spacing: 6px;
-                        alignment: center;
+                recent-row := HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    for term in State.recent-searches : Rectangle {
+                        height: 28px;
+                        border-radius: 99px;
+                        background: Palette.panel-2;
+                        border-width: 1px;
+                        border-color: Palette.border-soft;
 
-                        TouchArea {
-                            clicked => { Actions.search(term, "all"); }
-                            HorizontalLayout {
-                                spacing: 4px;
-                                Image {
-                                    source: @image-url("../../assets/icons/search.svg");
-                                    width: 12px;
-                                    height: 12px;
-                                    colorize: Palette.muted;
-                                    vertical-alignment: center;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { Actions.search(term, "all"); }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Image {
+                                        source: @image-url("../../assets/icons/search.svg");
+                                        width: 12px;
+                                        height: 12px;
+                                        colorize: Palette.muted;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: term;
+                                        color: Palette.text;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 16px;
+                                height: 16px;
+                                border-radius: 8px;
+                                close-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Actions.remove-recent-search(term); }
                                 }
                                 Text {
-                                    text: term;
-                                    color: Palette.text;
-                                    font-size: 11px;
+                                    text: "×";
+                                    color: close-area.has-hover ? #ff5b74 : Palette.muted;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
-                            }
-                        }
-
-                        Rectangle {
-                            width: 16px;
-                            height: 16px;
-                            border-radius: 8px;
-                            close-area := TouchArea {
-                                clicked => { Actions.remove-recent-search(term); }
-                            }
-                            Text {
-                                text: "×";
-                                color: close-area.has-hover ? #ff5b74 : Palette.muted;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
                             }
                         }
                     }

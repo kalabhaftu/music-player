@@ -268,7 +268,16 @@ impl App {
         }
 
         // Secondary-instance activation files.
-        for payload in os::poll_activations() {
+        let activations = os::poll_activations();
+        if !activations.is_empty() {
+            let _ = self.ui.show();
+            if let Ok(handle) = self.ui.window().window_handle().window_handle() {
+                if let RawWindowHandle::Win32(win32) = handle.as_raw() {
+                    os::restore_window(win32.hwnd.get());
+                }
+            }
+        }
+        for payload in activations {
             if payload.verb == "addtoqueue" {
                 self.add_external_files_to_queue(&payload.paths);
             } else if payload.verb == "createplaylist" {
@@ -380,7 +389,7 @@ impl App {
                 .unwrap_or(false)
             && crossfade_ms > 0
             && duration > 0
-            && duration.saturating_sub(position) <= crossfade_ms + 1500
+            && duration.saturating_sub(position) <= crossfade_ms + 2000
         {
             if let Some(next) = self.coordinator.queue().next_index(true) {
                 let next_is_video = self
@@ -610,8 +619,7 @@ impl App {
                 os::MediaCommand::Quit => {
                     self.allow_quit = true;
                     self.close_video_window(false);
-                    self.save_session();
-                    let _ = self.store.checkpoint_wal();
+                    self.flush_pending_persistence();
                     let _ = self.ui.hide();
                     let _ = slint::quit_event_loop();
                 }
@@ -649,6 +657,7 @@ impl App {
             "check-updates" => "checkUpdates",
             "minimize-to-tray" => "minimizeToTray",
             "right-panel-open" => "rightPanelOpen",
+            "right-panel-width" => "rightPanelWidth",
             _ => name,
         };
         let json_value = if matches!(value, "true" | "false") {
@@ -666,7 +675,8 @@ impl App {
             | "motionStyle" | "transparentWindow" | "hideDuplicates" | "autoplaySimilar"
             | "autoOpenPanel" | "autoLoadLyrics" | "seekFromLyrics" | "showArtwork"
             | "showArtist" | "showAlbum" | "showAdded" | "showYear" | "showDuration"
-            | "showFavorite" | "checkUpdates" | "minimizeToTray" | "rightPanelOpen" => {
+            | "showFavorite" | "checkUpdates" | "minimizeToTray" | "rightPanelOpen"
+            | "rightPanelWidth" => {
                 if let Err(message) = self.settings.update_web_setting(web_name, &json_value) {
                     self.show_notice(message, NoticeSeverity::Warning);
                 }

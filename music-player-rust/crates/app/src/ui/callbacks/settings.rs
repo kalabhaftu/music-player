@@ -221,8 +221,7 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_close_window(move || {
             let mut app = a.borrow_mut();
-            app.save_session();
-            let _ = app.store.checkpoint_wal();
+            app.flush_pending_persistence();
             let _ = app.ui.hide();
         });
     }
@@ -351,6 +350,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             let state = app.ui.global::<State>();
             state.set_immersive_player_open(true);
             state.set_immersive_lyrics_open(false);
+            let blurred = app
+                .current
+                .as_ref()
+                .and_then(|t| t.artwork_path.as_deref())
+                .and_then(|p| native_io::load_blurred_backdrop(Path::new(p)))
+                .unwrap_or_else(slint::Image::default);
+            state.set_current_blurred_backdrop(blurred);
             drop(state);
             app.sync_window_mode();
             app.publish_appearance();

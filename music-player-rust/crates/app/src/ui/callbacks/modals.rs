@@ -98,6 +98,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 app.ui
                     .global::<State>()
                     .set_confirm_message(ss(format!("Restore tag backup {}?", file_name(&label))));
+                app.ui
+                    .global::<State>()
+                    .set_confirm_button_label(ss("Restore"));
                 app.ui.global::<State>().set_confirm_danger(true);
                 app.open_modal("confirm");
                 app.ui
@@ -161,6 +164,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.ui
                 .global::<State>()
                 .set_confirm_message(ss("Remove lyrics from the audio file, sidecar, and library?"));
+            app.ui
+                .global::<State>()
+                .set_confirm_button_label(ss("Remove"));
             app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
             app.ui.global::<State>().set_modal_title(ss("Remove lyrics?"));
@@ -205,11 +211,35 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_delete_playlist(move |id| {
             let mut app = a.borrow_mut();
+            let playlist_info = app
+                .store
+                .get_playlist(&id)
+                .ok()
+                .flatten()
+                .map(|p| (p.name, p.paths.len()))
+                .or_else(|| {
+                    app.playlists
+                        .iter()
+                        .find(|p| p.id == id.as_str())
+                        .map(|p| (p.name.clone(), p.track_count as usize))
+                });
+            let message = match playlist_info {
+                Some((name, count)) => format!(
+                    "Delete playlist “{}” ({} {})? Your music files and library remain untouched.",
+                    name,
+                    count,
+                    if count == 1 { "song" } else { "songs" }
+                ),
+                None => "Delete this playlist? Your music files and library remain untouched."
+                    .to_string(),
+            };
             app.confirm_action = Some(ConfirmAction::DeletePlaylist(id.to_string()));
-            app.ui
-                .global::<State>()
-                .set_confirm_message(ss("Delete this playlist? The tracks stay in your library."));
-            app.ui.global::<State>().set_confirm_danger(true);
+            {
+                let state = app.ui.global::<State>();
+                state.set_confirm_message(ss(message));
+                state.set_confirm_button_label(ss("Delete"));
+                state.set_confirm_danger(true);
+            }
             app.open_modal("confirm");
             app.ui
                 .global::<State>()
@@ -357,6 +387,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.ui
                 .global::<State>()
                 .set_confirm_message(ss(format!("Stop scanning {} and remove its unshared tracks from the index? Music files and playlist entries remain.", path)));
+            app.ui
+                .global::<State>()
+                .set_confirm_button_label(ss("Remove"));
             app.ui.global::<State>().set_confirm_danger(true);
             app.open_modal("confirm");
             app.ui

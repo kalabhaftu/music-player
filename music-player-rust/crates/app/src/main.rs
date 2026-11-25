@@ -11,6 +11,7 @@ mod native_io;
 mod os;
 mod os_associations;
 mod os_shell;
+mod shell_drop;
 mod splash;
 mod ui;
 mod updates;
@@ -141,9 +142,9 @@ pub(crate) struct App {
     pub(crate) scan_progress_rx: Option<Receiver<ScanProgress>>,
     pub(crate) lyrics_rx: Option<Receiver<std::result::Result<Vec<LyricsSearchResult>, String>>>,
     pub(crate) auto_lyrics_rx: Option<Receiver<(String, std::result::Result<Option<music_player_core::lyrics::LyricsMatch>, String>)>>,
-    pub(crate) prefetch_lyrics_tx: Sender<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
-    pub(crate) prefetch_lyrics_rx: Receiver<(String, Option<music_player_core::lyrics::LyricsMatch>)>,
-    pub(crate) lyrics_cache: HashMap<String, (Instant, Option<music_player_core::lyrics::LyricsMatch>)>,
+    pub(crate) prefetch_lyrics_tx: Sender<(String, Option<music_player_core::lyrics::LyricsMatch>, bool)>,
+    pub(crate) prefetch_lyrics_rx: Receiver<(String, Option<music_player_core::lyrics::LyricsMatch>, bool)>,
+    pub(crate) lyrics_cache: HashMap<String, (Instant, Option<music_player_core::lyrics::LyricsMatch>, bool)>,
     pub(crate) lyrics_in_flight: HashSet<String>,
     pub(crate) lyrics_results: Vec<LyricsSearchResult>,
     pub(crate) notice_timer: Timer,
@@ -193,6 +194,7 @@ pub(crate) struct App {
     pub(crate) context_target: Option<String>,
     pub(crate) confirm_action: Option<ConfirmAction>,
     pub(crate) add_playlist_track: Option<String>,
+    pub(crate) pending_external_playlist_paths: Option<Vec<String>>,
     pub(crate) playlists: Vec<PlaylistSummary>,
     pub(crate) group_items: Vec<GroupItem>,
     pub(crate) artist_album_items: Vec<GroupItem>,
@@ -247,7 +249,10 @@ impl App {
             eq_preset = "Off".into();
         }
         let (eq_bands, eq_preamp) = if eq_preset == "Off" {
-            ([0.0; 10], NEUTRAL_EQUALIZER_PREAMP)
+            (
+                settings.eq_bands().unwrap_or([0.0; 10]),
+                settings.eq_preamp().unwrap_or(NEUTRAL_EQUALIZER_PREAMP),
+            )
         } else if let Some((bands, preamp)) = settings.saved_eq_preset(&eq_preset) {
             (bands, preamp)
         } else if let Some((bands, preamp)) = engine.preset_curve(&eq_preset) {
@@ -338,6 +343,7 @@ impl App {
             context_target: None,
             confirm_action: None,
             add_playlist_track: None,
+            pending_external_playlist_paths: None,
             playlists: Vec::new(),
             group_items: Vec::new(),
             artist_album_items: Vec::new(),
@@ -380,7 +386,14 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     LocalAppLog::shared().install_panic_hook();
     let cli_args: Vec<String> = std::env::args().skip(1).collect();
 
-    // Native file association registration without PowerShell:
+    // Native file association registration and COM DropTarget local server:
+    if cli_args.iter().any(|a| a == "--shell-drop-target") {
+        if let Err(e) = shell_drop::run_drop_target_server() {
+            LocalAppLog::shared().error("shell-selection", "Explorer drop-target server failed.", Some(&e));
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if cli_args.iter().any(|a| a == "--register-associations" || a == "registerassociations") {
         if let Err(e) = os_associations::register_associations() {
             eprintln!("Failed to register file associations: {e}");
@@ -415,20 +428,6 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
     app.borrow_mut().vlc_prep = vlc_prep;
     APP_INSTANCE.with(|cell| *cell.borrow_mut() = Some(app.clone()));
 
-    if !cli_args.is_empty() {
-        let (verb, paths) = os::parse_activation_args(&cli_args);
-        if !paths.is_empty() {
-            app.borrow_mut().ensure_audio_engine_ready();
-            if verb == "addtoqueue" {
-                app.borrow_mut().add_external_files_to_queue(&paths);
-            } else if verb == "createplaylist" {
-                app.borrow_mut().create_playlist_with_external_files(&paths);
-            } else {
-                app.borrow_mut().play_external_files(&paths);
-            }
-        }
-    }
-
     // Register all Slint action callbacks.
     ui::callbacks::register_all(&ui, app.clone());
 
@@ -452,8 +451,24 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         ui.window().set_size(slint::LogicalSize::new(w as f32, h as f32));
     }
 
-    // Initialize startup state before showing window so UI opens with data populated
+    // Initialize startup state before showing window so UI opens with data populated,
+    // then apply CLI / Explorer file activations afterwards so `restore_session` never
+    // clobbers or pauses an Explorer-launched track.
     app.borrow_mut().startup();
+    if !cli_args.is_empty() {
+        let (verb, paths) = os::parse_activation_args(&cli_args);
+        if !paths.is_empty() {
+            let mut app_mut = app.borrow_mut();
+            app_mut.ensure_audio_engine_ready();
+            if verb == "addtoqueue" {
+                app_mut.add_external_files_to_queue(&paths);
+            } else if verb == "createplaylist" {
+                app_mut.create_playlist_with_external_files(&paths);
+            } else {
+                app_mut.play_external_files(&paths);
+            }
+        }
+    }
 
     // Show UI and dismiss splash immediately for instantaneous launch
     ui.show()?;
@@ -468,7 +483,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
             let mut app_ref = a.borrow_mut();
             let minimize_to_tray = app_ref.ui.global::<State>().get_minimize_to_tray();
             if minimize_to_tray && !app_ref.allow_quit && app_ref.os.is_some() {
-                app_ref.save_session();
+                app_ref.flush_pending_persistence();
                 if let Some(ui) = ui_weak.upgrade() {
                     let _ = ui.hide();
                 }
@@ -517,15 +532,7 @@ fn main() -> std::result::Result<(), slint::PlatformError> {
         let mut app_borrow = app.borrow_mut();
         app_borrow.close_video_window(false);
         app_borrow.scan.cancel();
-        if app_borrow.eq_dirty {
-            app_borrow.settings.set_eq_state(
-                &app_borrow.eq_preset,
-                app_borrow.eq_bands,
-                app_borrow.eq_preamp,
-            );
-            app_borrow.eq_dirty = false;
-        }
-        app_borrow.save_session();
+        app_borrow.flush_pending_persistence();
     }
     APP_INSTANCE.with(|cell| *cell.borrow_mut() = None);
     Ok(())

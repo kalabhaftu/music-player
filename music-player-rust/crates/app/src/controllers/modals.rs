@@ -12,16 +12,35 @@ impl App {
     }
 
     pub(crate) fn create_playlist(&mut self, name: &str) {
-        if name.trim().is_empty() {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
             self.show_notice("Playlist name cannot be empty.", NoticeSeverity::Warning);
             return;
         }
         let id = self.new_playlist_id();
-        if self.store.create_playlist(&id, name.trim()).is_ok() {
+        if self.store.create_playlist(&id, trimmed).is_ok() {
+            let pending = self.pending_external_playlist_paths.take();
+            if let Some(ref paths) = pending {
+                if !paths.is_empty() {
+                    let _ = self.store.add_tracks_to_playlist(&id, paths);
+                }
+            }
             self.invalidate_view_caches();
             self.refresh_playlists();
             self.set_view("Playlist", "", "", &id);
             self.close_modal();
+            if let Some(paths) = pending {
+                let count = paths.len();
+                self.show_notice(
+                    format!(
+                        "Created playlist “{}” with {} {}.",
+                        trimmed,
+                        count,
+                        if count == 1 { "track" } else { "tracks" }
+                    ),
+                    NoticeSeverity::Success,
+                );
+            }
         } else {
             self.show_notice("Could not create the playlist.", NoticeSeverity::Error);
         }
@@ -146,24 +165,11 @@ impl App {
             3 => self.open_add_to_playlist(&id),
             4 => {
                 if let Some(t) = self.track_by_id(&id) {
-                    let name = t.title.clone();
-                    let new_id = self.new_playlist_id();
-                    if self
-                        .store
-                        .create_playlist(&new_id, &format!("{} Mix", name))
-                        .is_ok()
-                    {
-                        let _ = self
-                            .store
-                            .add_tracks_to_playlist(&new_id, &[t.path.clone()]);
-                        self.invalidate_view_caches();
-                        self.refresh_playlists();
-                        self.set_view("Playlist", "", "", &new_id);
-                        self.show_notice(
-                            "Created playlist with this song.",
-                            NoticeSeverity::Success,
-                        );
-                    }
+                    self.pending_external_playlist_paths = Some(vec![t.path.clone()]);
+                    self.open_modal("new-playlist");
+                    let state = self.ui.global::<State>();
+                    state.set_modal_text(ss(format!("{} Mix", t.title)));
+                    state.set_modal_title(ss("Create playlist from track"));
                 }
             }
             5 => self.toggle_favorite(&id),
@@ -198,6 +204,7 @@ impl App {
                     {
                         let state = self.ui.global::<State>();
                         state.set_confirm_message(ss("Restore the most recent tag backup?"));
+                        state.set_confirm_button_label(ss("Restore"));
                         state.set_confirm_has_choices(false);
                         state.set_confirm_choices(ui_model(choices).into());
                         state.set_confirm_danger(true);
@@ -257,6 +264,9 @@ impl App {
             let current = state.get_playlist_name().to_string();
             state.set_modal_text(ss(current));
         }
+        if name != "confirm" {
+            state.set_confirm_button_label(ss("Confirm"));
+        }
         state.set_modal(ss(name));
         state.set_modal_title(ss(title));
     }
@@ -265,9 +275,11 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_modal(ss(""));
         state.set_confirm_danger(false);
+        state.set_confirm_button_label(ss("Confirm"));
         state.set_confirm_has_choices(false);
         self.confirm_action = None;
         self.edit_target = None;
+        self.pending_external_playlist_paths = None;
     }
 
     pub(crate) fn open_details(&mut self, id: &str) {
@@ -622,20 +634,10 @@ impl App {
         let Some(path) = self.lyrics_target.clone() else {
             return;
         };
-        // Default: embed in audio file; fallback to sidecar if embedding fails
-        let stored = TagEditor::new(tag_backups_dir())
-            .save(
-                &path,
-                &TagEdit {
-                    lyrics: Some(text.clone()),
-                    ..TagEdit::default()
-                },
-            )
-            .is_ok();
-        if !stored {
-            let _ = write_sidecar(&path, &text);
+        let stored = self.save_lyrics_for_path(&path, &text, self.should_embed_lyrics());
+        if stored {
+            let _ = self.store.update_track_lyrics_status(&path, true);
         }
-        let _ = self.store.update_track_lyrics_status(&path, true);
         self.lyrics_cache.remove(&path);
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
@@ -692,7 +694,7 @@ impl App {
         let state = self.ui.global::<State>();
         state.set_edit_lyrics_text(ss(text));
         state.set_edit_lyrics_source_label(ss(format!("Source: {}", source)));
-        state.set_edit_lyrics_sidecar(false);
+        state.set_edit_lyrics_sidecar(!self.should_embed_lyrics());
         state.set_edit_lyrics_offset(ss(self
             .lyrics_doc
             .as_ref()
@@ -716,23 +718,11 @@ impl App {
             text = format!("[offset:{}]\n{}", offset, text);
         }
         let sidecar = state.get_edit_lyrics_sidecar();
-        let mut stored = if sidecar {
-            write_sidecar(&path, &text).is_ok()
-        } else {
-            TagEditor::new(tag_backups_dir())
-                .save(
-                    &path,
-                    &TagEdit {
-                        lyrics: Some(text.clone()),
-                        ..TagEdit::default()
-                    },
-                )
-                .is_ok()
-        };
-        if !stored && !sidecar {
-            // Embed fallback to sidecar
-            stored = write_sidecar(&path, &text).is_ok();
-        }
+        self.settings.set_raw(
+            music_player_core::settings::keys::LYRICS_STORAGE_MODE,
+            if sidecar { "sidecar" } else { "embed" },
+        );
+        let stored = self.save_lyrics_for_path(&path, &text, !sidecar);
         if !stored {
             self.show_notice(
                 "Lyrics could not be saved. Check the file location.",
@@ -767,7 +757,7 @@ impl App {
             },
         );
         let _ = self.store.update_track_lyrics_status(&path, false);
-        self.lyrics_cache.insert(path.clone(), (Instant::now(), None));
+        self.lyrics_cache.insert(path.clone(), (Instant::now(), None, false));
         if let Ok(Some(track)) = self.store.get_track(&path) {
             self.load_lyrics(&track);
         }

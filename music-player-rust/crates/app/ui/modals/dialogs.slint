@@ -121,7 +121,7 @@ export component ConfirmModal inherits Rectangle {
                 clicked => { Actions.close-modal(); }
             }
             ActionBtn {
-                label: "Confirm";
+                label: State.confirm-button-label == "" ? "Confirm" : State.confirm-button-label;
                 primary: !State.confirm-danger;
                 danger: State.confirm-danger;
                 clicked => { Actions.confirm-action(); }

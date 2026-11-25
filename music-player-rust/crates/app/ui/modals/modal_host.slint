@@ -91,25 +91,22 @@ export component ModalHost inherits Rectangle {
             Rectangle { height: 1px; background: Palette.border; }
 
             // Body + footer (each modal includes its own `ModalFooterBar` at the bottom)
-            Rectangle {
-                vertical-stretch: root.is-scrollable-modal ? 1 : 0;
-                if State.modal == "tags" : TagsModal { }
-                if State.modal == "details" : DetailsModal { }
-                if State.modal == "find-lyrics" : FindLyricsModal { }
-                if State.modal == "edit-lyrics" : EditLyricsModal { }
-                if State.modal == "folders" : FoldersModal { }
-                if State.modal == "exclusions" : ExclusionsModal { }
-                if State.modal == "add-to-playlist" : AddToPlaylistModal { }
-                if State.modal == "new-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Create playlist"; submit(text) => { Actions.create-playlist(text); } }
-                if State.modal == "rename-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Save"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
-                if State.modal == "save-preset" : NameModal { field-label: "Preset name"; placeholder: "Preset name"; action: "Save preset"; submit(text) => { Actions.save-eq-preset(text); } }
-                if State.modal == "confirm" : ConfirmModal { }
-                if State.modal == "rating" : RatingModal { }
-                if State.modal == "duplicate-locations" : LocationsModal { }
-                if State.modal == "reset" : ResetModal { }
-                if State.modal == "update" : UpdateModal { }
-                if State.modal == "help" : HelpModal { }
-            }
+            if State.modal == "tags" : TagsModal { vertical-stretch: 1; }
+            if State.modal == "details" : DetailsModal { vertical-stretch: 1; }
+            if State.modal == "find-lyrics" : FindLyricsModal { vertical-stretch: 1; }
+            if State.modal == "edit-lyrics" : EditLyricsModal { vertical-stretch: 1; }
+            if State.modal == "folders" : FoldersModal { vertical-stretch: 1; }
+            if State.modal == "exclusions" : ExclusionsModal { vertical-stretch: 1; }
+            if State.modal == "add-to-playlist" : AddToPlaylistModal { vertical-stretch: 1; }
+            if State.modal == "duplicate-locations" : LocationsModal { vertical-stretch: 1; }
+            if State.modal == "help" : HelpModal { vertical-stretch: 1; }
+            if State.modal == "new-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Create playlist"; submit(text) => { Actions.create-playlist(text); } }
+            if State.modal == "rename-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Save"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
+            if State.modal == "save-preset" : NameModal { field-label: "Preset name"; placeholder: "Preset name"; action: "Save preset"; submit(text) => { Actions.save-eq-preset(text); } }
+            if State.modal == "confirm" : ConfirmModal { }
+            if State.modal == "rating" : RatingModal { }
+            if State.modal == "reset" : ResetModal { }
+            if State.modal == "update" : UpdateModal { }
         }
     }
 }

@@ -468,7 +468,10 @@ impl LibraryStore {
 
     pub fn checkpoint_wal(&self) -> Result<()> {
         self.write(|conn| {
-            conn.execute("PRAGMA wal_checkpoint(PASSIVE)", [])?;
+            let _: (i64, i64, i64) =
+                conn.query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?;
             Ok(())
         })
     }

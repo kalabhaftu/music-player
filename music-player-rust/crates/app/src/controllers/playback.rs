@@ -59,101 +59,150 @@ impl App {
             }
         }
 
-        // Preload upcoming lyrics (next 3 tracks in queue, 1:1 parity with WebUI preloadUpcomingLyrics)
+        // Pre-warm artwork palettes and blurred backdrops for upcoming tracks off the UI thread.
+        let art_paths: Vec<PathBuf> = entries
+            .iter()
+            .skip(upcoming_start)
+            .take(5)
+            .filter_map(|p| {
+                self.track_cache
+                    .get(p)
+                    .and_then(|t| t.artwork_path.as_deref())
+                    .map(PathBuf::from)
+            })
+            .collect();
+        if !art_paths.is_empty() {
+            std::thread::spawn(move || {
+                for art in art_paths {
+                    crate::native_io::prewarm_artwork_assets(&art);
+                }
+            });
+        }
+
+        // Preload upcoming lyrics (next 5 tracks in queue) asynchronously on a background worker.
         use music_player_core::settings::keys as k;
         let auto_load = self.settings.bool_or(k::AUTO_LOAD_LYRICS, true);
-        for path in entries.iter().skip(upcoming_start).take(3) {
+        let mut to_prefetch = Vec::new();
+        for path in entries.iter().skip(upcoming_start).take(5) {
             if self.is_video_path(path) || self.lyrics_cache.contains_key(path) {
                 continue;
             }
-            let sidecar_raw = read_sidecar(path);
-            let sidecar_timed = sidecar_raw
-                .as_deref()
-                .map(|s| !parse_lrc(s).lines.is_empty())
-                .unwrap_or(false);
-            if sidecar_timed {
-                let raw = sidecar_raw.unwrap();
-                self.lyrics_cache.insert(
-                    path.clone(),
-                    (
-                        Instant::now(),
-                        Some(music_player_core::lyrics::LyricsMatch {
-                            raw,
-                            timed: true,
-                            score: 1.0,
-                            result: music_player_core::lyrics::LyricsSearchResult::default(),
-                        }),
-                    ),
-                );
+            let key = path.to_lowercase();
+            if self.lyrics_in_flight.contains(&key) {
                 continue;
             }
-            let embedded_raw = self
-                .metadata_engine
-                .read_metadata(Path::new(path), None)
-                .ok()
-                .and_then(|t| t.lyrics)
-                .filter(|l| !l.trim().is_empty());
-            let embedded_timed = embedded_raw
-                .as_deref()
-                .map(|s| !parse_lrc(s).lines.is_empty())
-                .unwrap_or(false);
-            if let Some((raw, timed)) = if embedded_timed {
-                embedded_raw.map(|r| (r, true))
-            } else if let Some(s) = sidecar_raw {
-                Some((s, false))
-            } else {
-                embedded_raw.map(|r| (r, false))
-            } {
-                self.lyrics_cache.insert(
-                    path.clone(),
-                    (
-                        Instant::now(),
-                        Some(music_player_core::lyrics::LyricsMatch {
+            let track = self
+                .track_cache
+                .get(path)
+                .cloned()
+                .or_else(|| self.store.get_track(path).ok().flatten());
+            if let Some(track) = track {
+                self.lyrics_in_flight.insert(key);
+                to_prefetch.push(track);
+            }
+        }
+        if !to_prefetch.is_empty() {
+            let tx = self.prefetch_lyrics_tx.clone();
+            std::thread::spawn(move || {
+                let engine = HybridMetadataEngine::new();
+                let mut client = if auto_load {
+                    Some(music_player_core::lyrics::LrclibSearchClient::new())
+                } else {
+                    None
+                };
+                for track in to_prefetch {
+                    let sidecar_raw = read_sidecar(&track.path);
+                    let sidecar_timed = sidecar_raw
+                        .as_deref()
+                        .map(|s| !parse_lrc(s).lines.is_empty())
+                        .unwrap_or(false);
+                    if sidecar_timed {
+                        let raw = sidecar_raw.unwrap();
+                        let _ = tx.send((
+                            track.path.clone(),
+                            Some(music_player_core::lyrics::LyricsMatch {
+                                raw,
+                                timed: true,
+                                score: 1.0,
+                                result: music_player_core::lyrics::LyricsSearchResult::default(),
+                            }),
+                            true,
+                        ));
+                        continue;
+                    }
+                    let embedded_raw = engine
+                        .read_metadata(Path::new(&track.path), None)
+                        .ok()
+                        .and_then(|t| t.lyrics)
+                        .filter(|l| !l.trim().is_empty());
+                    let embedded_timed = embedded_raw
+                        .as_deref()
+                        .map(|s| !parse_lrc(s).lines.is_empty())
+                        .unwrap_or(false);
+                    let local = if embedded_timed {
+                        embedded_raw.map(|r| (r, true))
+                    } else if let Some(s) = sidecar_raw {
+                        Some((s, false))
+                    } else {
+                        embedded_raw.map(|r| (r, false))
+                    };
+                    if let Some((raw, timed)) = local {
+                        let m = music_player_core::lyrics::LyricsMatch {
                             raw,
                             timed,
                             score: 1.0,
                             result: music_player_core::lyrics::LyricsSearchResult::default(),
-                        }),
-                    ),
-                );
-                if timed {
-                    continue;
-                }
-            }
-            if auto_load {
-                let key = path.to_lowercase();
-                if self.lyrics_in_flight.contains(&key) {
-                    continue;
-                }
-                if let Some(track) = self.track_cache.get(path).cloned() {
-                    self.lyrics_in_flight.insert(key);
-                    let tx = self.prefetch_lyrics_tx.clone();
-                    let t_path = path.clone();
-                    let t_title = track.title.clone();
-                    let t_artist = track.artist.clone();
+                        };
+                        if timed {
+                            let _ = tx.send((track.path.clone(), Some(m), true));
+                            continue;
+                        }
+                        if !auto_load {
+                            let _ = tx.send((track.path.clone(), Some(m), true));
+                            continue;
+                        }
+                        // Untimed local lyrics exist, check LRCLIB for timed lyrics if auto-load is on
+                        let t_duration = (track.duration_ms as f64) / 1000.0;
+                        let matched = client.as_mut().and_then(|c| {
+                            c.search(&track.title, &track.artist)
+                                .ok()
+                                .and_then(|results| {
+                                    music_player_core::lyrics::select_lyrics_match(
+                                        &track.title,
+                                        &track.artist,
+                                        t_duration,
+                                        &results,
+                                    )
+                                })
+                        });
+                        if let Some(online) = matched.filter(|o| o.timed) {
+                            let _ = tx.send((track.path.clone(), Some(online), false));
+                        } else {
+                            let _ = tx.send((track.path.clone(), Some(m), true));
+                        }
+                        continue;
+                    }
                     let t_duration = (track.duration_ms as f64) / 1000.0;
-                    std::thread::spawn(move || {
-                        let mut client = music_player_core::lyrics::LrclibSearchClient::new();
-                        let matched = client
-                            .search(&t_title, &t_artist)
+                    let matched = client.as_mut().and_then(|c| {
+                        c.search(&track.title, &track.artist)
                             .ok()
                             .and_then(|results| {
                                 music_player_core::lyrics::select_lyrics_match(
-                                    &t_title,
-                                    &t_artist,
+                                    &track.title,
+                                    &track.artist,
                                     t_duration,
                                     &results,
                                 )
-                            });
-                        let _ = tx.send((t_path, matched));
-                        let _ = slint::invoke_from_event_loop(|| {
-                            crate::with_app(|app| {
-                                app.poll_lyrics_search();
-                            });
-                        });
+                            })
                     });
+                    let _ = tx.send((track.path.clone(), matched, false));
                 }
-            }
+                let _ = slint::invoke_from_event_loop(|| {
+                    crate::with_app(|app| {
+                        app.poll_lyrics_search();
+                    });
+                });
+            });
         }
     }
 
@@ -677,9 +726,26 @@ impl App {
             saved_index.filter(|i| *i < filtered_queue.len())
         };
 
+        let fallback_idx = resolved_index.or_else(|| {
+            if !filtered_queue.is_empty() {
+                Some(0)
+            } else {
+                None
+            }
+        });
+        let effective_path = saved_current_path
+            .clone()
+            .filter(|p| !p.trim().is_empty())
+            .or_else(|| fallback_idx.and_then(|idx| filtered_queue.get(idx).cloned()));
+        let resume_pos = if saved_current_path.as_ref() == effective_path.as_ref() {
+            session.position_ms
+        } else {
+            0
+        };
+
         self.coordinator
             .queue_mut()
-            .replace(filtered_queue, resolved_index);
+            .replace(filtered_queue, fallback_idx);
         self.coordinator.queue_mut().set_shuffle(session.shuffle);
         self.coordinator
             .queue_mut()
@@ -688,15 +754,20 @@ impl App {
             .queue_mut()
             .set_ab_repeat_points(session.repeat_a_ms, session.repeat_b_ms);
 
-        let current = saved_current_path
+        let current = effective_path
             .as_ref()
             .filter(|p| Path::new(p).exists())
-            .and_then(|p| self.store.get_track(p).ok().flatten());
+            .and_then(|p| {
+                self.store.get_track(p).ok().flatten().or_else(|| {
+                    let read = self.read_external_tracks(std::slice::from_ref(p));
+                    read.into_iter().next()
+                })
+            });
         if let Some(track) = current {
             self.update_current_track(&track);
-            self.listening.restore_paused(session.position_ms as i64);
-            self.pending_session_resume = Some((track, session.position_ms));
-        } else if let Some(ref path) = saved_current_path {
+            self.listening.restore_paused(resume_pos as i64);
+            self.pending_session_resume = Some((track, resume_pos));
+        } else if let Some(ref path) = effective_path {
             // If the saved track is unavailable but still in the queue, keep
             // the coordinator/app current path aligned with the session.
             self.coordinator.set_current_track_path(Some(path.clone()));
@@ -739,6 +810,8 @@ impl App {
     pub(crate) fn set_eq_preset(&mut self, name: &str) {
         let name = name.trim();
         if name == "Off" {
+            // Bypass EQ effect on engine without erasing user's Custom sliders.
+        } else if name.eq_ignore_ascii_case("Normal") {
             self.eq_bands = [0.0; 10];
             self.eq_preamp = NEUTRAL_EQUALIZER_PREAMP;
         } else if name.eq_ignore_ascii_case("Custom") {
@@ -907,6 +980,7 @@ impl App {
     }
 
     pub(crate) fn play_external_files(&mut self, paths: &[String]) {
+        self.pending_session_resume = None;
         let tracks = self.read_external_tracks(paths);
         if tracks.is_empty() {
             self.show_notice(
@@ -973,26 +1047,35 @@ impl App {
         let tracks = self.read_external_tracks(paths);
         if tracks.is_empty() {
             self.show_notice(
-                "No supported audio files could be added.",
+                "No supported audio files could be added to the playlist.",
                 NoticeSeverity::Warning,
             );
             return;
         }
+        self.ensure_external_parent_folders_tracked(paths);
         let track_paths: Vec<String> = tracks.iter().map(|t| t.path.clone()).collect();
-        let name = Path::new(&tracks[0].path)
-            .parent()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "New playlist".to_string());
-        let id = self.new_playlist_id();
-        let _ = self.store.create_playlist(&id, &name);
-        let _ = self.store.add_tracks_to_playlist(&id, &track_paths);
-        self.invalidate_view_caches();
-        self.refresh_playlists();
-        self.show_notice(
-            format!("Created playlist “{}”.", name),
-            NoticeSeverity::Success,
-        );
-        self.set_view("Playlist", "", "", &id);
+        self.pending_external_playlist_paths = Some(track_paths);
+        let state = self.ui.global::<State>();
+        state.set_modal_text(ss(""));
+        state.set_modal(ss("new-playlist"));
+        state.set_modal_title(ss("Create playlist from files"));
+    }
+
+    /// Flushes any debounced volume/equalizer writes, persists the session, and checkpoints SQLite WAL.
+    pub(crate) fn flush_pending_persistence(&mut self) {
+        if let Some(volume) = self.pending_volume.take() {
+            self.settings.set_raw(
+                music_player_core::settings::keys::VOLUME,
+                &volume.to_string(),
+            );
+            self.persisted_volume = volume as i64;
+        }
+        if self.eq_dirty {
+            self.settings
+                .set_eq_state(&self.eq_preset, self.eq_bands, self.eq_preamp);
+            self.eq_dirty = false;
+        }
+        self.save_session();
+        let _ = self.store.checkpoint_wal();
     }
 }
