@@ -1,0 +1,118 @@
+import { State, Actions } from "../state.slint";
+import { Palette, ActionBtn, SectionTitle } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { ModalFooterBar } from "common.slint";
+
+component ShortcutRow inherits Rectangle {
+    in property <string> keys;
+    in property <string> description;
+
+    height: 36px;
+
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+
+        Rectangle {
+            horizontal-stretch: 0;
+            width: 152px;
+            height: 24px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: Palette.border;
+            background: Palette.panel-2;
+
+            Text {
+                width: parent.width - 12px;
+                x: 6px;
+                height: parent.height;
+                text: root.keys;
+                color: Palette.text-strong;
+                font-size: 10px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            height: parent.height;
+            text: root.description;
+            color: Palette.muted;
+            font-size: 11px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.border-soft;
+    }
+}
+
+export component HelpModal inherits Rectangle {
+    VerticalLayout {
+        sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+
+            VerticalLayout {
+                width: sv.visible-width;
+                padding: 16px;
+                spacing: 10px;
+
+                Text {
+                    text: "Global keyboard shortcuts and built-in features.";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { height: 2px; }
+                SectionTitle { text: "Playback & Volume"; font-size: 11px; letter-spacing: 0.4px; }
+                VerticalLayout {
+                    spacing: 0px;
+                    ShortcutRow { keys: "Space / Enter"; description: "Play or pause playback"; }
+                    ShortcutRow { keys: "Left / Right"; description: "Seek backward or forward 5 seconds (10s with Shift)"; }
+                    ShortcutRow { keys: "Ctrl / Alt + Left"; description: "Restart song or go to previous track"; }
+                    ShortcutRow { keys: "Ctrl / Alt + Right"; description: "Skip to next track"; }
+                    ShortcutRow { keys: "Home / End"; description: "Restart current track / skip to next track"; }
+                    ShortcutRow { keys: "Up / Down"; description: "Volume up or down 5% (10% with Shift)"; }
+                    ShortcutRow { keys: "M"; description: "Mute or restore volume"; }
+                    ShortcutRow { keys: "S / R"; description: "Toggle shuffle / cycle repeat mode"; }
+                }
+
+                Rectangle { height: 4px; }
+                SectionTitle { text: "Views, Search & Video"; font-size: 11px; letter-spacing: 0.4px; }
+                VerticalLayout {
+                    spacing: 0px;
+                    ShortcutRow { keys: "Ctrl + K"; description: "Focus global search"; }
+                    ShortcutRow { keys: "L"; description: "Open or toggle lyrics (main view and Now Playing)"; }
+                    ShortcutRow { keys: "I"; description: "Toggle immersive Now Playing mode"; }
+                    ShortcutRow { keys: "F11"; description: "Toggle fullscreen (main window or video window)"; }
+                    ShortcutRow { keys: "F1 / ?"; description: "Open this help & shortcuts reference"; }
+                    ShortcutRow { keys: "Esc"; description: "Close overlay, menu, modal, or exit fullscreen"; }
+                }
+
+                Rectangle { height: 4px; }
+                SectionTitle { text: "Tips"; font-size: 11px; letter-spacing: 0.4px; }
+                Text {
+                    text: "• Video playback opens in a dedicated video window with speed (0.5x–2x), repeat, .srt/.ass/.ssa/.vtt subtitle auto-loading, and frame snapshots.\n• Video extensions are off during library scans until enabled in Settings → Library → Scan exclusions.\n• Right-click any track row or queue entry, or click the … menu button, to edit tags, find/edit timed lyrics, or inspect track details.";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        ModalFooterBar {
+            ActionBtn { label: "Close"; primary: true; clicked => { Actions.close-modal(); } }
+        }
+    }
+}

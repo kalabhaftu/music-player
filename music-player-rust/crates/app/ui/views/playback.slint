@@ -83,15 +83,19 @@ component QueueRow inherits Rectangle {
             vertical-alignment: center;
         }
 
-        VerticalLayout {
+        Rectangle {
             width: 120px;
-            alignment: center;
             HorizontalLayout {
+                width: parent.width;
+                height: 30px;
+                y: (parent.height - self.height) / 2;
                 alignment: center;
                 spacing: 0px;
                 if !root.item.is-current : IcBtn {
                     icon: @image-url("../../assets/icons/play.svg");
                     icon-size: 12px;
+                    width: 30px;
+                    height: 30px;
                     tint: Palette.muted-2;
                     clicked => { root.play(); }
                 }
@@ -120,6 +124,8 @@ component QueueRow inherits Rectangle {
                 if !root.item.is-current : IcBtn {
                     icon: @image-url("../../assets/icons/close.svg");
                     icon-size: 12px;
+                    width: 30px;
+                    height: 30px;
                     tint: Palette.muted-2;
                     hover-tint: #ff5b74;
                     clicked => { root.remove(); }

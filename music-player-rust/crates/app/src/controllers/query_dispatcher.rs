@@ -78,7 +78,7 @@ struct DispatcherState {
 }
 
 pub(crate) struct QueryDispatcher {
-    latest_generation: Arc<AtomicU64>,
+    pub(crate) latest_generation: Arc<AtomicU64>,
     state: Arc<(Mutex<DispatcherState>, Condvar)>,
     worker: Option<JoinHandle<()>>,
 }

@@ -5,6 +5,7 @@ import { FindLyricsModal, EditLyricsModal } from "lyrics.slint";
 import { FoldersModal, ExclusionsModal, LocationsModal } from "library.slint";
 import { AddToPlaylistModal, NameModal } from "playlists.slint";
 import { ConfirmModal, RatingModal, ResetModal, UpdateModal } from "dialogs.slint";
+import { HelpModal } from "help.slint";
 
 export component ModalHost inherits Rectangle {
     background: #00000094;
@@ -17,10 +18,12 @@ export component ModalHost inherits Rectangle {
         || State.modal == "folders"
         || State.modal == "exclusions"
         || State.modal == "duplicate-locations"
-        || State.modal == "add-to-playlist";
+        || State.modal == "add-to-playlist"
+        || State.modal == "help";
 
     in property <length> modal-width:
         State.modal == "edit-lyrics" ? min(680px, root.width - 32px) :
+        State.modal == "help" ? min(620px, root.width - 32px) :
         State.modal == "find-lyrics" ? min(580px, root.width - 32px) :
         State.modal == "tags" || State.modal == "details" ? min(580px, root.width - 32px) :
         State.modal == "folders" || State.modal == "exclusions" || State.modal == "duplicate-locations" ? min(560px, root.width - 32px) :
@@ -28,6 +31,7 @@ export component ModalHost inherits Rectangle {
 
     in property <length> scrollable-height:
         State.modal == "edit-lyrics" ? min(580px, root.height - 40px) :
+        State.modal == "help" ? min(560px, root.height - 40px) :
         State.modal == "find-lyrics" ? min(520px, root.height - 40px) :
         State.modal == "tags" ? min(590px, root.height - 40px) :
         State.modal == "details" ? min(560px, root.height - 40px) :
@@ -104,6 +108,7 @@ export component ModalHost inherits Rectangle {
                 if State.modal == "duplicate-locations" : LocationsModal { }
                 if State.modal == "reset" : ResetModal { }
                 if State.modal == "update" : UpdateModal { }
+                if State.modal == "help" : HelpModal { }
             }
         }
     }

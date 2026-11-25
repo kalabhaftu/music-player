@@ -152,8 +152,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 map.insert(ext.to_lowercase(), enabled);
                 app.settings.set_extension_enabled(&map);
                 app.publish_exclusions();
+                let video_exts = app.all_video_extensions();
+                app.engine.set_video_extensions(&video_exts);
                 let roots = app.settings.library_roots();
                 app.reconfigure_watcher(&roots);
+                app.invalidate_view_caches();
+                app.refresh_playlists();
+                app.refresh_view();
             });
     }
     {
@@ -189,6 +194,10 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.settings.set_extension_types(&kinds);
             app.ui.global::<State>().set_exclusion_new_extension(ss(""));
             app.publish_exclusions();
+            let video_exts = app.all_video_extensions();
+            app.engine.set_video_extensions(&video_exts);
+            let roots = app.settings.library_roots();
+            app.reconfigure_watcher(&roots);
         });
     }
     {
@@ -345,26 +354,32 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             drop(state);
             app.sync_window_mode();
             app.publish_appearance();
+            let a2 = a.clone();
+            slint::Timer::single_shot(std::time::Duration::from_millis(30), move || {
+                a2.borrow().settle_window_mode();
+            });
         });
     }
     {
         let a = app.clone();
         ui.global::<Actions>().on_close_immersive_player(move || {
             let app = a.borrow();
-            let was_fullscreen = app.ui.global::<State>().get_immersive_fullscreen();
+            let was_fullscreen =
+                app.ui.window().is_fullscreen() || app.ui.global::<State>().get_immersive_fullscreen();
             let state = app.ui.global::<State>();
             state.set_immersive_fullscreen(false);
             state.set_immersive_player_open(false);
             state.set_immersive_lyrics_open(false);
             drop(state);
+            if was_fullscreen {
+                app.ui.window().set_fullscreen(false);
+            }
             app.sync_window_mode();
             app.publish_appearance();
-            if was_fullscreen {
-                let a2 = a.clone();
-                slint::Timer::single_shot(std::time::Duration::from_millis(35), move || {
-                    a2.borrow().sync_window_mode();
-                });
-            }
+            let a2 = a.clone();
+            slint::Timer::single_shot(std::time::Duration::from_millis(35), move || {
+                a2.borrow().settle_window_mode();
+            });
         });
     }
     {
@@ -376,12 +391,13 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 let fullscreen = !state.get_immersive_fullscreen();
                 state.set_immersive_fullscreen(fullscreen);
                 drop(state);
+                app.ui.window().set_fullscreen(fullscreen);
                 app.sync_window_mode();
                 if !fullscreen {
                     app.publish_appearance();
                     let a2 = a.clone();
                     slint::Timer::single_shot(std::time::Duration::from_millis(35), move || {
-                        a2.borrow().sync_window_mode();
+                        a2.borrow().settle_window_mode();
                     });
                 }
             });

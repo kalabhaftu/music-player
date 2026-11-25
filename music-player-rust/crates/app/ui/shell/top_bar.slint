@@ -336,10 +336,10 @@ export component ToolsMenuOverlay inherits Rectangle {
     background: #00000000;
     TouchArea { clicked => { State.tools-menu-open = false; } }
     Rectangle {
-        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 190px - (State.window-width <= 700 ? 8px : 16px));
+        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 210px - (State.window-width <= 700 ? 8px : 16px));
         y: 60px;
-        width: 190px;
-        height: 86px;
+        width: 210px;
+        height: 122px;
         border-radius: 8px;
         background: Palette.panel;
         border-width: 1px;
@@ -349,6 +349,7 @@ export component ToolsMenuOverlay inherits Rectangle {
             spacing: 2px;
             ToolMenuRow { label: "Settings"; icon: @image-url("../../assets/icons/settings.svg"); clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
             ToolMenuRow { label: "Scan library"; icon: @image-url("../../assets/icons/refresh.svg"); clicked => { Actions.scan-library(); State.tools-menu-open = false; } }
+            ToolMenuRow { label: "Shortcuts & help"; icon: @image-url("../../assets/icons/spark.svg"); clicked => { Actions.open-modal("help"); State.tools-menu-open = false; } }
         }
     }
 }

@@ -98,28 +98,42 @@ component SettingsNavTab inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    min-width: 0px;
-    height: 36px;
+    min-width: 78px;
+    height: 34px;
     border-radius: 8px;
-    background: area.pressed || root.selected || area.has-hover
-        ? (State.artwork-palette ? (root.selected ? Palette.raised : Palette.hover) : (State.light-theme ? Palette.control : (root.selected ? #282d28 : #1a1e1b)))
-        : transparent;
+    background: area.pressed || root.selected
+        ? (State.artwork-palette ? Palette.raised : (State.light-theme ? Palette.control : #262b26))
+        : (area.has-hover ? Palette.hover : transparent);
     animate background { duration: 110ms; }
-    area := TouchArea { clicked => { root.clicked(); } }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-left: 12px;
+        padding-right: 12px;
         alignment: center;
         Text {
             min-width: 0px;
             text: root.label;
-            color: root.selected ? Palette.text : Palette.muted;
+            color: root.selected ? Palette.text-strong : Palette.muted;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: root.selected ? 750 : 600;
             horizontal-alignment: center;
             vertical-alignment: center;
-            overflow: elide;
         }
+    }
+    // Active tab bottom accent indicator
+    Rectangle {
+        y: parent.height - 2px;
+        x: 10px;
+        width: root.selected ? max(16px, parent.width - 20px) : 0px;
+        height: 2px;
+        border-radius: 1px;
+        background: State.accent;
+        opacity: root.selected ? 1.0 : 0.0;
+        animate width { duration: 160ms; easing: ease-out; }
+        animate opacity { duration: 140ms; }
     }
 }
 
@@ -394,50 +408,82 @@ component SettingNavOrderRow inherits Rectangle {
 }
 
 export component SettingsView inherits Rectangle {
+    property <length> scroll-pos: -settings-scroll.content-y;
+    property <bool> is-scrolled: root.scroll-pos > 24px;
+    property <string> active-tab:
+        root.scroll-pos >= about-section.y - 60px ? "About" :
+        root.scroll-pos >= advanced-section.y - 60px ? "Advanced" :
+        root.scroll-pos >= playback-section.y - 60px ? "Playback" :
+        root.scroll-pos >= library-section.y - 60px ? "Library" :
+        "Appearance";
+
+    function jump-to(section: string) {
+        State.settings-section = section;
+        if (section == "Appearance") {
+            settings-scroll.content-y = 0px;
+        } else if (section == "Library") {
+            settings-scroll.content-y = -max(0px, library-section.y - 16px);
+        } else if (section == "Playback") {
+            settings-scroll.content-y = -max(0px, playback-section.y - 16px);
+        } else if (section == "Advanced") {
+            settings-scroll.content-y = -max(0px, advanced-section.y - 16px);
+        } else if (section == "About") {
+            settings-scroll.content-y = -max(0px, about-section.y - 16px);
+        }
+    }
+
     VerticalLayout {
-        padding-top: 20px;
+        padding-top: root.is-scrolled ? 12px : 20px;
         padding-left: 24px;
         padding-right: 24px;
-        padding-bottom: 32px;
-        spacing: 12px;
+        padding-bottom: 24px;
+        spacing: root.is-scrolled ? 8px : 12px;
+        animate padding-top { duration: 180ms; easing: ease-out; }
+        animate spacing { duration: 180ms; easing: ease-out; }
 
         VerticalLayout {
-            spacing: 5px;
-            Text { text: "Settings"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
-            Text { text: "Choose how Music Player looks and behaves."; color: Palette.muted; font-size: 12px; }
-        }
-        Rectangle { height: 10px; }
-
-        // Settings navigation menu (matches original .settings-menu: Appearance, Library, Playback, Equalizer, Advanced, About)
-        if State.content-width <= 600 : Rectangle {
-            height: 126px;
-            border-radius: 8px;
-            background: Palette.raised;
-            GridLayout {
-                padding: 6px;
-                spacing: 4px;
-                SettingsNavTab { col: 0; row: 0; label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
-                SettingsNavTab { col: 1; row: 0; label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
-                SettingsNavTab { col: 0; row: 1; label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
-                SettingsNavTab { col: 1; row: 1; label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { col: 0; row: 2; label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
-                SettingsNavTab { col: 1; row: 2; label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
+            spacing: root.is-scrolled ? 0px : 4px;
+            Text {
+                text: "Settings";
+                color: Palette.text;
+                font-size: root.is-scrolled ? 20px : 30px;
+                font-weight: 700;
+                letter-spacing: -0.65px;
+                animate font-size { duration: 180ms; easing: ease-out; }
+            }
+            if !root.is-scrolled : Text {
+                text: "Choose how Music Player looks and behaves.";
+                color: Palette.muted;
+                font-size: 12px;
             }
         }
-        if State.content-width > 600 : Rectangle {
-            height: 52px;
+
+        // Single compact scrollable navigation tab strip with live active indicator
+        Rectangle {
+            height: 46px;
             border-radius: 8px;
             background: Palette.raised;
-            HorizontalLayout {
-                padding: 7px;
-                spacing: 4px;
-                alignment: start;
-                SettingsNavTab { label: "Appearance"; selected: State.settings-section == "Appearance"; clicked => { State.settings-section = "Appearance"; } }
-                SettingsNavTab { label: "Library"; selected: State.settings-section == "Library"; clicked => { State.settings-section = "Library"; } }
-                SettingsNavTab { label: "Playback"; selected: State.settings-section == "Playback"; clicked => { State.settings-section = "Playback"; } }
-                SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
-                SettingsNavTab { label: "Advanced"; selected: State.settings-section == "Advanced"; clicked => { State.settings-section = "Advanced"; } }
-                SettingsNavTab { label: "About"; selected: State.settings-section == "About"; clicked => { State.settings-section = "About"; } }
+            clip: true;
+
+            tabs-flick := Flickable {
+                x: 6px;
+                y: 6px;
+                width: parent.width - 12px;
+                height: 34px;
+                interactive: tabs-row.preferred-width > self.width;
+                content-width: max(self.width, tabs-row.preferred-width);
+                content-height: 34px;
+
+                tabs-row := HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    SettingsNavTab { label: "Appearance"; selected: root.active-tab == "Appearance"; clicked => { root.jump-to("Appearance"); } }
+                    SettingsNavTab { label: "Library"; selected: root.active-tab == "Library"; clicked => { root.jump-to("Library"); } }
+                    SettingsNavTab { label: "Playback"; selected: root.active-tab == "Playback"; clicked => { root.jump-to("Playback"); } }
+                    SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                    SettingsNavTab { label: "Advanced"; selected: root.active-tab == "Advanced"; clicked => { root.jump-to("Advanced"); } }
+                    SettingsNavTab { label: "About"; selected: root.active-tab == "About"; clicked => { root.jump-to("About"); } }
+                }
             }
         }
 
@@ -449,12 +495,6 @@ export component SettingsView inherits Rectangle {
             clip: true;
             settings-scroll := ScrollView {
                 content-width: self.visible-width;
-                content-y: State.settings-section == "Library" ? -(appearance-section.height + 24px) :
-                           State.settings-section == "Playback" ? -(appearance-section.height + library-section.height + 48px) :
-                           State.settings-section == "Advanced" ? -(appearance-section.height + library-section.height + playback-section.height + 72px) :
-                           State.settings-section == "About" ? -(appearance-section.height + library-section.height + playback-section.height + advanced-section.height + 96px) :
-                           0px;
-                animate content-y { duration: 250ms; easing: ease-out; }
                 VerticalLayout {
                     width: settings-scroll.visible-width;
                     padding: 20px;
@@ -764,6 +804,7 @@ export component SettingsView inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: start;
+                            ActionBtn { label: "Keyboard shortcuts & help"; clicked => { Actions.open-modal("help"); } }
                             ActionBtn {
                                 label: State.update-checking ? "Checking…" : "Check for updates";
                                 enabled: !State.update-checking;

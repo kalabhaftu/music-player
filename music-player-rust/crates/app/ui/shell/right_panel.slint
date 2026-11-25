@@ -100,13 +100,16 @@ component QueueRow inherits Rectangle {
 
         Rectangle {
             width: 30px;
-            if row-area.has-hover : IcBtn {
+            close-btn := IcBtn {
+                visible: row-area.has-hover || self.hovered;
                 icon: @image-url("../../assets/icons/close.svg");
                 icon-size: 12px;
                 tint: Palette.muted-2;
                 hover-tint: #ff5b74;
                 width: 26px;
                 height: 26px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
                 clicked => { root.remove(); }
             }
         }

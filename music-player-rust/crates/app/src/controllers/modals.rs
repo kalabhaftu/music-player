@@ -243,6 +243,7 @@ impl App {
             "duplicate-locations" => "Duplicate locations",
             "reset" => "Reset UI settings",
             "update" => "Update available",
+            "help" => "Help & keyboard shortcuts",
             _ => name,
         };
         let state = self.ui.global::<State>();
