@@ -15,6 +15,9 @@ mod splash;
 mod ui;
 mod updates;
 
+#[cfg(test)]
+mod app_tests;
+
 use controllers::*;
 use ui::*;
 

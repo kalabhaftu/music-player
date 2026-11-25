@@ -535,7 +535,7 @@ impl PlayerSettings {
     }
 }
 
-fn is_hex_color(value: &str) -> bool {
+pub fn is_hex_color(value: &str) -> bool {
     let s = value.trim();
     let bytes = s.as_bytes();
     if bytes.len() == 7 && bytes[0] == b'#' {
@@ -555,45 +555,5 @@ fn read_string_array(value: &Value) -> Vec<String> {
             .collect(),
         Value::String(text) => serde_json::from_str::<Vec<String>>(text).unwrap_or_default(),
         _ => Vec::new(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_is_hex_color_validation() {
-        assert!(is_hex_color("#b7ff2d"));
-        assert!(is_hex_color("#59D7FF"));
-        assert!(is_hex_color("59d7ff"));
-        assert!(!is_hex_color("#xyz123"));
-        assert!(!is_hex_color(""));
-        assert!(!is_hex_color("#12345"));
-        assert!(!is_hex_color("#1234567"));
-    }
-
-    #[test]
-    fn test_update_web_setting_numeric_and_hex() {
-        let store = crate::LibraryStore::in_memory().unwrap();
-        let settings = PlayerSettings::new(store);
-
-        // Numeric values as floats, ints, and string floats
-        assert!(settings.update_web_setting("navigationWidth", &json!(250)).is_ok());
-        assert_eq!(settings.int_or(keys::NAVIGATION_WIDTH, 0), 250);
-
-        assert!(settings.update_web_setting("navigationWidth", &json!(280.0)).is_ok());
-        assert_eq!(settings.int_or(keys::NAVIGATION_WIDTH, 0), 280);
-
-        assert!(settings.update_web_setting("browseWidth", &json!("320.0")).is_ok());
-        assert_eq!(settings.int_or(keys::BROWSE_WIDTH, 0), 320);
-
-        assert!(settings.update_web_setting("windowTransparency", &json!(35)).is_ok());
-        assert_eq!(settings.int_or(keys::WINDOW_TRANSPARENCY, 0), 35);
-
-        // Accent color normalization
-        assert!(settings.update_web_setting("accentColor", &json!("59d7ff")).is_ok());
-        assert_eq!(settings.raw(keys::ACCENT_COLOR).as_deref(), Some("#59d7ff"));
     }
 }

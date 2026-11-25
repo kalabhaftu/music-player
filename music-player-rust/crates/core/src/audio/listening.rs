@@ -127,18 +127,3 @@ impl PlaybackEventPolicy {
         sender_is_crossfade_player && has_crossfade_target && current_state_is_error
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn half_threshold_matches_csharp_ticks_math() {
-        assert!(!PlayCompletion::has_reached_half(0, 90_000));
-        assert!(!PlayCompletion::has_reached_half(-5, 90_000));
-        assert!(!PlayCompletion::has_reached_half(3, 1));
-        assert!(PlayCompletion::has_reached_half(3, 2));
-        assert!(PlayCompletion::has_reached_half(180_000, 90_000));
-        assert!(!PlayCompletion::has_reached_half(180_000, 89_999));
-    }
-}

@@ -313,23 +313,3 @@ impl Drop for QueryDispatcher {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::Ordering;
-
-    #[test]
-    fn test_dispatcher_lifecycle_and_superseding() {
-        let dispatcher = QueryDispatcher::new();
-        assert_eq!(dispatcher.latest_generation.load(Ordering::SeqCst), 0);
-
-        // Cancel below generation 5
-        dispatcher.cancel_below(5);
-        assert_eq!(dispatcher.latest_generation.load(Ordering::SeqCst), 5);
-
-        // Discard below works monotonically
-        dispatcher.cancel_below(10);
-        assert_eq!(dispatcher.latest_generation.load(Ordering::SeqCst), 10);
-    }
-}

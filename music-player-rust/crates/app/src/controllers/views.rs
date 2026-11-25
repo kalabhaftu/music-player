@@ -2549,16 +2549,3 @@ pub(crate) fn fmt_right_time(position_ms: u64, duration_ms: u64, show_remaining:
         fmt_time(duration_ms)
     }
 }
-
-#[cfg(test)]
-mod right_time_tests {
-    use super::fmt_right_time;
-
-    #[test]
-    fn formats_total_and_remaining_time() {
-        assert_eq!(fmt_right_time(38_000, 225_000, false), "3:45");
-        assert_eq!(fmt_right_time(38_000, 225_000, true), "-3:07");
-        assert_eq!(fmt_right_time(250_000, 225_000, true), "-0:00");
-        assert_eq!(fmt_right_time(10_000, 0, true), "0:00");
-    }
-}

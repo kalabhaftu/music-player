@@ -645,6 +645,8 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 width: 100%;
                 spacing: 6px;
                 HorizontalLayout {
+                    height: 18px;
+                    alignment: space-between;
                     Text {
                         text: State.current-time;
                         color: #ffffffad;
@@ -656,7 +658,6 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                             clicked => { Actions.toggle-remaining-time(); }
                         }
                     }
-                    Rectangle { horizontal-stretch: 1; }
                     Text {
                         text: State.total-time;
                         color: #ffffffad;

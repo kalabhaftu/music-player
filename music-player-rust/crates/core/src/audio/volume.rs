@@ -39,39 +39,3 @@ pub fn linear_to_perceived_volume(linear_vol: u32) -> u32 {
     let norm = (linear_vol as f64 / 100.0).clamp(0.0, 1.0);
     (norm.sqrt() * 100.0).round() as u32
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_quadratic_curve_boundary_values() {
-        assert_eq!(quadratic_volume_curve(0.0), 0.0);
-        assert_eq!(quadratic_volume_curve(100.0), 1.0);
-        assert!((quadratic_volume_curve(50.0) - 0.25).abs() < 1e-6);
-        assert!((quadratic_volume_curve(25.0) - 0.0625).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_clamping() {
-        assert_eq!(quadratic_volume_curve(-10.0), 0.0);
-        assert_eq!(quadratic_volume_curve(150.0), 1.0);
-    }
-
-    #[test]
-    fn test_round_trip() {
-        for v in [0.0, 10.0, 25.0, 50.0, 75.0, 90.0, 100.0] {
-            let amp = perceived_loudness_to_amplitude(v);
-            let recovered = amplitude_to_perceived_loudness(amp);
-            assert!((recovered - v).abs() < 1e-5);
-        }
-    }
-
-    #[test]
-    fn test_integer_mapping() {
-        assert_eq!(perceived_to_linear_volume(0), 0);
-        assert_eq!(perceived_to_linear_volume(100), 100);
-        assert_eq!(perceived_to_linear_volume(50), 25);
-        assert_eq!(linear_to_perceived_volume(25), 50);
-    }
-}
