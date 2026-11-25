@@ -503,67 +503,49 @@ impl<'a> LibraryIndexer<'a> {
                 offset += SCAN_PAGE_SIZE;
             }
         } else {
-            for root in scan_roots {
-                let mut offset = 0u32;
-                loop {
-                    if control.is_cancelled() {
-                        break;
-                    }
-                    wait_if_paused(&control);
-                    let query = TrackQuery {
-                        group_column: Some("folder".to_string()),
-                        group_value: Some(root.to_string_lossy().to_string()),
-                        sort: TrackSort::Path,
-                        offset,
-                        page_size: SCAN_PAGE_SIZE,
-                        ..Default::default()
-                    };
-                    let page = match self.store.get_tracks_page(&query) {
-                        Ok(page) => page,
-                        Err(_) => break,
-                    };
-                    for track in &page {
-                        if control.is_cancelled() {
-                            return changed;
-                        }
-                        wait_if_paused(&control);
-                        if ignored_directories.iter().any(|ign| is_within_root(&track.path, ign)) {
-                            continue;
-                        }
-                        // 1:1 with LibraryIndexer.RefreshIndexedFilesAsync:
-                        // only non-empty references whose cache file vanished are
-                        // re-read here. Rows with no artwork are left alone (the
-                        // startup migration handles legacy NULL rows).
-                        let artwork_missing = track
-                            .artwork_path
-                            .as_deref()
-                            .map(|path| {
-                                !path.trim().is_empty() && !Path::new(path).exists()
-                            })
-                            .unwrap_or(false);
-                        if !artwork_missing || !Path::new(&track.path).exists() {
-                            continue;
-                        }
-                        batch.push(self.rebuild_track(track));
-                        if batch.len() >= 32 {
-                            if let Ok(count) = self.store.upsert_tracks(&batch) {
-                                changed += count;
+            // Fast path: check distinct artwork_path references first; only
+            // fetch track rows if any cached artwork file actually vanished.
+            if let Ok(refs) = self.store.artwork_refs() {
+                let missing: Vec<String> = refs
+                    .into_iter()
+                    .filter(|p| !p.trim().is_empty() && !Path::new(p).exists())
+                    .collect();
+                if !missing.is_empty() {
+                    if let Ok(affected_paths) = self.store.tracks_with_artwork_refs(&missing) {
+                        for track_path in affected_paths {
+                            if control.is_cancelled() {
+                                return changed;
                             }
-                            batch.clear();
-                            if let Some(cb) = progress.as_mut() {
-                                cb(&ScanProgress {
-                                    files_found: 0,
-                                    directories_visited: 0,
-                                    current_path: track.path.clone(),
-                                    indexed_tracks: changed as i32,
-                                });
+                            wait_if_paused(&control);
+                            let p = Path::new(&track_path);
+                            if !scan_roots.iter().any(|root| is_within_root(&track_path, root)) {
+                                continue;
+                            }
+                            if ignored_directories.iter().any(|ign| is_within_root(&track_path, ign)) {
+                                continue;
+                            }
+                            if !p.exists() {
+                                continue;
+                            }
+                            if let Ok(Some(track)) = self.store.get_track(&track_path) {
+                                batch.push(self.rebuild_track(&track));
+                                if batch.len() >= 32 {
+                                    if let Ok(count) = self.store.upsert_tracks(&batch) {
+                                        changed += count;
+                                    }
+                                    batch.clear();
+                                    if let Some(cb) = progress.as_mut() {
+                                        cb(&ScanProgress {
+                                            files_found: 0,
+                                            directories_visited: 0,
+                                            current_path: track_path.clone(),
+                                            indexed_tracks: changed as i32,
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
-                    if (page.len() as u32) < SCAN_PAGE_SIZE {
-                        break;
-                    }
-                    offset += SCAN_PAGE_SIZE;
                 }
             }
         }

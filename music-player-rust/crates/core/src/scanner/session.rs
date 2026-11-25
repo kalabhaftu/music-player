@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use super::scan::{normalize_path, root_prefix, ScanExcludedPathKind};
 use crate::db::LibraryStore;
 
-const SEEN_BATCH_SIZE: usize = 256;
+const SEEN_BATCH_SIZE: usize = 1024;
 
 struct CachedTrackState {
     size: i64,
@@ -28,6 +28,9 @@ pub struct LibraryScanSession {
     pending_seen_set: std::collections::HashSet<String>,
     pending_protected: Vec<(PathBuf, Option<ScanExcludedPathKind>)>,
     cached_state: HashMap<String, CachedTrackState>,
+    artwork_cache_prefix_backslash: Option<String>,
+    artwork_cache_prefix_slash: Option<String>,
+    existing_artwork_paths: Option<std::collections::HashSet<String>>,
     completed: bool,
 }
 
@@ -111,8 +114,30 @@ impl LibraryScanSession {
             pending_seen_set: std::collections::HashSet::new(),
             pending_protected: Vec::new(),
             cached_state,
+            artwork_cache_prefix_backslash: None,
+            artwork_cache_prefix_slash: None,
+            existing_artwork_paths: None,
             completed: false,
         })
+    }
+
+    fn ensure_artwork_snapshot(&mut self, artwork_cache: &Path) {
+        if self.existing_artwork_paths.is_some() {
+            return;
+        }
+        let cache_root = artwork_cache
+            .to_string_lossy()
+            .trim_end_matches(['/', '\\'])
+            .to_lowercase();
+        self.artwork_cache_prefix_backslash = Some(format!("{}\\", cache_root));
+        self.artwork_cache_prefix_slash = Some(format!("{}/", cache_root));
+        let mut set = std::collections::HashSet::new();
+        if let Ok(entries) = std::fs::read_dir(artwork_cache) {
+            for entry in entries.flatten() {
+                set.insert(entry.path().to_string_lossy().to_lowercase());
+            }
+        }
+        self.existing_artwork_paths = Some(set);
     }
 
     /// True when the file's size, mtime, lyrics flag, and cached artwork are
@@ -124,14 +149,10 @@ impl LibraryScanSession {
         modified_utc: DateTime<Utc>,
         artwork_cache: &Path,
     ) -> bool {
-        let full = path.to_string_lossy().to_string();
-        let key = full.to_lowercase();
-        let cache_root = artwork_cache
-            .to_string_lossy()
-            .trim_end_matches(['/', '\\'])
-            .to_lowercase();
+        self.ensure_artwork_snapshot(artwork_cache);
+        let full = path.to_string_lossy().to_lowercase();
 
-        if let Some(cached) = self.cached_state.get(&key) {
+        if let Some(cached) = self.cached_state.get(&full) {
             if cached.size != length as i64
                 || cached.modified != modified_utc
                 || cached.has_lyrics < 0
@@ -142,9 +163,22 @@ impl LibraryScanSession {
                 None => true,
                 Some(art) => {
                     let art = art.to_lowercase();
-                    (art.starts_with(&format!("{}\\", cache_root))
-                        || art.starts_with(&format!("{}/", cache_root)))
-                        && Path::new(&art).exists()
+                    let under_cache = self
+                        .artwork_cache_prefix_backslash
+                        .as_deref()
+                        .map(|p| art.starts_with(p))
+                        .unwrap_or(false)
+                        || self
+                            .artwork_cache_prefix_slash
+                            .as_deref()
+                            .map(|p| art.starts_with(p))
+                            .unwrap_or(false);
+                    under_cache
+                        && self
+                            .existing_artwork_paths
+                            .as_ref()
+                            .map(|set| set.contains(&art))
+                            .unwrap_or(false)
                 }
             }
         } else {
@@ -228,11 +262,12 @@ impl LibraryScanSession {
         let run_id = self.run_id;
         self.store.write(move |conn| {
             let tx = conn.transaction()?;
-            for path in batch {
-                tx.execute(
-                    "INSERT OR IGNORE INTO scan_seen(run_id, path) VALUES (?1, ?2)",
-                    params![run_id, path.to_string_lossy()],
-                )?;
+            {
+                let mut stmt =
+                    tx.prepare_cached("INSERT OR IGNORE INTO scan_seen(run_id, path) VALUES (?1, ?2)")?;
+                for path in batch {
+                    stmt.execute(params![run_id, path.to_string_lossy()])?;
+                }
             }
             tx.commit()?;
             Ok(())
