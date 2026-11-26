@@ -61,6 +61,7 @@ impl App {
         self.clear_stale_artwork();
         self.publish_about();
         self.publish_playback();
+        self.publish_appearance();
         {
             let max_bytes = self.settings.tag_backup_max_mb() * 1024 * 1024;
             std::thread::spawn(move || {
@@ -93,14 +94,64 @@ impl App {
     pub(crate) fn clear_stale_artwork(&mut self) {
         let store = self.store.clone();
         let cache = artwork_cache_dir();
+        let verify_embedded = self
+            .settings
+            .raw("artwork-embedded-verified-v1")
+            .as_deref()
+            != Some("true");
         let (tx, rx) = mpsc::channel();
         self.artwork_repair_rx = Some(rx);
         std::thread::spawn(move || {
             let _guard = music_player_core::ArtworkOperationGuard::new();
+            let engine = music_player_core::HybridMetadataEngine::new();
+            let mut repaired = 0usize;
+
+            // One-time cleanup: clear any track artwork_path entries that were
+            // inherited from other tracks (e.g. "Unknown Album" / shared folders)
+            // when the file itself embeds no artwork or embeds a different cover.
+            if verify_embedded {
+                if let Ok(existing) = store.tracks_with_artwork() {
+                    let mut to_clear: Vec<String> = Vec::new();
+                    let mut to_fix: Vec<(String, String)> = Vec::new();
+                    for (path, recorded) in existing {
+                        if !Path::new(&path).is_file() {
+                            continue;
+                        }
+                        if let Ok(tags) = engine.read_metadata(Path::new(&path), Some(&cache)) {
+                            match tags.artwork_path {
+                                None => to_clear.push(path),
+                                Some(real) if !real.eq_ignore_ascii_case(&recorded) => {
+                                    to_fix.push((path, real));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    if !to_clear.is_empty() {
+                        if let Ok(cleared) = store.clear_track_artworks(&to_clear) {
+                            repaired += cleared;
+                        }
+                    }
+                    if !to_fix.is_empty() {
+                        if let Ok(fixed) = store.set_track_artworks(&to_fix) {
+                            repaired += fixed;
+                        }
+                    }
+                }
+                let _ = store.set_setting("artwork-embedded-verified-v1", "true");
+            }
+
             let refs = match store.artwork_refs() {
                 Ok(refs) => refs,
                 Err(_) => {
-                    let _ = tx.send(0);
+                    let _ = tx.send(repaired);
+                    if repaired > 0 {
+                        let _ = slint::invoke_from_event_loop(|| {
+                            crate::with_app(|app| {
+                                app.poll_artwork_repair();
+                            });
+                        });
+                    }
                     return;
                 }
             };
@@ -119,14 +170,19 @@ impl App {
                 repair_paths.extend(paths);
             }
             if repair_paths.is_empty() {
-                let _ = tx.send(0);
+                let _ = tx.send(repaired);
+                if repaired > 0 {
+                    let _ = slint::invoke_from_event_loop(|| {
+                        crate::with_app(|app| {
+                            app.poll_artwork_repair();
+                        });
+                    });
+                }
                 return;
             }
 
             let mut seen = HashSet::new();
             repair_paths.retain(|path| seen.insert(path.to_lowercase()));
-            let engine = music_player_core::HybridMetadataEngine::new();
-            let mut repaired = 0usize;
             let mut batch: Vec<(String, String)> = Vec::with_capacity(64);
             for path in repair_paths {
                 if !Path::new(&path).is_file() {
@@ -193,13 +249,23 @@ impl App {
     }
 
     /// Applies background-decoded artwork. Only the currently visible view is
-    /// rebuilt, and only when at least one new image landed, throttled to prevent UI stutter.
+    /// rebuilt, and only when at least one new image landed. Debounced without
+    /// ever dropping pending frames so visible track covers always appear.
     pub(crate) fn poll_artwork_images(&mut self) {
-        let available = native_io::poll_artwork_images();
-        if available.is_empty() {
+        if self.last_artwork_refresh.elapsed() < Duration::from_millis(120) {
+            if !self.artwork_refresh_pending {
+                self.artwork_refresh_pending = true;
+                Timer::single_shot(Duration::from_millis(120), || {
+                    crate::with_app(|app| {
+                        app.artwork_refresh_pending = false;
+                        app.poll_artwork_images();
+                    });
+                });
+            }
             return;
         }
-        if self.last_artwork_refresh.elapsed() < Duration::from_millis(800) {
+        let available = native_io::poll_artwork_images();
+        if available.is_empty() {
             return;
         }
         self.last_artwork_refresh = Instant::now();
@@ -236,8 +302,9 @@ impl App {
             .bool_or(music_player_core::settings::keys::TRANSPARENT_WINDOW, false)
             && !self.ui.global::<State>().get_immersive_player_open();
         let caption_color: u32 = if transparent_backdrop {
-            // DWMWA_COLOR_DEFAULT lets Win11 render native translucent caption behind Acrylic.
-            0xFFFFFFFF
+            // DWMWA_COLOR_NONE omits Windows 11's extra solid caption fill so
+            // Desktop Acrylic renders seamlessly across titlebar and client area.
+            0xFFFFFFFE
         } else if let Some((r, g, b)) = custom_color {
             ((b as u32) << 16) | ((g as u32) << 8) | (r as u32)
         } else if light {
@@ -769,7 +836,7 @@ impl App {
         {
             self.settings.set_raw(
                 music_player_core::settings::keys::WINDOW_TRANSPARENCY,
-                "22",
+                "35",
             );
         }
         if name == "tag-backup-max-mb" {

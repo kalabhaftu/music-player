@@ -189,19 +189,21 @@ export component RightPanel inherits Rectangle {
             border-radius: 10px;
             clip: true;
             background: Palette.panel-2;
+            border-width: State.current-has-cover ? 0px : 1px;
+            border-color: Palette.border;
             if State.current-has-cover : Image {
                 source: State.current-cover;
                 width: parent.width;
                 height: parent.height;
                 image-fit: ImageFit.cover;
             }
-            if !State.current-has-cover : Text {
-                text: State.current-initials;
-                color: #ffffffcc;
-                font-size: 42px;
-                font-weight: 900;
-                vertical-alignment: center;
-                horizontal-alignment: center;
+            if !State.current-has-cover : Image {
+                source: @image-url("../../assets/icons/headphones-brand.svg");
+                width: parent.width * 0.44;
+                height: parent.height * 0.44;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: Palette.muted-2;
             }
         }
         if State.has-track : Rectangle {

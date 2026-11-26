@@ -185,7 +185,7 @@ export component PlayerBar inherits Rectangle {
                     maximum: 1.0;
                     value: State.progress;
                     fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
-                    track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                    track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #00000024 : #ffffff24);
                     thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
                     preview(val) => { Actions.preview-seek-fraction(val); }
                     finished(val) => { Actions.seek-fraction(val); }
@@ -236,24 +236,22 @@ export component PlayerBar inherits Rectangle {
                 drop-shadow-offset-y: 9px;
                 drop-shadow-blur: 24px;
                 drop-shadow-color: #00000052;
-                background: State.has-track && State.current-has-cover
-                    ? Palette.panel-2
-                    : (!State.has-track || State.current-id == ""
-                        ? @linear-gradient(150deg, #172019 0%, #243328 58%, #364a3b 100%)
-                        : State.current-badge-bg);
+                background: Palette.panel-2;
+                border-width: State.has-track && State.current-has-cover ? 0px : 1px;
+                border-color: Palette.border;
                 if State.has-track && State.current-has-cover : Image {
                     source: State.current-cover;
                     width: parent.width;
                     height: parent.height;
                     image-fit: ImageFit.cover;
                 }
-                if !State.has-track || !State.current-has-cover : Text {
-                    text: !State.has-track || State.current-initials == "" ? "MP" : State.current-initials;
-                    color: #ffffffcc;
-                    font-size: 20px;
-                    font-weight: 900;
-                    vertical-alignment: center;
-                    horizontal-alignment: center;
+                if !State.has-track || !State.current-has-cover : Image {
+                    source: @image-url("../../assets/icons/headphones-brand.svg");
+                    width: parent.width * 0.56;
+                    height: parent.height * 0.56;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.muted-2;
                 }
             }
             VerticalLayout {
@@ -404,7 +402,7 @@ export component PlayerBar inherits Rectangle {
                             maximum: 100.0;
                             value: State.volume;
                             fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
-                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #00000024 : #ffffff24);
                             thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
                             scrollable: true;
                             scroll-step: 4.0;

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <!-- Outer headband rim highlight (matches the neon band silhouette of MusicPlayer-dark.png) -->
+  <path d="M36 124C36 67 76 28 128 28C180 28 220 67 220 124" stroke="#ffffff" stroke-opacity="0.55" stroke-width="10" stroke-linecap="round"/>
+  <!-- Main headband arc -->
+  <path d="M46 124C46 76 82 42 128 42C174 42 210 76 210 124" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+  <!-- Left earcup outer shell & cushion -->
+  <rect x="28" y="122" width="46" height="84" rx="23" transform="rotate(-8 51 164)" fill="#ffffff"/>
+  <rect x="70" y="128" width="24" height="70" rx="12" transform="rotate(-8 82 163)" fill="#ffffff" fill-opacity="0.72"/>
+  <path d="M33 136C27 154 29 176 38 194" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+  <!-- Right earcup outer shell & cushion -->
+  <rect x="182" y="122" width="46" height="84" rx="23" transform="rotate(8 205 164)" fill="#ffffff"/>
+  <rect x="162" y="128" width="24" height="70" rx="12" transform="rotate(8 174 163)" fill="#ffffff" fill-opacity="0.72"/>
+  <path d="M223 136C229 154 227 176 218 194" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+</svg>

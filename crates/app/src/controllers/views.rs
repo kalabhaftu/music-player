@@ -230,23 +230,24 @@ impl App {
         self.seek_preview_ms = None;
         let mut track = track.clone();
 
-        // Ensure artwork is resolved if missing or pointing to nonexistent file
-        if track.artwork_path.as_deref().map(|p| !Path::new(p).exists()).unwrap_or(true) {
-            let found = if let Ok(Some(art)) = self.store.find_album_artwork(&track.album) {
-                Some(art)
-            } else if let Ok(Some(art)) = self.store.find_folder_artwork(&track.path) {
-                Some(art)
-            } else {
-                self.metadata_engine
-                    .read_metadata(Path::new(&track.path), Some(&artwork_cache_dir()))
-                    .ok()
-                    .and_then(|t| t.artwork_path)
-            };
-            if let Some(art) = found {
-                let _ = self.store.set_track_artwork(&track.path, Some(&art));
-                track.artwork_path = Some(art);
-                self.track_cache.insert(track.path.clone(), track.clone());
-                self.invalidate_view_caches();
+        // Always verify artwork directly against this track's own embedded
+        // audio metadata so tracks without album art never steal another song's
+        // cover and any previously persisted wrong artwork path heals immediately.
+        let mut artwork_changed = false;
+        if Path::new(&track.path).is_file() {
+            if let Ok(meta) = self
+                .metadata_engine
+                .read_metadata(Path::new(&track.path), Some(&artwork_cache_dir()))
+            {
+                if meta.artwork_path != track.artwork_path {
+                    let _ = self
+                        .store
+                        .set_track_artwork(&track.path, meta.artwork_path.as_deref());
+                    track.artwork_path = meta.artwork_path;
+                    self.track_cache.insert(track.path.clone(), track.clone());
+                    self.invalidate_view_caches();
+                    artwork_changed = true;
+                }
             }
         }
 
@@ -288,6 +289,10 @@ impl App {
         self.publish_appearance();
         self.publish_info(&track);
         self.load_lyrics(&track);
+        if artwork_changed {
+            self.publish_queue(false);
+            self.refresh_view();
+        }
     }
 
     pub(crate) fn publish_info(&mut self, track: &Track) {
@@ -639,7 +644,7 @@ impl App {
                     name: ss(name),
                     path: ss(r),
                     icon: ss(icon),
-                    track_count: self.store.count_tracks_in_folder(r).unwrap_or(0) as i32,
+                    track_count: self.store.count_tracks_under_root(r).unwrap_or(0) as i32,
                     is_available: Path::new(r).exists(),
                 }
             })

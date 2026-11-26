@@ -280,6 +280,26 @@ pub fn count_tracks_in_folder(conn: &Connection, folder: &str) -> Result<i64> {
     conn.query_row(query, [folder], |row| row.get(0))
 }
 
+/// Counts all available tracks anywhere beneath `root` (including subfolders).
+pub fn count_tracks_under_root(conn: &Connection, root: &str) -> Result<i64> {
+    let trimmed = root.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return Ok(0);
+    }
+    let escaped = trimmed
+        .replace('!', "!!")
+        .replace('%', "!%")
+        .replace('_', "!_");
+    let pattern_bs = format!("{}\\%", escaped);
+    let pattern_fs = format!("{}/%", escaped);
+    let query = if cfg!(windows) {
+        "SELECT COUNT(*) FROM tracks WHERE unavailable = 0 AND ((path LIKE ?1 ESCAPE '!' COLLATE NOCASE) OR (path LIKE ?2 ESCAPE '!' COLLATE NOCASE) OR musicplayer_directory(path) = ?3 COLLATE NOCASE)"
+    } else {
+        "SELECT COUNT(*) FROM tracks WHERE unavailable = 0 AND ((path LIKE ?1 ESCAPE '!') OR (path LIKE ?2 ESCAPE '!') OR musicplayer_directory(path) = ?3)"
+    };
+    conn.query_row(query, rusqlite::params![pattern_bs, pattern_fs, trimmed], |row| row.get(0))
+}
+
 pub fn get_album_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
     let mut stmt = conn.prepare(
         r#"
@@ -930,6 +950,36 @@ pub fn tracks_with_artwork_refs(conn: &Connection, refs: &[String]) -> Result<Ve
     Ok(paths)
 }
 
+/// Returns `(path, artwork_path)` for tracks that currently store a cached artwork reference.
+pub fn tracks_with_artwork(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, artwork_path FROM tracks WHERE artwork_path IS NOT NULL AND artwork_path != ''",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?));
+    }
+    Ok(out)
+}
+
+/// Clears persisted artwork references for tracks verified to have no embedded artwork.
+pub fn clear_track_artworks(conn: &Connection, paths: &[String]) -> Result<usize> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.unchecked_transaction()?;
+    let mut count = 0;
+    {
+        let mut stmt = tx.prepare("UPDATE tracks SET artwork_path = NULL WHERE path = ?1")?;
+        for path in paths {
+            count += stmt.execute(rusqlite::params![path])?;
+        }
+    }
+    tx.commit()?;
+    Ok(count)
+}
+
 /// Updates only the cached artwork reference for one track.
 pub fn set_track_artwork(conn: &Connection, path: &str, artwork: Option<&str>) -> Result<usize> {
     conn.execute(
@@ -939,9 +989,11 @@ pub fn set_track_artwork(conn: &Connection, path: &str, artwork: Option<&str>) -
 }
 
 /// Finds an existing valid cached artwork path for any track in the given album.
+/// Rejects blank and placeholder `"Unknown Album"` names so unrelated tracks
+/// never inherit another track's cover art.
 pub fn find_album_artwork(conn: &Connection, album: &str) -> Result<Option<String>> {
     let trimmed = album.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("Unknown Album") {
         return Ok(None);
     }
     let mut stmt = conn.prepare(
@@ -957,25 +1009,14 @@ pub fn find_album_artwork(conn: &Connection, album: &str) -> Result<Option<Strin
     Ok(None)
 }
 
-/// Finds an artwork path for a track by checking other tracks in the same parent folder,
-/// or looking for common cover image files on disk.
-pub fn find_folder_artwork(conn: &Connection, track_path: &str) -> Result<Option<String>> {
+/// Checks only explicit standalone cover image files inside the track's own
+/// directory (`cover.jpg`, `folder.jpg`, etc.). Never steals artwork from
+/// neighboring tracks in shared folders.
+pub fn find_folder_artwork(_conn: &Connection, track_path: &str) -> Result<Option<String>> {
     let p = Path::new(track_path);
     let Some(dir) = p.parent() else {
         return Ok(None);
     };
-    let dir_str = dir.to_string_lossy();
-    let prefix = format!("{}\\", dir_str.trim_end_matches('\\'));
-    let mut stmt = conn.prepare(
-        "SELECT artwork_path FROM tracks WHERE path LIKE (?1 || '%') AND artwork_path IS NOT NULL AND artwork_path != '' LIMIT 1",
-    )?;
-    let mut rows = stmt.query(rusqlite::params![prefix])?;
-    if let Some(row) = rows.next()? {
-        let path: String = row.get(0)?;
-        if Path::new(&path).exists() {
-            return Ok(Some(path));
-        }
-    }
     for name in &["cover.jpg", "folder.jpg", "cover.png", "folder.png", "front.jpg", "albumart.jpg"] {
         let candidate = dir.join(name);
         if candidate.is_file() {

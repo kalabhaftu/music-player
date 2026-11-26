@@ -287,7 +287,7 @@ impl PlayerSettings {
                     .or_else(|| value.as_f64().map(|f| f.round() as i64))
                     .or_else(|| value.as_str().and_then(|s| s.parse::<f64>().ok().map(|f| f.round() as i64)))
                     .unwrap_or(0)
-                    .clamp(0, 60);
+                    .clamp(0, 85);
                 self.set_raw(keys::WINDOW_TRANSPARENCY, &n.to_string());
                 keys::WINDOW_TRANSPARENCY
             }

@@ -355,11 +355,11 @@ struct ArtworkTask {
 struct ArtworkLoader {
     tx: crossbeam_channel::Sender<ArtworkTask>,
     rx: crossbeam_channel::Receiver<DecodedArtwork>,
-    pending: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
+    pending: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<PathBuf>>>,
     failed: std::sync::Mutex<std::collections::HashSet<PathBuf>>,
     /// Prevents a rebuild from immediately re-queuing a cover the LRU just
     /// evicted, which would otherwise decode forever on very long lists.
-    requested: std::sync::Mutex<HashMap<PathBuf, std::time::Instant>>,
+    requested: std::sync::Arc<std::sync::Mutex<HashMap<PathBuf, std::time::Instant>>>,
     generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -405,17 +405,27 @@ fn artwork_loader() -> &'static ArtworkLoader {
         let (tx, request_rx) = crossbeam_channel::unbounded::<ArtworkTask>();
         let (result_tx, result_rx) = crossbeam_channel::unbounded::<DecodedArtwork>();
         let generation = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let pending = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+        let requested = std::sync::Arc::new(std::sync::Mutex::new(HashMap::new()));
 
         for i in 0..ARTWORK_WORKERS {
             let rx = request_rx.clone();
             let tx = result_tx.clone();
             let gen = std::sync::Arc::clone(&generation);
+            let pending_ref = std::sync::Arc::clone(&pending);
+            let requested_ref = std::sync::Arc::clone(&requested);
             std::thread::Builder::new()
                 .name(format!("music-player-artwork-{}", i + 1))
                 .spawn(move || {
                     while let Ok(task) = rx.recv() {
                         // Fast cancellation check before doing file I/O & decode
                         if task.generation < gen.load(std::sync::atomic::Ordering::Acquire) {
+                            if let Ok(mut p) = pending_ref.lock() {
+                                p.remove(&task.path);
+                            }
+                            if let Ok(mut r) = requested_ref.lock() {
+                                r.remove(&task.path);
+                            }
                             continue;
                         }
                         let image = std::fs::read(&task.path)
@@ -424,6 +434,12 @@ fn artwork_loader() -> &'static ArtworkLoader {
 
                         // Check again after decode before queuing back to UI
                         if task.generation < gen.load(std::sync::atomic::Ordering::Acquire) {
+                            if let Ok(mut p) = pending_ref.lock() {
+                                p.remove(&task.path);
+                            }
+                            if let Ok(mut r) = requested_ref.lock() {
+                                r.remove(&task.path);
+                            }
                             continue;
                         }
 
@@ -456,9 +472,9 @@ fn artwork_loader() -> &'static ArtworkLoader {
         ArtworkLoader {
             tx,
             rx: result_rx,
-            pending: std::sync::Mutex::new(std::collections::HashSet::new()),
+            pending,
             failed: std::sync::Mutex::new(std::collections::HashSet::new()),
-            requested: std::sync::Mutex::new(HashMap::new()),
+            requested,
             generation,
         }
     })
@@ -467,7 +483,14 @@ fn artwork_loader() -> &'static ArtworkLoader {
 /// Increments artwork request generation to cancel pending decode tasks from previous views
 pub fn bump_artwork_generation() -> u64 {
     let loader = artwork_loader();
-    loader.generation.fetch_add(1, std::sync::atomic::Ordering::Release) + 1
+    let next = loader.generation.fetch_add(1, std::sync::atomic::Ordering::Release) + 1;
+    if let Ok(mut pending) = loader.pending.lock() {
+        pending.clear();
+    }
+    if let Ok(mut requested) = loader.requested.lock() {
+        requested.clear();
+    }
+    next
 }
 
 /// Returns cached artwork or queues a background decode. Use this for list
@@ -501,7 +524,7 @@ pub fn artwork_preview(path: &Path) -> Option<slint::Image> {
         }
         if let Ok(requested) = loader.requested.lock() {
             if let Some(previous) = requested.get(path) {
-                if now.duration_since(*previous) < std::time::Duration::from_secs(30) {
+                if now.duration_since(*previous) < std::time::Duration::from_secs(2) {
                     return None;
                 }
             }
@@ -510,7 +533,7 @@ pub fn artwork_preview(path: &Path) -> Option<slint::Image> {
     }
     if let Ok(mut requested) = loader.requested.lock() {
         if requested.len() > 8192 {
-            requested.retain(|_, at| now.duration_since(*at) < std::time::Duration::from_secs(30));
+            requested.retain(|_, at| now.duration_since(*at) < std::time::Duration::from_secs(2));
         }
         requested.insert(path.to_path_buf(), now);
     }

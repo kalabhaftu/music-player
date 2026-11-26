@@ -207,7 +207,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 height: self.width;
                                 border-radius: clamp(self.width * 0.055, 12px, 26px);
                                 clip: true;
-                                background: State.current-badge-bg;
+                                background: State.current-has-cover ? #141714 : #191c1a;
                                 border-width: 1px;
                                 border-color: #ffffff1e;
                                 drop-shadow-offset-y: 16px;
@@ -220,14 +220,13 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                     height: 100%;
                                     image-fit: ImageFit.cover;
                                 }
-                                if !State.current-has-cover : Text {
-                                    width: 100%;
-                                    text: State.current-initials;
-                                    color: #ffffffcc;
-                                    font-size: clamp(parent.width * 0.24, 24px, 72px);
-                                    font-weight: 900;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: center;
+                                if !State.current-has-cover : Image {
+                                    source: @image-url("../../assets/icons/headphones-brand.svg");
+                                    width: parent.width * 0.44;
+                                    height: parent.height * 0.44;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    colorize: #8c948c;
                                 }
                             }
                         }
@@ -299,7 +298,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 height: self.width;
                                 border-radius: clamp(self.width * 0.055, 12px, 24px);
                                 clip: true;
-                                background: State.current-badge-bg;
+                                background: State.current-has-cover ? #141714 : #191c1a;
                                 border-width: 1px;
                                 border-color: #ffffff1e;
                                 drop-shadow-offset-y: 16px;
@@ -312,14 +311,13 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                     height: 100%;
                                     image-fit: ImageFit.cover;
                                 }
-                                if !State.current-has-cover : Text {
-                                    width: 100%;
-                                    text: State.current-initials;
-                                    color: #ffffffcc;
-                                    font-size: clamp(parent.width * 0.24, 24px, 64px);
-                                    font-weight: 900;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: center;
+                                if !State.current-has-cover : Image {
+                                    source: @image-url("../../assets/icons/headphones-brand.svg");
+                                    width: parent.width * 0.44;
+                                    height: parent.height * 0.44;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    colorize: #8c948c;
                                 }
                             }
                         }
@@ -504,7 +502,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                             height: self.width;
                             border-radius: 14px;
                             clip: true;
-                            background: State.current-badge-bg;
+                            background: State.current-has-cover ? #141714 : #191c1a;
                             border-width: 1px;
                             border-color: #ffffff1e;
                             if State.current-has-cover : Image {
@@ -513,14 +511,13 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                                 height: 100%;
                                 image-fit: ImageFit.cover;
                             }
-                            if !State.current-has-cover : Text {
-                                width: 100%;
-                                text: State.current-initials;
-                                color: #ffffffcc;
-                                font-size: clamp(parent.width * 0.3, 18px, 42px);
-                                font-weight: 900;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
+                            if !State.current-has-cover : Image {
+                                source: @image-url("../../assets/icons/headphones-brand.svg");
+                                width: parent.width * 0.48;
+                                height: parent.height * 0.48;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                colorize: #8c948c;
                             }
                         }
 

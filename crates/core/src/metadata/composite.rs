@@ -34,7 +34,15 @@ impl MetadataAdapter for HybridMetadataEngine {
     fn read_metadata(&self, path: &Path, artwork_cache: Option<&Path>) -> Result<ExtractedTags, String> {
         // Try Lofty streaming parser first (does not load full file into memory)
         match self.lofty.read_metadata(path, artwork_cache) {
-            Ok(tags) => Ok(tags),
+            Ok(mut tags) => {
+                if artwork_cache.is_some() && tags.artwork_path.is_none() {
+                    let legacy = legacy_read_tags_in_cache(path, artwork_cache);
+                    if legacy.artwork_path.is_some() {
+                        tags.artwork_path = legacy.artwork_path;
+                    }
+                }
+                Ok(tags)
+            }
             Err(_) => {
                 // Fallback to legacy parser if Lofty encountered an unhandled container variant
                 let tags = legacy_read_tags_in_cache(path, artwork_cache);

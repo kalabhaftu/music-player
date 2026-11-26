@@ -7,21 +7,32 @@ import { ListView, ScrollView } from "std-widgets.slint";
 // Gradient classes c1..c10 from the original components.css.
 export global Palette {
     in property <float> background-opacity: State.transparent-window ? 1.0 - State.window-transparency * 0.01 : 1.0;
+    in property <float> popup-opacity: State.transparent-window ? max(0.90, background-opacity) : 1.0;
     in property <color> canvas: (State.artwork-palette ? State.art-background : (State.light-theme ? #f0f2ef : #070807)).with-alpha(background-opacity);
     in property <color> surface: (State.artwork-palette ? State.art-sidebar : (State.light-theme ? #e7eae6 : #090a09)).with-alpha(background-opacity);
     in property <color> main: (State.artwork-palette ? State.art-main : (State.light-theme ? #f0f2ef : #090a09)).with-alpha(background-opacity);
-    in property <color> panel: (State.artwork-palette ? State.art-panel : (State.light-theme ? #e7eae6 : #0e100f)).with-alpha(background-opacity);
-    in property <color> panel-2: (State.artwork-palette ? State.art-panel : (State.light-theme ? #dfe3de : #131614)).with-alpha(background-opacity);
-    in property <color> panel-3: (State.artwork-palette ? State.art-raised : (State.light-theme ? #d4d9d3 : #181b19)).with-alpha(background-opacity);
-    in property <color> raised: (State.artwork-palette ? State.art-raised : (State.light-theme ? #e3e6e2 : #171917)).with-alpha(background-opacity);
-    in property <color> hover: (State.artwork-palette ? State.art-hover : (State.light-theme ? #d9ded8 : #212421)).with-alpha(background-opacity);
-    in property <color> control: (State.artwork-palette ? State.art-control : (State.light-theme ? #dfe3de : #242724)).with-alpha(background-opacity);
+    in property <color> panel: (State.artwork-palette ? State.art-panel : (State.light-theme ? #e7eae6 : #0e100f)).with-alpha(popup-opacity);
+    in property <color> panel-2: State.transparent-window
+        ? (State.artwork-palette ? State.art-panel.with-alpha(0.28) : (State.light-theme ? #ffffff28 : #ffffff0c))
+        : (State.artwork-palette ? State.art-panel : (State.light-theme ? #dfe3de : #131614));
+    in property <color> panel-3: (State.artwork-palette ? State.art-raised : (State.light-theme ? #d4d9d3 : #181b19)).with-alpha(popup-opacity);
+    in property <color> raised: State.transparent-window
+        ? (State.artwork-palette ? State.art-raised.with-alpha(0.30) : (State.light-theme ? #00000009 : #ffffff0a))
+        : (State.artwork-palette ? State.art-raised : (State.light-theme ? #e3e6e2 : #171917));
+    in property <color> hover: State.transparent-window
+        ? (State.artwork-palette ? State.art-hover.with-alpha(0.44) : (State.light-theme ? #00000014 : #ffffff18))
+        : (State.artwork-palette ? State.art-hover : (State.light-theme ? #d9ded8 : #212421));
+    in property <color> control: State.transparent-window
+        ? (State.artwork-palette ? State.art-control.with-alpha(0.34) : (State.light-theme ? #0000000f : #ffffff12))
+        : (State.artwork-palette ? State.art-control : (State.light-theme ? #dfe3de : #242724));
     in property <color> text: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f7f8f6);
     in property <color> text-strong: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f2f4f1);
     in property <color> text-subtle: State.artwork-palette ? #e0dfd8 : (State.light-theme ? #343b34 : #cdd2cc);
     in property <color> muted: State.artwork-palette ? #d1d0c9 : (State.light-theme ? #545c54 : #a0a79f);
     in property <color> muted-2: State.artwork-palette ? #aaa9a2 : (State.light-theme ? #747c74 : #717970);
-    in property <color> row-hover: State.artwork-palette ? State.art-hover : (State.light-theme ? #e5e8e4 : #131613);
+    in property <color> row-hover: State.transparent-window
+        ? (State.artwork-palette ? State.art-hover.with-alpha(0.32) : (State.light-theme ? #0000000d : #ffffff10))
+        : (State.artwork-palette ? State.art-hover : (State.light-theme ? #e5e8e4 : #131613));
     in property <color> icon-muted: State.light-theme && !State.artwork-palette ? #727a72 : #939a93;
     in property <color> disabled: State.light-theme && !State.artwork-palette ? #aab2aa : #3a403a;
     in property <color> border: State.light-theme && !State.artwork-palette ? #1219121f : #ffffff14;
@@ -1643,7 +1654,9 @@ export component HeroDetail inherits Rectangle {
     min-height: 230px;
     border-radius: 12px;
     clip: true;
-    background: State.light-theme ? Palette.panel : #0e100e;
+    background: State.transparent-window
+        ? Palette.raised
+        : (State.light-theme && !State.artwork-palette ? Palette.panel : #0e100e);
     animate background { duration: 400ms; easing: ease-in-out; }
 
     // Blurred artwork backdrop behind the hero card (like immersive player & WebUI)
@@ -1654,22 +1667,24 @@ export component HeroDetail inherits Rectangle {
         width: parent.width * 1.25;
         height: parent.height * 1.45;
         image-fit: ImageFit.cover;
-        opacity: State.light-theme ? 0.14 : 0.26;
+        opacity: State.light-theme && !State.artwork-palette ? 0.14 : 0.26;
     }
     if !root.has-cover : Rectangle {
         width: 100%;
         height: 100%;
-        background: @linear-gradient(135deg, State.accent.with-alpha(0.24) 0%, #151815 60%, #0e100e 100%);
+        background: State.transparent-window
+            ? @linear-gradient(135deg, State.accent.with-alpha(0.16) 0%, transparent 65%)
+            : @linear-gradient(135deg, State.accent.with-alpha(0.24) 0%, (State.light-theme && !State.artwork-palette ? #e4e8e3 : #151815) 60%, (State.light-theme && !State.artwork-palette ? #dde2dc : #0e100e) 100%);
     }
 
     // Gradient overlay to keep text fully legible and contrast crisp
-    Rectangle {
+    if !State.transparent-window : Rectangle {
         width: 100%;
         height: 100%;
         background: @linear-gradient(90deg,
-            (State.light-theme ? #ffffffea : #0e100ef2) 0%,
-            (State.light-theme ? #ffffffd0 : #0e100ec0) 50%,
-            (State.light-theme ? #ffffff98 : #0e100e70) 100%
+            (State.light-theme && !State.artwork-palette ? #ffffffea : #0e100ef2) 0%,
+            (State.light-theme && !State.artwork-palette ? #ffffffd0 : #0e100ec0) 50%,
+            (State.light-theme && !State.artwork-palette ? #ffffff98 : #0e100e70) 100%
         );
     }
 
@@ -1702,14 +1717,26 @@ export component HeroDetail inherits Rectangle {
             drop-shadow-offset-y: 18px;
             drop-shadow-blur: 38px;
             drop-shadow-color: #0000006b;
-            background: @linear-gradient(150deg, Palette.ga(root.gradient) 0%, Palette.badge(root.gradient) 58%, Palette.gb(root.gradient) 100%);
+            background: (!root.has-cover && root.now-playing)
+                ? Palette.panel-2
+                : @linear-gradient(150deg, Palette.ga(root.gradient) 0%, Palette.badge(root.gradient) 58%, Palette.gb(root.gradient) 100%);
+            border-width: (!root.has-cover && root.now-playing) ? 1px : 0px;
+            border-color: Palette.border;
             if root.has-cover : Image {
                 source: root.cover;
                 width: parent.width;
                 height: parent.height;
                 image-fit: ImageFit.cover;
             }
-            if !root.has-cover : Text {
+            if !root.has-cover && root.now-playing : Image {
+                source: @image-url("../assets/icons/headphones-brand.svg");
+                width: parent.width * 0.48;
+                height: parent.height * 0.48;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: Palette.muted-2;
+            }
+            if !root.has-cover && !root.now-playing : Text {
                 text: root.initials != "" ? root.initials : root.title;
                 color: #ffffffe0;
                 font-size: clamp(State.window-width * 0.02px, 16px, 26px);
