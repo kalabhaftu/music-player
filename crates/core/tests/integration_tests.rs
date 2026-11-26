@@ -1943,6 +1943,7 @@ fn writer_backup_prune_keeps_five_and_restore_roundtrip() {
             ..Default::default()
         };
         editor.save(&file, &edit).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert_eq!(editor.list_backups(&file).len(), 5);
 

@@ -167,7 +167,11 @@ impl TagEditor {
             }
         }
 
-        backups.sort_by(|a, b| b.created_utc.cmp(&a.created_utc));
+        backups.sort_by(|a, b| {
+            b.created_utc
+                .cmp(&a.created_utc)
+                .then_with(|| b.backup_path.cmp(&a.backup_path))
+        });
         backups.truncate(BACKUP_RETENTION_PER_TRACK);
         backups
     }
@@ -504,13 +508,25 @@ pub fn clean_stale_temp_files(dir: &Path) {
     }
 }
 
+static LAST_TIMESTAMP_MILLIS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
 fn backup_stamp_now() -> String {
-    let now = Utc::now();
+    let now_ms = Utc::now().timestamp_millis();
+    let stamp_ms = loop {
+        let prev = LAST_TIMESTAMP_MILLIS.load(Ordering::Relaxed);
+        let next = if now_ms > prev { now_ms } else { prev + 1 };
+        if LAST_TIMESTAMP_MILLIS
+            .compare_exchange_weak(prev, next, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            break next;
+        }
+    };
+    let dt = DateTime::from_timestamp_millis(stamp_ms).unwrap_or_else(|| Utc::now());
     format!(
-        "{}-{}{:03}",
-        now.format("%Y%m%d-%H%M%S"),
-        "",
-        now.timestamp_subsec_millis()
+        "{}{:03}",
+        dt.format("%Y%m%d-%H%M%S"),
+        dt.timestamp_subsec_millis()
     )
 }
 
