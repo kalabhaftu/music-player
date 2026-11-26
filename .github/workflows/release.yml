@@ -42,6 +42,23 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Provision LibVLC 3.0.24 runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vlcDir = Join-Path $env:ProgramFiles 'VideoLAN\VLC'
+          $releaseDir = Join-Path $PWD 'target\release'
+          New-Item -ItemType Directory -Force -Path $vlcDir, $releaseDir | Out-Null
+          $zipPath = Join-Path $env:RUNNER_TEMP 'vlc-3.0.24-win64.zip'
+          $extractDir = Join-Path $env:RUNNER_TEMP 'vlc-extract'
+          Invoke-WebRequest -Uri 'https://get.videolan.org/vlc/3.0.24/win64/vlc-3.0.24-win64.zip' -OutFile $zipPath -UseBasicParsing
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+          $src = Join-Path $extractDir 'vlc-3.0.24'
+          foreach ($dest in @($vlcDir, $releaseDir)) {
+            Copy-Item -Path (Join-Path $src 'libvlc.dll'), (Join-Path $src 'libvlccore.dll') -Destination $dest -Force
+            Copy-Item -Path (Join-Path $src 'plugins') -Destination $dest -Recurse -Force
+          }
+
       - name: Run workspace tests
         run: cargo test --workspace
 

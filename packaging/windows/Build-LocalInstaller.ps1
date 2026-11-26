@@ -47,16 +47,7 @@ if (-not $Version) {
             $Version = [regex]::Match([IO.File]::ReadAllText($propsPath), '<Version>([^<]+)</Version>').Groups[1].Value
         }
     }
-}
-    }
-    if (-not $Version) {
-        $cargoPath = Join-Path $rustRoot 'crates\app\Cargo.toml'
-        if (Test-Path -LiteralPath $cargoPath) {
-            $cargoMatch = [regex]::Match([IO.File]::ReadAllText($cargoPath), '(?m)^version\s*=\s*"([^"]+)"')
-            if ($cargoMatch.Success) { $Version = $cargoMatch.Groups[1].Value }
-        }
-    }
-    if (-not $Version) { $Version = '1.0.4' }
+    if (-not $Version) { $Version = '2.0.0' }
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+') { throw "A valid MAJOR.MINOR.PATCH app version is required. Received: $Version" }
 
