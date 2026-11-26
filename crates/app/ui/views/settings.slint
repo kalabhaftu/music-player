@@ -149,7 +149,7 @@ component SettingsNavTab inherits Rectangle {
     height: 34px;
     border-radius: 8px;
     background: area.pressed || root.selected
-        ? (State.artwork-palette ? Palette.raised : (State.light-theme ? Palette.control : #262b26))
+        ? Palette.control
         : (area.has-hover ? Palette.hover : transparent);
     animate background { duration: 110ms; }
     area := TouchArea {
@@ -287,8 +287,8 @@ component SettingRangeRow inherits Rectangle {
                     minimum: root.minimum;
                     maximum: root.maximum;
                     value: root.value;
-                    fill-color: slider.hovered ? State.accent : #e2e6e1;
-                    track-color: #2e332f;
+                    fill-color: slider.hovered ? State.accent : (State.light-theme && !State.artwork-palette ? Palette.text-subtle : #e2e6e1);
+                    track-color: State.light-theme && !State.artwork-palette ? #00000024 : #ffffff24;
                     changed(v) => {
                         if root.enabled {
                             root.value = round(v);
@@ -772,12 +772,12 @@ export component SettingsView inherits Rectangle {
                         }
                         row-transparency := SettingRangeRow {
                             label: "Transparency";
-                            description: "0% is opaque. The player always remains at least 40% solid.";
+                            description: "0% is opaque. Higher values reveal more desktop acrylic behind the window.";
                             keywords: "acrylic mica blur glass opacity";
                             search-query: root.search-query;
                             value: State.window-transparency;
                             minimum: 0;
-                            maximum: 60;
+                            maximum: 85;
                             enabled: State.transparent-window;
                             setting: "window-transparency";
                         }

@@ -2903,3 +2903,81 @@ fn test_backup_directory_byte_cap_and_clear() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+#[test]
+fn test_artwork_isolation_and_root_track_counts() {
+    let dir = temp_dir("artwork_root_counts");
+    let art_file = dir.join("cover_cached.png");
+    std::fs::write(&art_file, b"fake-png-bytes").unwrap();
+    let art_str = art_file.to_string_lossy().to_string();
+
+    let store = LibraryStore::in_memory().unwrap();
+    let tracks = vec![
+        Track {
+            path: r"C:\RootA\direct.mp3".into(),
+            title: "Direct".into(),
+            artist: "Artist A".into(),
+            album: "Unknown Album".into(),
+            artwork_path: Some(art_str.clone()),
+            ..sample_track(r"C:\RootA\direct.mp3", "Direct", "Artist A", "Unknown Album")
+        },
+        Track {
+            path: r"C:\RootA\Sub\nested1.mp3".into(),
+            title: "Nested 1".into(),
+            artist: "Artist B".into(),
+            album: "Unknown Album".into(),
+            artwork_path: None,
+            ..sample_track(r"C:\RootA\Sub\nested1.mp3", "Nested 1", "Artist B", "Unknown Album")
+        },
+        Track {
+            path: r"C:\RootA\Sub\Deep\nested2.mp3".into(),
+            title: "Nested 2".into(),
+            artist: "Artist C".into(),
+            album: "Album X".into(),
+            artwork_path: None,
+            ..sample_track(r"C:\RootA\Sub\Deep\nested2.mp3", "Nested 2", "Artist C", "Album X")
+        },
+        Track {
+            path: r"C:\RootA\unavailable.mp3".into(),
+            title: "Offline".into(),
+            artist: "Artist D".into(),
+            album: "Offline".into(),
+            unavailable: true,
+            ..sample_track(r"C:\RootA\unavailable.mp3", "Offline", "Artist D", "Offline")
+        },
+        Track {
+            path: r"C:\RootA2\sibling.mp3".into(),
+            title: "Sibling".into(),
+            artist: "Artist E".into(),
+            album: "Sibling".into(),
+            ..sample_track(r"C:\RootA2\sibling.mp3", "Sibling", "Artist E", "Sibling")
+        },
+    ];
+    store.upsert_tracks(&tracks).unwrap();
+
+    // Unknown Album and shared parent folders must never leak artwork onto other tracks.
+    assert_eq!(store.find_album_artwork("Unknown Album").unwrap(), None);
+    assert_eq!(store.find_album_artwork("").unwrap(), None);
+    assert_eq!(
+        store.find_folder_artwork(r"C:\RootA\other_no_art.mp3").unwrap(),
+        None
+    );
+
+    // Direct folder count matches only the top directory; recursive root count includes subfolders
+    // while ignoring unavailable rows and similarly named sibling directories.
+    assert_eq!(store.count_tracks_in_folder(r"C:\RootA").unwrap(), 1);
+    assert_eq!(store.count_tracks_under_root(r"C:\RootA").unwrap(), 3);
+    assert_eq!(store.count_tracks_under_root(r"C:\RootA\").unwrap(), 3);
+    assert_eq!(store.count_tracks_under_root(r"C:\RootA2").unwrap(), 1);
+
+    // Clearing artwork references removes persisted paths cleanly.
+    let with_art = store.tracks_with_artwork().unwrap();
+    assert_eq!(with_art.len(), 1);
+    store
+        .clear_track_artworks(&[r"C:\RootA\direct.mp3".to_string()])
+        .unwrap();
+    assert!(store.tracks_with_artwork().unwrap().is_empty());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+

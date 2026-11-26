@@ -2,6 +2,13 @@
 
 Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming.
 
+## [Unreleased]
+
+- **Artwork Isolation & Repair:** Prevent tracks without embedded cover art from inheriting or persisting artwork from `"Unknown Album"` or neighboring files, add a one-time background verification to heal previously polluted artwork references, and fix async thumbnail decoding cancellations/throttles that could leave valid album covers blank.
+- **Branded Now Playing Fallback:** Replace placeholder initials in the Now Playing panel, Now Playing hero, Bottom Player Bar, and Immersive View with a monochrome Music Player headphones vector icon and fall back to the active default theme palette when no cover art is present (keeping letter badges in track/album lists).
+- **Library Root Track Counts:** Count all tracks recursively across subdirectories in the **Library folders** manager instead of counting only loose files in the top directory.
+- **Desktop Acrylic Transparency & Title Bar:** Replace stacked opaque card layers and hardcoded solid surfaces with translucent glass overlays when **Transparent window** is enabled, remove the mismatched Win11 caption fill (`DWMWA_COLOR_NONE`) in transparent mode, default newly enabled transparency to `35%`, and raise the maximum transparency slider cap to `85%`.
+
 ## [2.0.0]
 
 Major native rewrite in **Rust + Slint UI + LibVLC + SQLite**, replacing the legacy WinUI 3 / WebView2 host (archived under `legacy/`).

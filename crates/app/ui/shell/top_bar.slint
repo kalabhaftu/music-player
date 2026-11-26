@@ -33,7 +33,7 @@ export component TopBar inherits Rectangle {
                 icon: @image-url("../../assets/icons/panel-left.svg");
                 icon-size: 16px;
                 tint: Palette.muted;
-                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                rest-background: State.transparent-window || (State.light-theme && !State.artwork-palette) ? Palette.control : Palette.canvas;
                 tooltip: State.navigation-collapsed ? "Show sidebar" : "Hide sidebar";
                 clicked => { Actions.toggle-sidebar(); }
             }
@@ -46,7 +46,7 @@ export component TopBar inherits Rectangle {
                 icon: @image-url("../../assets/icons/chevron-left.svg");
                 icon-size: 16px;
                 tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
-                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                rest-background: State.transparent-window || (State.light-theme && !State.artwork-palette) ? Palette.control : Palette.canvas;
                 tooltip: "Back (Alt+Left)";
                 clicked => { if (State.can-go-back) { Actions.go-back(); } }
             }
@@ -60,7 +60,7 @@ export component TopBar inherits Rectangle {
                 icon: @image-url("../../assets/icons/chevron-right.svg");
                 icon-size: 16px;
                 tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
-                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                rest-background: State.transparent-window || (State.light-theme && !State.artwork-palette) ? Palette.control : Palette.canvas;
                 tooltip: "Forward (Alt+Right)";
                 clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
             }

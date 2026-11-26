@@ -68,12 +68,27 @@ impl MetadataAdapter for LoftyAdapter {
                 }
             }
 
-            // Embedded artwork extraction
+            // Embedded artwork extraction (check primary tag first, then all tags on container)
             if let Some(cache_dir) = artwork_cache {
-                let pictures = tag.pictures();
-                let front_cover = pictures.iter()
+                let mut front_cover = tag
+                    .pictures()
+                    .iter()
                     .find(|p| p.pic_type() == PictureType::CoverFront)
-                    .or_else(|| pictures.first());
+                    .or_else(|| tag.pictures().first());
+
+                if front_cover.is_none() {
+                    for extra_tag in tagged_file.tags() {
+                        let pics = extra_tag.pictures();
+                        if let Some(pic) = pics
+                            .iter()
+                            .find(|p| p.pic_type() == PictureType::CoverFront)
+                            .or_else(|| pics.first())
+                        {
+                            front_cover = Some(pic);
+                            break;
+                        }
+                    }
+                }
 
                 if let Some(pic) = front_cover {
                     let data = pic.data();

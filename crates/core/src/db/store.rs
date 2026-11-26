@@ -176,6 +176,11 @@ impl LibraryStore {
         tracks::count_tracks_in_folder(&conn, folder)
     }
 
+    pub fn count_tracks_under_root(&self, root: &str) -> Result<i64> {
+        let conn = self.read_conn()?;
+        tracks::count_tracks_under_root(&conn, root)
+    }
+
     pub fn get_album_groups(&self) -> Result<Vec<LibraryGroup>> {
         let conn = self.read_conn()?;
         tracks::get_album_groups(&conn)
@@ -442,6 +447,16 @@ impl LibraryStore {
         let path = path.to_string();
         let artwork = artwork.map(|s| s.to_string());
         self.write(move |conn| tracks::set_track_artwork(conn, &path, artwork.as_deref()))
+    }
+
+    pub fn tracks_with_artwork(&self) -> Result<Vec<(String, String)>> {
+        let conn = self.read_conn()?;
+        tracks::tracks_with_artwork(&conn)
+    }
+
+    pub fn clear_track_artworks(&self, paths: &[String]) -> Result<usize> {
+        let paths = paths.to_vec();
+        self.write(move |conn| tracks::clear_track_artworks(conn, &paths))
     }
 
     pub fn find_album_artwork(&self, album: &str) -> Result<Option<String>> {

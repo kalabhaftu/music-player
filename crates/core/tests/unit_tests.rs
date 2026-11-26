@@ -176,6 +176,12 @@ fn test_update_web_setting_numeric_and_hex() {
     assert!(settings.update_web_setting("windowTransparency", &json!(35)).is_ok());
     assert_eq!(settings.int_or(keys::WINDOW_TRANSPARENCY, 0), 35);
 
+    assert!(settings.update_web_setting("windowTransparency", &json!(85)).is_ok());
+    assert_eq!(settings.int_or(keys::WINDOW_TRANSPARENCY, 0), 85);
+
+    assert!(settings.update_web_setting("windowTransparency", &json!(120)).is_ok());
+    assert_eq!(settings.int_or(keys::WINDOW_TRANSPARENCY, 0), 85);
+
     assert!(settings.update_web_setting("accentColor", &json!("59d7ff")).is_ok());
     assert_eq!(settings.raw(keys::ACCENT_COLOR).as_deref(), Some("#59d7ff"));
 }
