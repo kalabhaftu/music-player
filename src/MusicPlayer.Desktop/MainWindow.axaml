@@ -1,0 +1,840 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MusicPlayer.Desktop.ViewModels"
+        xmlns:models="using:MusicPlayer.Desktop.Models"
+        x:Class="MusicPlayer.Desktop.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Music Player"
+        Width="1280" Height="800"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}">
+
+    <Grid RowDefinitions="*,88">
+        <!-- 1. MAIN APP WORKSPACE (Sidebar, Content, Right Panel) -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+            
+            <!-- LEFT SIDEBAR (232px) -->
+            <Border Grid.Column="0" 
+                    Width="232" 
+                    Background="{StaticResource SidebarBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="0,0,1,0"
+                    IsVisible="{Binding IsSidebarExpanded}">
+                <DockPanel LastChildFill="True" Margin="14,16,14,14">
+                    <!-- Brand -->
+                    <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="6,4,6,22">
+                        <TextBlock Text="Music Player" FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextBrush}" />
+                        <TextBlock Text="LOCAL LIBRARY" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" LetterSpacing="1.2" />
+                    </StackPanel>
+
+                    <!-- Navigation Items -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="18">
+                            <!-- DISCOVER -->
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="DISCOVER" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" Margin="8,0,0,4" LetterSpacing="0.8" />
+                                <Button Classes="nav-item" Classes.active="{Binding IsFavoritesActive}" Click="OnFavoritesClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconHeart}" Width="15" Height="15" />
+                                        <TextBlock Text="Favorites" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Classes.active="{Binding IsSearchActive}" Click="OnSearchNavClicked">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Width="184">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+                                            <Path Classes="icon" Data="{StaticResource IconSearch}" Width="15" Height="15" />
+                                            <TextBlock Text="Search" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <Border Grid.Column="2" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="4" Padding="5,1" VerticalAlignment="Center">
+                                            <TextBlock Text="Ctrl K" FontSize="9" Foreground="{StaticResource TextMuted2Brush}" />
+                                        </Border>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- YOUR LIBRARY -->
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="YOUR LIBRARY" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" Margin="8,0,0,4" LetterSpacing="0.8" />
+                                <Button Classes="nav-item" Classes.active="{Binding IsSongsActive}" Click="OnSongsClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconMusic}" Width="15" Height="15" />
+                                        <TextBlock Text="Songs" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Classes.active="{Binding IsAlbumsActive}" Click="OnAlbumsClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconDisc}" Width="15" Height="15" />
+                                        <TextBlock Text="Albums" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Classes.active="{Binding IsArtistsActive}" Click="OnArtistsClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconUsers}" Width="15" Height="15" />
+                                        <TextBlock Text="Artists" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Click="OnSongsClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconTag}" Width="15" Height="15" />
+                                        <TextBlock Text="Genres" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Classes.active="{Binding IsRecentlyAddedActive}" Click="OnRecentlyAddedClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconSpark}" Width="15" Height="15" />
+                                        <TextBlock Text="Recently Added" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- MANAGE -->
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="MANAGE" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" Margin="8,0,0,4" LetterSpacing="0.8" />
+                                <Button Classes="nav-item" Classes.active="{Binding IsPlaylistsActive}" Click="OnPlaylistsClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconList}" Width="15" Height="15" />
+                                        <TextBlock Text="Playlists" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="nav-item" Classes.active="{Binding IsFoldersActive}" Click="OnFoldersClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Path Classes="icon" Data="{StaticResource IconFolder}" Width="15" Height="15" />
+                                        <TextBlock Text="Folders" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- MAIN CENTER CONTENT -->
+            <Grid Grid.Column="1" RowDefinitions="56,*" Background="{StaticResource MainSurfaceBrush}">
+                <!-- Topbar (56px) -->
+                <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,0">
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,360,*,Auto,Auto">
+                        <!-- Sidebar toggle button -->
+                        <Button Grid.Column="0" Classes="icon-btn" Click="OnToggleSidebarClicked" ToolTip.Tip="Toggle sidebar">
+                            <Path Classes="icon" Data="{StaticResource IconPanelLeft}" Width="16" Height="16" />
+                        </Button>
+
+                        <!-- Back / Forward -->
+                        <Button Grid.Column="1" Classes="icon-btn" Margin="4,0,0,0" ToolTip.Tip="Back">
+                            <Path Classes="icon" Data="{StaticResource IconChevronLeft}" Width="15" Height="15" />
+                        </Button>
+                        <Button Grid.Column="2" Classes="icon-btn" Margin="2,0,10,0" ToolTip.Tip="Forward">
+                            <Path Classes="icon" Data="{StaticResource IconChevronRight}" Width="15" Height="15" />
+                        </Button>
+
+                        <!-- Search input box -->
+                        <Border Grid.Column="3" Background="{StaticResource SurfaceControlBrush}" CornerRadius="10" Height="36" Padding="10,0">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Path Grid.Column="0" Classes="icon" Data="{StaticResource IconSearch}" Width="14" Height="14" Stroke="{StaticResource TextMuted2Brush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox Grid.Column="1" 
+                                         Watermark="Search songs, artists, albums, playlists…" 
+                                         Text="{Binding SearchQuery}" 
+                                         Background="Transparent" 
+                                         BorderThickness="0" 
+                                         FontSize="12"
+                                         VerticalAlignment="Center"
+                                         Foreground="{StaticResource TextBrush}" />
+                                <Border Grid.Column="2" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="4" Padding="5,2" VerticalAlignment="Center">
+                                    <TextBlock Text="Ctrl K" FontSize="9" Foreground="{StaticResource TextMuted2Brush}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- Spacer -->
+                        <Panel Grid.Column="4" />
+
+                        <!-- Right Now Playing Panel Toggle -->
+                        <Button Grid.Column="5" Classes="icon-btn" Click="OnToggleRightPanelClicked" ToolTip.Tip="Now Playing panel">
+                            <Path Classes="icon" Data="{StaticResource IconQueue}" Width="16" Height="16" />
+                        </Button>
+
+                        <!-- More Menu Button -->
+                        <Button Grid.Column="6" Classes="icon-btn" Margin="4,0,0,0" ToolTip.Tip="More">
+                            <Path Classes="icon" Data="{StaticResource IconMore}" Width="16" Height="16" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Dynamic Content Views -->
+                <Grid Grid.Row="1" Margin="24,20">
+                    
+                    <!-- 1. PLAYLISTS VIEW (1:1 Replica of Image 1) -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding IsPlaylistsActive}">
+                        <StackPanel Spacing="28">
+                            <!-- Page Header -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Playlists" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                    <TextBlock Text="Your playlists are stored on this PC." FontSize="13" Foreground="{StaticResource TextMutedBrush}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Button Classes="action-secondary" Content="Import M3U / M3U8" />
+                                    <Button Classes="action-primary" Content="+ New playlist" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Smart Playlists Section -->
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Smart playlists" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                
+                                <ItemsControl ItemsSource="{Binding SmartPlaylists}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:UiPlaylist">
+                                            <Button Background="Transparent" Padding="0" Margin="0,0,16,16" CornerRadius="14" Click="OnPlayPlaylistClicked">
+                                                <Border Width="190" Height="220" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="14" Padding="12">
+                                                    <StackPanel Spacing="10">
+                                                        <!-- Monogram Cover Art Tile -->
+                                                        <Border Width="166" Height="140" Background="{Binding CoverBrush}" CornerRadius="10">
+                                                            <TextBlock Text="{Binding Initials}" 
+                                                                       FontSize="36" 
+                                                                       FontWeight="Black" 
+                                                                       Foreground="White" 
+                                                                       Opacity="0.9"
+                                                                       HorizontalAlignment="Center" 
+                                                                       VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <!-- Meta -->
+                                                        <StackPanel Spacing="2">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Your Playlists Section -->
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Your playlists" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                <ItemsControl ItemsSource="{Binding Playlists}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:UiPlaylist">
+                                            <Border Width="190" Height="220" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="14" Padding="12" Margin="0,0,16,16">
+                                                <StackPanel Spacing="10">
+                                                    <Border Width="166" Height="140" Background="{Binding CoverBrush}" CornerRadius="10">
+                                                        <TextBlock Text="{Binding Initials}" FontSize="36" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding CountFormatted}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 2. SONGS / FAVORITES / SEARCH / RECENTLY ADDED VIEW -->
+                    <DockPanel LastChildFill="True">
+                        <DockPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="!IsPlaylistsActive" />
+                                <Binding Path="!IsAlbumsActive" />
+                                <Binding Path="!IsArtistsActive" />
+                                <Binding Path="!IsLyricsActive" />
+                            </MultiBinding>
+                        </DockPanel.IsVisible>
+
+                        <!-- View Header -->
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="{Binding ViewTitle}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Text="{Binding ViewSubtitle}" FontSize="13" Foreground="{StaticResource TextMutedBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Button Classes="action-lime" Click="OnPlayAllClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Path Classes="icon-fill" Data="{StaticResource IconPlay}" Width="12" Height="12" Fill="{StaticResource AccentInkBrush}" Margin="2,0,0,0" />
+                                        <TextBlock Text="Play all" FontWeight="Bold" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="action-secondary" Click="OnShuffleAllClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Path Classes="icon" Data="{StaticResource IconShuffle}" Width="14" Height="14" Stroke="{StaticResource TextBrush}" />
+                                        <TextBlock Text="Shuffle" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Column Headers Table -->
+                        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="12,8" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="36,*,*,70,40">
+                                <TextBlock Grid.Column="0" Text="#" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Title" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Album" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Time" HorizontalAlignment="Right" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="4" Text="" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Song ListBox with Virtualization -->
+                        <ListBox ItemsSource="{Binding Tracks}" 
+                                 Background="Transparent" 
+                                 DoubleTapped="OnTrackDoubleTapped">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:UiTrack">
+                                    <Grid ColumnDefinitions="36,*,*,70,40" VerticalAlignment="Center">
+                                        <!-- Track # -->
+                                        <TextBlock Grid.Column="0" Text="{Binding DisplayTrackNumber}" Foreground="{StaticResource TextMuted2Brush}" VerticalAlignment="Center" FontSize="12" />
+
+                                        <!-- Title + Artist with 36x36 Thumbnail -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="36,*" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <!-- Cover Art / Initials -->
+                                            <Border Grid.Column="0" Width="36" Height="36" CornerRadius="4" ClipToBounds="True">
+                                                <Panel>
+                                                    <Image Source="{Binding ArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasArtwork}" />
+                                                    <Border Background="{Binding CoverBrush}" IsVisible="{Binding !HasArtwork}">
+                                                        <TextBlock Text="{Binding Initials}" FontSize="12" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                </Panel>
+                                            </Border>
+
+                                            <!-- Text Meta -->
+                                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Artist}" Foreground="{StaticResource TextMutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Album -->
+                                        <TextBlock Grid.Column="2" Text="{Binding Album}" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+
+                                        <!-- Duration -->
+                                        <TextBlock Grid.Column="3" Text="{Binding DurationFormatted}" HorizontalAlignment="Right" Foreground="{StaticResource TextMuted2Brush}" VerticalAlignment="Center" FontSize="12" />
+
+                                        <!-- Heart Favorite Button -->
+                                        <Button Grid.Column="4" Classes="icon-btn" HorizontalAlignment="Right" Click="OnTrackHeartClicked">
+                                            <Panel>
+                                                <Path Classes="icon" Data="{StaticResource IconHeart}" Width="14" Height="14" IsVisible="{Binding !IsFavorite}" />
+                                                <Path Classes="icon-fill" Data="{StaticResource IconHeart}" Width="14" Height="14" Fill="{StaticResource AccentBrush}" IsVisible="{Binding IsFavorite}" />
+                                            </Panel>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <!-- 3. ALBUMS GRID VIEW -->
+                    <DockPanel LastChildFill="True" IsVisible="{Binding IsAlbumsActive}">
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding ViewTitle}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,16" />
+                        
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Albums}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:UiAlbum">
+                                        <Border Width="176" Height="236" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="12" Margin="0,0,16,16" Padding="12">
+                                            <StackPanel Spacing="8">
+                                                <!-- Cover with Play FAB -->
+                                                <Grid Width="152" Height="152">
+                                                    <Border CornerRadius="8" ClipToBounds="True">
+                                                        <Panel>
+                                                            <Image Source="{Binding ArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasArtwork}" />
+                                                            <Border Background="{Binding CoverBrush}" IsVisible="{Binding !HasArtwork}">
+                                                                <TextBlock Text="{Binding Initials}" FontSize="36" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                            </Border>
+                                                        </Panel>
+                                                    </Border>
+                                                    <!-- Hover Play Button -->
+                                                    <Button Classes="play-fab" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,8,8" Click="OnPlayAlbumClicked">
+                                                        <Path Classes="icon-fill" Data="{StaticResource IconPlay}" Width="13" Height="13" Margin="2,0,0,0" Fill="{StaticResource AccentInkBrush}" />
+                                                    </Button>
+                                                </Grid>
+                                                <!-- Album Info -->
+                                                <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Artist}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+
+                    <!-- 4. ARTISTS GRID VIEW -->
+                    <DockPanel LastChildFill="True" IsVisible="{Binding IsArtistsActive}">
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding ViewTitle}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,16" />
+                        
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Artists}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:UiArtist">
+                                        <Border Width="170" Height="220" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="12" Margin="0,0,16,16" Padding="12">
+                                            <StackPanel Spacing="10" HorizontalAlignment="Center">
+                                                <!-- Circular Avatar -->
+                                                <Border Width="130" Height="130" CornerRadius="65" Background="{Binding CoverBrush}">
+                                                    <TextBlock Text="{Binding Initials}" FontSize="32" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding SummaryFormatted}" FontSize="11" Foreground="{StaticResource TextMuted2Brush}" HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+
+                    <!-- 5. MAIN LYRICS VIEW (1:1 Replica of Image 2) -->
+                    <DockPanel LastChildFill="True" IsVisible="{Binding IsLyricsActive}">
+                        <!-- Top Lyrics Header -->
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,20">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Lyrics" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Text="{Binding CurrentSubtitle}" FontSize="13" Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock Text="Lyrics source · LRCLIB (online) · Select a timed line to seek" FontSize="11" Foreground="{StaticResource TextMuted2Brush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Button Classes="action-secondary" Content="Edit lyrics" />
+                                <Button Classes="action-secondary" Content="Find lyrics" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Synced Lyrics Content with Floating Jump Button -->
+                        <Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding LyricsLines}" Margin="0,24">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:LyricLine">
+                                            <Border Padding="16,10" Background="Transparent" Tapped="OnLyricLineTapped">
+                                                <TextBlock Text="{Binding Text}" 
+                                                           FontSize="26" 
+                                                           FontWeight="Bold" 
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center">
+                                                    <TextBlock.Foreground>
+                                                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                                                            <Binding Path="IsActive" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Foreground>
+                                                    <TextBlock.Styles>
+                                                        <Style Selector="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextMuted2Brush}" />
+                                                            <Setter Property="Opacity" Value="0.6" />
+                                                        </Style>
+                                                        <Style Selector="TextBlock.active">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                                            <Setter Property="Opacity" Value="1.0" />
+                                                        </Style>
+                                                    </TextBlock.Styles>
+                                                    <Classes.active>
+                                                        <Binding Path="IsActive" />
+                                                    </Classes.active>
+                                                </TextBlock>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <!-- Floating Round Jump To Current Button (matching Image 2) -->
+                            <Button Classes="action-secondary" 
+                                    Width="44" Height="44" 
+                                    CornerRadius="22" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Bottom" 
+                                    Margin="0,0,0,24"
+                                    Click="OnJumpToCurrentLyricClicked"
+                                    ToolTip.Tip="Jump to current">
+                                <Path Classes="icon" Data="{StaticResource IconSync}" Width="16" Height="16" Stroke="{StaticResource TextBrush}" />
+                            </Button>
+                        </Grid>
+                    </DockPanel>
+
+                </Grid>
+            </Grid>
+
+            <!-- RIGHT NOW PLAYING PANEL (294px) -->
+            <Border Grid.Column="2" 
+                    Width="294" 
+                    Background="{StaticResource RightSurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1,0,0,0"
+                    IsVisible="{Binding IsRightPanelExpanded}">
+                <DockPanel LastChildFill="True" Margin="16,16,16,16">
+                    <!-- Heading -->
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+                        <TextBlock Grid.Column="0" Text="Now playing" FontWeight="Bold" FontSize="15" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="icon-btn" Click="OnToggleRightPanelClicked" ToolTip.Tip="Close panel">
+                            <Path Classes="icon" Data="{StaticResource IconClose}" Width="14" Height="14" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Large Artwork Cover Tile -->
+                    <Border DockPanel.Dock="Top" Width="262" Height="262" CornerRadius="12" ClipToBounds="True" Margin="0,0,0,14">
+                        <Panel>
+                            <Image Source="{Binding CurrentArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding CurrentHasArtwork}" />
+                            <Border Background="{Binding CurrentCoverBrush}" IsVisible="{Binding !CurrentHasArtwork}">
+                                <TextBlock Text="{Binding CurrentInitials}" FontSize="64" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Panel>
+                    </Border>
+
+                    <!-- Track Info + Heart -->
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" FontSize="15" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding CurrentSubtitle}" FontSize="12" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="icon-btn" Click="OnFavoriteClicked" VerticalAlignment="Top">
+                            <Panel>
+                                <Path Classes="icon" Data="{StaticResource IconHeart}" Width="15" Height="15" IsVisible="{Binding !CurrentTrackIsFavorite}" />
+                                <Path Classes="icon-fill" Data="{StaticResource IconHeart}" Width="15" Height="15" Fill="{StaticResource AccentBrush}" IsVisible="{Binding CurrentTrackIsFavorite}" />
+                            </Panel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Tabs: Queue | Track info -->
+                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Margin="0,0,0,12">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <Button Classes="tab-btn" Classes.active="{Binding IsQueueTabActive}" Click="OnRightPanelQueueClicked" Content="Queue" />
+                            <Button Classes="tab-btn" Classes.active="{Binding IsTrackInfoTabActive}" Click="OnRightPanelInfoClicked" Content="Track info" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Queue Tab Content -->
+                    <DockPanel LastChildFill="True" IsVisible="{Binding IsQueueTabActive}">
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <TextBlock Grid.Column="0" Text="{Binding Queue.Count, StringFormat='Next in queue ({0})'}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
+                            <Button Grid.Column="1" Classes="icon-btn" Width="48" Height="24" Content="Clear" FontSize="11" Click="OnClearQueueClicked" />
+                        </Grid>
+                        <ListBox ItemsSource="{Binding Queue}" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:UiTrack">
+                                    <Grid ColumnDefinitions="36,*,Auto" Margin="0,2">
+                                        <!-- Mini Thumb -->
+                                        <Border Grid.Column="0" Width="36" Height="36" CornerRadius="4" ClipToBounds="True">
+                                            <Panel>
+                                                <Image Source="{Binding ArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasArtwork}" />
+                                                <Border Background="{Binding CoverBrush}" IsVisible="{Binding !HasArtwork}">
+                                                    <TextBlock Text="{Binding Initials}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                            </Panel>
+                                        </Border>
+                                        <!-- Meta -->
+                                        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Artist}" FontSize="10" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding DurationFormatted}" FontSize="11" Foreground="{StaticResource TextMuted2Brush}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <!-- Track Info Tab Content -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding IsTrackInfoTabActive}">
+                        <StackPanel Spacing="12">
+                            <Border Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Title" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" />
+                                    <TextBlock Text="{Binding CurrentTitle}" FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                    <Separator Background="{StaticResource LineBrush}" Height="1" />
+                                    <TextBlock Text="Artist" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" />
+                                    <TextBlock Text="{Binding CurrentArtist}" FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                    <Separator Background="{StaticResource LineBrush}" Height="1" />
+                                    <TextBlock Text="Album" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted2Brush}" />
+                                    <TextBlock Text="{Binding CurrentAlbum}" FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- 2. BOTTOM PLAYER BAR (88px) (1:1 Replica of Image 1) -->
+        <Border Grid.Row="1" 
+                Background="{StaticResource PlayerSurfaceBrush}" 
+                BorderBrush="{StaticResource LineBrush}" 
+                BorderThickness="0,1,0,0"
+                Padding="16,0">
+            <Grid ColumnDefinitions="280,*,260" VerticalAlignment="Center">
+                
+                <!-- Left: Current Track Thumbnail & Meta -->
+                <Grid Grid.Column="0" ColumnDefinitions="56,*,Auto" VerticalAlignment="Center">
+                    <!-- Artwork Thumb (56x56 rounded 6px) -->
+                    <Border Grid.Column="0" Width="56" Height="56" CornerRadius="6" ClipToBounds="True">
+                        <Panel>
+                            <Image Source="{Binding CurrentArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding CurrentHasArtwork}" />
+                            <Border Background="{Binding CurrentCoverBrush}" IsVisible="{Binding !CurrentHasArtwork}">
+                                <TextBlock Text="{Binding CurrentInitials}" FontSize="18" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Panel>
+                    </Border>
+
+                    <!-- Meta -->
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="{Binding CurrentTitle}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding CurrentSubtitle}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- Heart Favorite Button -->
+                    <Button Grid.Column="2" Classes="icon-btn" Margin="8,0,0,0" Click="OnFavoriteClicked" ToolTip.Tip="Favorite">
+                        <Panel>
+                            <Path Classes="icon" Data="{StaticResource IconHeart}" Width="15" Height="15" IsVisible="{Binding !CurrentTrackIsFavorite}" />
+                            <Path Classes="icon-fill" Data="{StaticResource IconHeart}" Width="15" Height="15" Fill="{StaticResource AccentBrush}" IsVisible="{Binding CurrentTrackIsFavorite}" />
+                        </Panel>
+                    </Button>
+                </Grid>
+
+                <!-- Center: Playback Controls & Timeline -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6" Margin="24,0">
+                    <!-- Control buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="14">
+                        <Button Classes="player-btn" Classes.active="{Binding Shuffle}" Click="OnShuffleClicked" ToolTip.Tip="Shuffle">
+                            <Path Classes="icon" Data="{StaticResource IconShuffle}" Width="15" Height="15" />
+                        </Button>
+                        <Button Classes="player-btn" Click="OnPreviousClicked" ToolTip.Tip="Previous track">
+                            <Path Classes="icon-fill" Data="{StaticResource IconSkipBack}" Width="14" Height="14" />
+                        </Button>
+                        <Button Classes="play-main" Click="OnPlayPauseClicked" ToolTip.Tip="Play / Pause">
+                            <Panel>
+                                <Path Classes="icon-fill" Data="{StaticResource IconPlay}" Width="14" Height="14" Margin="2,0,0,0" Fill="#0A0B0A" IsVisible="{Binding !IsPlaying}" />
+                                <Path Classes="icon-fill" Data="{StaticResource IconPause}" Width="14" Height="14" Fill="#0A0B0A" IsVisible="{Binding IsPlaying}" />
+                            </Panel>
+                        </Button>
+                        <Button Classes="player-btn" Click="OnNextClicked" ToolTip.Tip="Next track">
+                            <Path Classes="icon-fill" Data="{StaticResource IconSkipForward}" Width="14" Height="14" />
+                        </Button>
+                        <Button Classes="player-btn" Classes.active="{Binding IsRepeatActive}" Click="OnRepeatClicked" ToolTip.Tip="{Binding RepeatText}">
+                            <Path Classes="icon" Data="{StaticResource IconRepeat}" Width="15" Height="15" />
+                        </Button>
+                        <Button Classes="player-btn" ToolTip.Tip="A–B repeat off">
+                            <TextBlock Text="A–B" FontSize="10" FontWeight="Bold" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Timeline -->
+                    <Grid ColumnDefinitions="45,*,45" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="{Binding PositionFormatted}" Foreground="{StaticResource TextMuted2Brush}" FontSize="10" HorizontalAlignment="Right" />
+                        <Slider Grid.Column="1" 
+                                Margin="10,0" 
+                                Minimum="0" 
+                                Maximum="{Binding DurationSeconds}" 
+                                Value="{Binding PositionSeconds}" 
+                                PointerCaptureLost="OnSeekPointerReleased" />
+                        <TextBlock Grid.Column="2" Text="{Binding DurationFormatted}" Foreground="{StaticResource TextMuted2Brush}" FontSize="10" HorizontalAlignment="Left" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- Right: Volume, Lyrics, Fullscreen -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="6">
+                    <!-- Lyrics Toggle -->
+                    <Button Classes="icon-btn" Classes.active="{Binding IsLyricsActive}" Click="OnLyricsClicked" ToolTip.Tip="Lyrics">
+                        <Path Classes="icon" Data="{StaticResource IconLyrics}" Width="15" Height="15" />
+                    </Button>
+
+                    <!-- Queue Toggle -->
+                    <Button Classes="icon-btn" Click="OnToggleRightPanelClicked" ToolTip.Tip="Queue">
+                        <Path Classes="icon" Data="{StaticResource IconQueue}" Width="15" Height="15" />
+                    </Button>
+
+                    <!-- Equalizer Button -->
+                    <Button Classes="icon-btn" ToolTip.Tip="Equalizer">
+                        <Path Classes="icon" Data="{StaticResource IconEqualizer}" Width="15" Height="15" />
+                    </Button>
+
+                    <!-- Fullscreen / Immersive Toggle -->
+                    <Button Classes="icon-btn" Click="OnToggleImmersiveClicked" ToolTip.Tip="Full-screen player">
+                        <Path Classes="icon" Data="{StaticResource IconExpand}" Width="15" Height="15" />
+                    </Button>
+
+                    <!-- Volume Icon & Slider -->
+                    <Button Classes="icon-btn" Click="OnMuteClicked" ToolTip.Tip="Mute">
+                        <Panel>
+                            <Path Classes="icon" Data="{StaticResource IconVolume}" Width="15" Height="15" IsVisible="{Binding !IsMuted}" />
+                            <Path Classes="icon" Data="{StaticResource IconMute}" Width="15" Height="15" IsVisible="{Binding IsMuted}" />
+                        </Panel>
+                    </Button>
+                    <Slider Width="84" Minimum="0" Maximum="100" Value="{Binding Volume}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 3. IMMERSIVE PLAYER OVERLAY (1:1 Replica of Images 3, 4, 7) -->
+        <Border Grid.Row="0" Grid.RowSpan="2" 
+                Background="#F5070807" 
+                IsVisible="{Binding IsImmersivePlayerOpen}"
+                Padding="48,32">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Topbar -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+                    <TextBlock Grid.Column="0" Text="{Binding CurrentSubtitle}" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                        <Button Classes="icon-btn" Click="OnToggleImmersiveClicked" ToolTip.Tip="Toggle full screen">
+                            <Path Classes="icon" Data="{StaticResource IconExpand}" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="action-secondary" Click="OnToggleImmersiveClicked" ToolTip.Tip="Close">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Path Classes="icon" Data="{StaticResource IconClose}" Width="14" Height="14" Stroke="{StaticResource TextBrush}" />
+                                <TextBlock Text="Close" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Center Content: Artwork and Meta (or Lyrics) -->
+                <Grid Grid.Row="1" VerticalAlignment="Center">
+                    <!-- Standard Stage: Centered Large Artwork (Images 3 & 4) -->
+                    <StackPanel Spacing="20" HorizontalAlignment="Center" IsVisible="{Binding !IsImmersiveLyricsOpen}">
+                        <Border Width="340" Height="340" CornerRadius="20" ClipToBounds="True">
+                            <Panel>
+                                <Image Source="{Binding CurrentArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding CurrentHasArtwork}" />
+                                <Border Background="{Binding CurrentCoverBrush}" IsVisible="{Binding !CurrentHasArtwork}">
+                                    <TextBlock Text="{Binding CurrentInitials}" FontSize="96" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Panel>
+                        </Border>
+                        <Grid ColumnDefinitions="*,Auto" Width="340">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" FontSize="24" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding CurrentSubtitle}" FontSize="15" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="icon-btn" Click="OnFavoriteClicked" VerticalAlignment="Center">
+                                <Panel>
+                                    <Path Classes="icon" Data="{StaticResource IconHeart}" Width="18" Height="18" IsVisible="{Binding !CurrentTrackIsFavorite}" />
+                                    <Path Classes="icon-fill" Data="{StaticResource IconHeart}" Width="18" Height="18" Fill="{StaticResource AccentBrush}" IsVisible="{Binding CurrentTrackIsFavorite}" />
+                                </Panel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Immersive Lyrics Mode (Image 7) -->
+                    <Grid ColumnDefinitions="320,*" IsVisible="{Binding IsImmersiveLyricsOpen}">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="16" Margin="0,0,48,0">
+                            <Border Width="260" Height="260" CornerRadius="16" ClipToBounds="True">
+                                <Panel>
+                                    <Image Source="{Binding CurrentArtworkBitmap}" Stretch="UniformToFill" IsVisible="{Binding CurrentHasArtwork}" />
+                                    <Border Background="{Binding CurrentCoverBrush}" IsVisible="{Binding !CurrentHasArtwork}">
+                                        <TextBlock Text="{Binding CurrentInitials}" FontSize="72" FontWeight="Black" Foreground="White" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </Panel>
+                            </Border>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" FontSize="20" Foreground="{StaticResource TextBrush}" />
+                                <TextBlock Text="{Binding CurrentSubtitle}" FontSize="13" Foreground="{StaticResource TextMutedBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Synced Lyrics scrolling on right -->
+                        <Border Grid.Column="1" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="20" Padding="32">
+                            <DockPanel LastChildFill="True">
+                                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+                                    <TextBlock Grid.Column="0" Text="Lyrics" FontWeight="Bold" FontSize="16" Foreground="{StaticResource TextBrush}" />
+                                    <Button Grid.Column="1" Classes="icon-btn" Click="OnToggleImmersiveLyricsClicked">
+                                        <Path Classes="icon" Data="{StaticResource IconClose}" Width="14" Height="14" />
+                                    </Button>
+                                </Grid>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding LyricsLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:LyricLine">
+                                                <TextBlock Text="{Binding Text}" 
+                                                           FontSize="22" 
+                                                           FontWeight="Bold" 
+                                                           Margin="0,8" 
+                                                           Tapped="OnLyricLineTapped">
+                                                    <TextBlock.Foreground>
+                                                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                                                            <Binding Path="IsActive" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Foreground>
+                                                    <TextBlock.Styles>
+                                                        <Style Selector="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextMuted2Brush}" />
+                                                            <Setter Property="Opacity" Value="0.6" />
+                                                        </Style>
+                                                        <Style Selector="TextBlock.active">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                                            <Setter Property="Opacity" Value="1.0" />
+                                                        </Style>
+                                                    </TextBlock.Styles>
+                                                    <Classes.active>
+                                                        <Binding Path="IsActive" />
+                                                    </Classes.active>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- Bottom Controls in Immersive -->
+                <StackPanel Grid.Row="2" Spacing="16" Margin="0,24,0,0" Width="680" HorizontalAlignment="Center">
+                    <!-- Timeline -->
+                    <Grid ColumnDefinitions="45,*,45" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="{Binding PositionFormatted}" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" HorizontalAlignment="Right" />
+                        <Slider Grid.Column="1" Margin="14,0" Minimum="0" Maximum="{Binding DurationSeconds}" Value="{Binding PositionSeconds}" PointerCaptureLost="OnSeekPointerReleased" />
+                        <TextBlock Grid.Column="2" Text="{Binding DurationFormatted}" Foreground="{StaticResource TextMuted2Brush}" FontSize="11" HorizontalAlignment="Left" />
+                    </Grid>
+
+                    <!-- Transport buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24">
+                        <Button Classes="player-btn" Width="40" Height="40" Click="OnPreviousClicked" ToolTip.Tip="Previous track">
+                            <Path Classes="icon-fill" Data="{StaticResource IconSkipBack}" Width="18" Height="18" />
+                        </Button>
+                        <Button Classes="play-immersive" Click="OnPlayPauseClicked" ToolTip.Tip="Play / Pause">
+                            <Panel>
+                                <Path Classes="icon-fill" Data="{StaticResource IconPlay}" Width="20" Height="20" Margin="3,0,0,0" Fill="#0A0B0A" IsVisible="{Binding !IsPlaying}" />
+                                <Path Classes="icon-fill" Data="{StaticResource IconPause}" Width="20" Height="20" Fill="#0A0B0A" IsVisible="{Binding IsPlaying}" />
+                            </Panel>
+                        </Button>
+                        <Button Classes="player-btn" Width="40" Height="40" Click="OnNextClicked" ToolTip.Tip="Next track">
+                            <Path Classes="icon-fill" Data="{StaticResource IconSkipForward}" Width="18" Height="18" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Bottom secondary buttons (Equalizer, Lyrics, Queue) -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                        <Button Classes="icon-btn" ToolTip.Tip="Equalizer">
+                            <Path Classes="icon" Data="{StaticResource IconEqualizer}" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="icon-btn" Classes.active="{Binding IsImmersiveLyricsOpen}" Click="OnToggleImmersiveLyricsClicked" ToolTip.Tip="Lyrics">
+                            <Path Classes="icon" Data="{StaticResource IconLyrics}" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="icon-btn" ToolTip.Tip="Queue">
+                            <Path Classes="icon" Data="{StaticResource IconQueue}" Width="16" Height="16" />
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

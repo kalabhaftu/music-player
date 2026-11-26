@@ -1,6 +1,17 @@
 # Music Player
 
-Music Player is a Windows desktop app for playing and organizing a local music library. It uses a WinUI 3 window with a packaged WebView2 interface. C# remains responsible for playback, library access, playlists, settings, filesystem operations, and Windows integrations.
+Music Player is a Windows desktop app for playing and organizing a local music library.
+
+## Repository Structure
+
+This repository houses the primary native Rust application alongside the archived C# WebUI app and the Avalonia UI prototype:
+
+| Implementation | Path | Status | Stack |
+| :--- | :--- | :--- | :--- |
+| **Rust Native App** | [`music-player-rust/`](music-player-rust/) | **Primary** | Rust + Slint UI + LibVLC + SQLite |
+| **WebUI Desktop App** | [`src/MusicPlayer.App/`](src/MusicPlayer.App/) | **Archived** *(see [ARCHIVE_NOTICE.md](src/MusicPlayer.App/ARCHIVE_NOTICE.md))* | C# / WinUI 3 + WebView2 + Vanilla JS |
+| **Avalonia Native UI** | [`src/MusicPlayer.Desktop/`](src/MusicPlayer.Desktop/) | **Reference** *(see [AVALONIA_UI_AUDIT.md](AVALONIA_UI_AUDIT.md))* | C# / Avalonia 11.2 XAML MVVM |
+| **Shared .NET Core** | [`src/MusicPlayer.Core/`](src/MusicPlayer.Core/) | **Shared Library** | .NET 10 library shared by both C# apps |
 
 ## Features
 
@@ -13,12 +24,29 @@ Music Player is a Windows desktop app for playing and organizing a local music l
 
 ## Build
 
+### Primary: Rust Native App (`music-player-rust`)
+
+Use the Rust toolchain (stable) with MSVC and Windows SDK:
+
+```powershell
+cd music-player-rust
+cargo build --release
+cargo run -p music-player-app --release
+```
+
+Run tests with `cargo test --workspace`.
+
+### Archived / Reference: C# Solution (`MusicPlayer.sln`)
+
 Use Windows 10 version 1809 or later, the .NET 10 SDK, and Windows SDK 10.0.26100 or later.
 
 ```powershell
 dotnet restore MusicPlayer.sln
+# Archived WebUI app
 dotnet build src/MusicPlayer.App/MusicPlayer.App.csproj -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64
 dotnet run --project src/MusicPlayer.App/MusicPlayer.App.csproj
+# Avalonia native reference
+dotnet run --project src/MusicPlayer.Desktop/MusicPlayer.Desktop.csproj
 ```
 
 For ARM64, use `-p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64`. The core tests can be run with `dotnet test tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj -c Release`.
