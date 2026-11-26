@@ -1,0 +1,304 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MusicPlayer.Desktop.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <!-- Exact WebUI Color Palette (tokens.css) -->
+        <Color x:Key="BgColor">#070807</Color>
+        <Color x:Key="SidebarColor">#090A09</Color>
+        <Color x:Key="MainSurfaceColor">#090A09</Color>
+        <Color x:Key="RightSurfaceColor">#090A09</Color>
+        <Color x:Key="PlayerSurfaceColor">#090A09</Color>
+        <Color x:Key="SurfaceRaisedColor">#171917</Color>
+        <Color x:Key="SurfaceHoverColor">#212421</Color>
+        <Color x:Key="SurfaceControlColor">#242724</Color>
+        <Color x:Key="RowHoverColor">#131613</Color>
+        <Color x:Key="AccentColor">#B7FF2D</Color>
+        <Color x:Key="AccentInkColor">#101210</Color>
+        <Color x:Key="TextColor">#F7F8F6</Color>
+        <Color x:Key="TextMutedColor">#A0A79F</Color>
+        <Color x:Key="TextMuted2Color">#717970</Color>
+        <Color x:Key="LineColor">#14FFFFFF</Color>
+        <Color x:Key="DangerColor">#FF5B74</Color>
+
+        <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
+        <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
+        <SolidColorBrush x:Key="MainSurfaceBrush" Color="{StaticResource MainSurfaceColor}" />
+        <SolidColorBrush x:Key="RightSurfaceBrush" Color="{StaticResource RightSurfaceColor}" />
+        <SolidColorBrush x:Key="PlayerSurfaceBrush" Color="{StaticResource PlayerSurfaceColor}" />
+        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+        <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHoverColor}" />
+        <SolidColorBrush x:Key="SurfaceControlBrush" Color="{StaticResource SurfaceControlColor}" />
+        <SolidColorBrush x:Key="RowHoverBrush" Color="{StaticResource RowHoverColor}" />
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+        <SolidColorBrush x:Key="AccentInkBrush" Color="{StaticResource AccentInkColor}" />
+        <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+        <SolidColorBrush x:Key="TextMuted2Brush" Color="{StaticResource TextMuted2Color}" />
+        <SolidColorBrush x:Key="LineBrush" Color="{StaticResource LineColor}" />
+        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+
+        <CornerRadius x:Key="ControlRadius">10</CornerRadius>
+        <CornerRadius x:Key="CardRadius">14</CornerRadius>
+        <CornerRadius x:Key="CoverRadius">8</CornerRadius>
+
+        <!-- 1:1 Vector SVG Icon Paths from src/MusicPlayer.App/WebUI/scripts/app.js -->
+        <StreamGeometry x:Key="IconHome">M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5h-6v-6h-5v6h-6a.5.5 0 0 1-.5-.5z</StreamGeometry>
+        <StreamGeometry x:Key="IconSearch">M20 20l-4.5-4.5M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z</StreamGeometry>
+        <StreamGeometry x:Key="IconClock">M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z</StreamGeometry>
+        <StreamGeometry x:Key="IconHeart">M20.8 8.7c0 4.1-8.8 10-8.8 10s-8.8-5.9-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z</StreamGeometry>
+        <StreamGeometry x:Key="IconMusic">M9 18V5l12-2v13M9 18c0 1.4-1.4 2.5-3 2.5S3 19.4 3 18s1.4-2.5 3-2.5 3 1.1 3 2.5Zm12-2c0 1.4-1.4 2.5-3 2.5s-3-1.1-3-2.5 1.4-2.5 3-2.5 3 1.1 3 2.5Z</StreamGeometry>
+        <StreamGeometry x:Key="IconDisc">M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm0 3h.01</StreamGeometry>
+        <StreamGeometry x:Key="IconUsers">M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m16 0v-2a4 4 0 0 0-3-3.87M14 3.13a4 4 0 0 1 0 7.75M10 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z</StreamGeometry>
+        <StreamGeometry x:Key="IconTag">M20.6 13.6 13.7 20.5a2 2 0 0 1-2.8 0L3.5 13.1V3.5h9.6l7.5 7.4a2 2 0 0 1 0 2.7ZM7.5 7.5h.01</StreamGeometry>
+        <StreamGeometry x:Key="IconSpark">m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Zm7 12 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z</StreamGeometry>
+        <StreamGeometry x:Key="IconList">M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2h7.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z</StreamGeometry>
+        <StreamGeometry x:Key="IconSettings">M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-5v2m0 14v2m9-9h-2M5 12H3m15.4-6.4-1.4 1.4M7 17l-1.4 1.4m12.8 0L17 17M7 7 5.6 5.6</StreamGeometry>
+        <StreamGeometry x:Key="IconPanelLeft">M4 4h16v16H4zM9 4v16</StreamGeometry>
+        <StreamGeometry x:Key="IconChevronLeft">m15 18-6-6 6-6</StreamGeometry>
+        <StreamGeometry x:Key="IconChevronRight">m9 18 6-6-6-6</StreamGeometry>
+        <StreamGeometry x:Key="IconQueue">M4 6h12M4 11h12M4 16h7m4-2v7l6-3.5z</StreamGeometry>
+        <StreamGeometry x:Key="IconMore">M5 12h.01M12 12h.01M19 12h.01</StreamGeometry>
+        <StreamGeometry x:Key="IconLyrics">M4 5h16M4 10h16M4 15h10M4 20h12</StreamGeometry>
+        <StreamGeometry x:Key="IconEqualizer">M4 18V6m5 15V3m5 18V8m5 13V5M2 11h4m1-3h4m1 6h4m1-5h4</StreamGeometry>
+        <StreamGeometry x:Key="IconShuffle">m18 14 4 4-4 4m0-20 4 4-4 4M2 18h2.5a5 5 0 0 0 4-2l7-8a5 5 0 0 1 4-2H22M2 6h2.5a5 5 0 0 1 4 2l1.5 1.7m4 4.6 1.5 1.7a5 5 0 0 0 4 2H22</StreamGeometry>
+        <StreamGeometry x:Key="IconSkipBack">M19 20 9 12l10-8v16ZM5 19V5</StreamGeometry>
+        <StreamGeometry x:Key="IconSkipForward">m5 4 10 8-10 8V4Zm14 1v14</StreamGeometry>
+        <StreamGeometry x:Key="IconPlay">m7 4 14 8-14 8V4Z</StreamGeometry>
+        <StreamGeometry x:Key="IconPause">M7 5h3v14H7zm7 0h3v14h-3z</StreamGeometry>
+        <StreamGeometry x:Key="IconRepeat">m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3</StreamGeometry>
+        <StreamGeometry x:Key="IconExpand">M3 9V4a1 1 0 0 1 1-1h5M15 3h5a1 1 0 0 1 1 1v5M21 15v5a1 1 0 0 1-1 1h-5M9 21H4a1 1 0 0 1-1-1v-5</StreamGeometry>
+        <StreamGeometry x:Key="IconMinimize">M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5</StreamGeometry>
+        <StreamGeometry x:Key="IconVolume">M3 9v6h4l5 4V5L7 9H3Zm13-2a7 7 0 0 1 0 10</StreamGeometry>
+        <StreamGeometry x:Key="IconSpeaker">M3 9v6h4l5 4V5L7 9H3Zm13-2a7 7 0 0 1 0 10m2-13a11 11 0 0 1 0 16</StreamGeometry>
+        <StreamGeometry x:Key="IconMute">M3 9v6h4l5 4V5L7 9H3Zm13 1 5 5m0-5-5 5</StreamGeometry>
+        <StreamGeometry x:Key="IconClose">M18 6 6 18M6 6l12 12</StreamGeometry>
+        <StreamGeometry x:Key="IconSync">M21 12a9 9 0 0 1-15.3 6.4L3 16m0 0v5h5M3 12a9 9 0 0 1 15.3-6.4L21 8m0 0V3h-5</StreamGeometry>
+        <StreamGeometry x:Key="IconRefresh">M20 7v5h-5M4 17v-5h5m-4-3a8 8 0 0 1 13.6-3L20 7M4 17l1.4 1.4A8 8 0 0 0 19 15</StreamGeometry>
+        <StreamGeometry x:Key="IconSliders">M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 6h4</StreamGeometry>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- Global window typography and dark theme background -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="Inter, Segoe UI, system-ui, sans-serif" />
+            <Setter Property="Background" Value="{StaticResource BgBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+
+        <!-- Vector Path Icon styles (100% vector SVG) -->
+        <Style Selector="Path.icon">
+            <Setter Property="Stroke" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="StrokeThickness" Value="1.8" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+        <Style Selector="Button Path.icon">
+            <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+        </Style>
+
+        <Style Selector="Path.icon-fill">
+            <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="Stroke" Value="Transparent" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+        <Style Selector="Button Path.icon-fill">
+            <Setter Property="Fill" Value="{Binding $parent[Button].Foreground}" />
+        </Style>
+
+        <!-- Navigation Item Button (Sidebar) -->
+        <Style Selector="Button.nav-item">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.nav-item:pointerover">
+            <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+        <Style Selector="Button.nav-item.active">
+            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+
+        <!-- General Icon Button -->
+        <Style Selector="Button.icon-btn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.icon-btn:pointerover">
+            <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+        <Style Selector="Button.icon-btn.active">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <!-- Primary Action Pill Button (White or Lime) -->
+        <Style Selector="Button.action-primary">
+            <Setter Property="Background" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource BgBrush}" />
+            <Setter Property="CornerRadius" Value="99" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.action-primary:pointerover">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+
+        <!-- Lime Action Pill Button -->
+        <Style Selector="Button.action-lime">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
+            <Setter Property="CornerRadius" Value="99" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.action-lime:pointerover">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+
+        <!-- Secondary Action Pill Button (Surface Control) -->
+        <Style Selector="Button.action-secondary">
+            <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="CornerRadius" Value="99" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.action-secondary:pointerover">
+            <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+        </Style>
+
+        <!-- Play Main Transport Button (White circle matching WebUI) -->
+        <Style Selector="Button.play-main">
+            <Setter Property="Background" Value="#F4F6F3" />
+            <Setter Property="Foreground" Value="#0A0B0A" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.play-main:pointerover">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="Opacity" Value="0.95" />
+        </Style>
+
+        <!-- Immersive Play Button (Large 52px White circle) -->
+        <Style Selector="Button.play-immersive">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="Foreground" Value="#0A0B0A" />
+            <Setter Property="CornerRadius" Value="26" />
+            <Setter Property="Width" Value="52" />
+            <Setter Property="Height" Value="52" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.play-immersive:pointerover">
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+
+        <!-- Transport Control Button (Shuffle, Prev, Next, Repeat) -->
+        <Style Selector="Button.player-btn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="CornerRadius" Value="15" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.player-btn:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+        </Style>
+        <Style Selector="Button.player-btn.active">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <!-- Album Card Hover Play FAB -->
+        <Style Selector="Button.play-fab">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
+            <Setter Property="CornerRadius" Value="19" />
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.play-fab:pointerover">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+
+        <!-- Tab Toggle Button (Queue / Track Info) -->
+        <Style Selector="Button.tab-btn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.tab-btn:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+        <Style Selector="Button.tab-btn.active">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <!-- ListBox Items (Tracks) -->
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Margin" Value="0,1" />
+        </Style>
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource RowHoverBrush}" />
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}" />
+        </Style>
+    </Application.Styles>
+</Application>

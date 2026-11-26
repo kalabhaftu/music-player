@@ -1,0 +1,116 @@
+import { State, Actions } from "../state.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Palette, ActionBtn, EmptyState, CustomSelect } from "../widgets.slint";
+
+component DuplicateTable inherits Rectangle {
+    VerticalLayout {
+        HorizontalLayout {
+            height: 37px;
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 12px;
+            Text { text: "TITLE"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+            Text { text: "ARTIST"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+            Text { text: "COPIES"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; width: 64px; horizontal-alignment: right; vertical-alignment: center; }
+            Text { text: "LOCATIONS"; color: Palette.muted-2; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; horizontal-stretch: 3; vertical-alignment: center; }
+        }
+        Rectangle { height: 1px; background: Palette.border; }
+        for row in State.duplicates : Rectangle {
+            height: 58px;
+            background: row-area.has-hover ? Palette.row-hover : transparent;
+            animate background { duration: 130ms; }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+            row-area := TouchArea { }
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 12px;
+                Text { text: row.title; color: Palette.text-subtle; font-size: 12px; overflow: elide; horizontal-stretch: 3; vertical-alignment: center; }
+                Text { text: row.artist; color: Palette.text-subtle; font-size: 12px; overflow: elide; horizontal-stretch: 3; vertical-alignment: center; }
+                Text { text: "\{row.copies}"; color: Palette.muted; font-size: 12px; width: 64px; horizontal-alignment: right; vertical-alignment: center; }
+                Rectangle {
+                    horizontal-stretch: 3;
+                    ActionBtn {
+                        label: "Show locations";
+                        clicked => { Actions.open-duplicate-files(row.first-id); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component DuplicatesView inherits Rectangle {
+    dup-sv := ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            width: dup-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
+
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: "Duplicates"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                Text { text: "\{State.duplicates-total} exact duplicate groups"; color: Palette.muted; font-size: 12px; }
+            }
+
+            Rectangle { height: 22px; }
+
+            HorizontalLayout {
+                height: 34px;
+                spacing: 7px;
+                Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                CustomSelect {
+                    width: 150px;
+                    enabled: !State.duplicate-loading;
+                    options: ["Title", "Artist", "Album", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
+                    current-value: State.duplicates-sort;
+                    selected(value) => { Actions.load-duplicates(value, State.duplicates-descending, 0); }
+                }
+                ActionBtn {
+                    enabled: !State.duplicate-loading;
+                    label: State.duplicates-descending ? "Descending" : "Ascending";
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, !State.duplicates-descending, 0); }
+                }
+            }
+
+            Rectangle { height: 12px; }
+
+            if State.duplicates.length > 0 : DuplicateTable { }
+            if State.duplicates.length == 0 && State.duplicate-loading : EmptyState {
+                text: "Checking for exact duplicates";
+                subtitle: "Comparing indexed music files.";
+            }
+            if State.duplicates.length == 0 && !State.duplicate-loading : EmptyState {
+                text: State.view-search != "" ? "No duplicate groups match" : "No exact duplicates found";
+                subtitle: State.view-search != "" ? "Try another title, artist, or album." : "Duplicate groups are created as the library is indexed.";
+            }
+
+            if State.duplicates-pages > 1 : HorizontalLayout {
+                padding: 12px;
+                spacing: 8px;
+                alignment: center;
+                ActionBtn {
+                    label: "Previous";
+                    enabled: State.duplicates-page > 0;
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page - 1); }
+                }
+                Text {
+                    text: "Page \{State.duplicates-page + 1} of \{State.duplicates-pages}";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                ActionBtn {
+                    label: "Next";
+                    enabled: State.duplicates-page + 1 < State.duplicates-pages;
+                    clicked => { Actions.load-duplicates(State.duplicates-sort, State.duplicates-descending, State.duplicates-page + 1); }
+                }
+            }
+        }
+    }
+}

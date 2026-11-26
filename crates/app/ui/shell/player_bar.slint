@@ -1,0 +1,426 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, PlayerSlider, DelayedTooltip } from "../widgets.slint";
+
+// ---- Player bar ----------------------------------------------------------------
+export component PlayerBar inherits Rectangle {
+    height: 88px;
+    background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
+
+    // 1px top border matching original CSS
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
+
+    // Centered controls column: dead-center in wide layouts, scaled smoothly at tighter widths
+    center-col := VerticalLayout {
+        width: clamp(240px, State.window-width * 0.38 * 1px, 480px);
+        x: (parent.width - self.width) / 2;
+        y: 8px;
+        height: parent.height - 16px;
+        alignment: center;
+        spacing: 5px;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: State.window-width <= 850 ? 5px : 8px;
+
+            if State.window-width > 650 : IcBtn {
+                width: State.window-width <= 650 ? 28px : 30px;
+                height: State.window-width <= 650 ? 28px : 30px;
+                icon: @image-url("../../assets/icons/shuffle.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                active: State.shuffle;
+                tooltip: State.shuffle ? "Shuffle: On (S)" : "Shuffle: Off (S)";
+                clicked => { Actions.toggle-shuffle(); }
+            }
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 30px;
+                height: State.window-width <= 650 ? 28px : 30px;
+                icon: @image-url("../../assets/icons/skip-back.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                tooltip: "Previous Track (Ctrl+Left)";
+                clicked => { Actions.previous(); }
+            }
+            play-btn := Rectangle {
+                width: State.window-width <= 650 ? 34px : 36px;
+                height: State.window-width <= 650 ? 34px : 36px;
+                border-radius: self.width / 2;
+                background: play-area.has-hover ? (State.light-theme ? Palette.text-subtle : #ffffff) : (State.light-theme ? Palette.text : #f4f6f3);
+                animate background { duration: 100ms; }
+                play-area := TouchArea {
+                    clicked => { Actions.toggle-play(); }
+                }
+                Image {
+                    source: State.is-playing ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                    width: 17px;
+                    height: 17px;
+                    x: (parent.width - self.width) / 2 + (State.is-playing ? 0px : 1px);
+                    y: (parent.height - self.height) / 2;
+                    colorize: #0a0b0a;
+                }
+                DelayedTooltip {
+                    text: State.is-playing ? "Pause (Space)" : "Play (Space)";
+                    active: play-area.has-hover;
+                    pressed: play-area.pressed;
+                    anchor-x: play-btn.absolute-position.x;
+                    anchor-y: play-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
+            }
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 30px;
+                height: State.window-width <= 650 ? 28px : 30px;
+                icon: @image-url("../../assets/icons/skip-forward.svg");
+                icon-size: 16px;
+                tint: Palette.icon-muted;
+                tooltip: "Next Track (Ctrl+Right)";
+                clicked => { Actions.next(); }
+            }
+            if State.window-width > 480 : Rectangle {
+                width: State.window-width <= 650 ? 28px : 30px;
+                height: State.window-width <= 650 ? 28px : 30px;
+                IcBtn {
+                    width: 100%;
+                    height: 100%;
+                    icon: @image-url("../../assets/icons/repeat.svg");
+                    icon-size: 16px;
+                    tint: State.repeat-mode == "Off" ? Palette.icon-muted : State.accent;
+                    tooltip: "Repeat Mode (R)";
+                    clicked => { Actions.cycle-repeat(); }
+                }
+                if State.repeat-mode == "Track" || State.repeat-mode == "One" : Rectangle {
+                    x: parent.width - self.width - 1px;
+                    y: parent.height - self.height - 1px;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: State.accent;
+                    border-width: 1px;
+                    border-color: Palette.surface;
+                    Text {
+                        text: "1";
+                        color: State.accent-ink;
+                        font-size: 8px;
+                        font-weight: 900;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+            if State.window-width > 850 : ab-btn := Rectangle {
+                width: 44px;
+                height: 28px;
+                border-radius: 6px;
+                background: ab-area.has-hover ? Palette.overlay : transparent;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 0px;
+                    Text {
+                        text: "A";
+                        color: State.repeat-a != "" ? State.accent : Palette.icon-muted;
+                        font-size: 11px;
+                        font-weight: State.repeat-a != "" ? 800 : 700;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "–";
+                        color: State.repeat-a != "" && State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                        font-size: 11px;
+                        font-weight: State.repeat-a != "" && State.repeat-b != "" ? 800 : 700;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "B";
+                        color: State.repeat-a != "" && State.repeat-b != "" ? State.accent : Palette.icon-muted;
+                        font-size: 11px;
+                        font-weight: State.repeat-a != "" && State.repeat-b != "" ? 800 : 700;
+                        vertical-alignment: center;
+                    }
+                }
+                ab-area := TouchArea { clicked => { Actions.toggle-ab(); } }
+                DelayedTooltip {
+                    text: State.repeat-a != "" && State.repeat-b != "" ? "Clear A–B loop" : (State.repeat-a != "" ? "Set A–B loop end (B)" : "Set A–B loop start (A)");
+                    active: ab-area.has-hover;
+                    pressed: ab-area.pressed;
+                    anchor-x: ab-btn.absolute-position.x;
+                    anchor-y: ab-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            width: 100%;
+            height: 18px;
+            spacing: State.window-width <= 650 ? 6px : 10px;
+
+            Text {
+                text: State.current-time;
+                color: Palette.muted;
+                font-size: State.window-width <= 650 ? 9px : 11px;
+                min-width: State.window-width <= 650 ? 28px : 34px;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Actions.toggle-remaining-time(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                min-width: 40px;
+                PlayerSlider {
+                    scrollable: false;
+                    commit-on-release: true;
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    value: State.progress;
+                    fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                    track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                    thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                    preview(val) => { Actions.preview-seek-fraction(val); }
+                    finished(val) => { Actions.seek-fraction(val); }
+                    scrolled(event) => {
+                        if (!State.has-track) { return reject; }
+                        let delta = event.delta-y > 0px ? 5 : (event.delta-y < 0px ? -5 : 0);
+                        if (delta != 0) {
+                            Actions.seek-wheel(delta);
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
+            Text {
+                text: State.total-time;
+                color: Palette.muted;
+                font-size: State.window-width <= 650 ? 9px : 11px;
+                min-width: State.window-width <= 650 ? 28px : 34px;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Actions.toggle-remaining-time(); }
+                }
+            }
+        }
+    }
+
+    // Left column: now playing info, bounded by padding and center column
+    left-col := VerticalLayout {
+        x: State.window-width <= 650 ? 8px : 14px;
+        y: 10px;
+        width: max(0px, center-col.x - self.x - (State.window-width <= 650 ? 8px : 12px));
+        height: parent.height - 20px;
+        alignment: center;
+
+        HorizontalLayout {
+            spacing: State.window-width <= 900 ? 8px : 11px;
+            alignment: start;
+
+            if State.window-width > 480 : Rectangle {
+                width: State.window-width <= 900 ? 44px : 56px;
+                height: State.window-width <= 900 ? 44px : 56px;
+                border-radius: 8px;
+                clip: true;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 9px;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000052;
+                background: State.has-track && State.current-has-cover
+                    ? Palette.panel-2
+                    : (!State.has-track || State.current-id == ""
+                        ? @linear-gradient(150deg, #172019 0%, #243328 58%, #364a3b 100%)
+                        : State.current-badge-bg);
+                if State.has-track && State.current-has-cover : Image {
+                    source: State.current-cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+                if !State.has-track || !State.current-has-cover : Text {
+                    text: !State.has-track || State.current-initials == "" ? "MP" : State.current-initials;
+                    color: #ffffffcc;
+                    font-size: 20px;
+                    font-weight: 900;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                Text {
+                    text: State.current-title == "" ? "Nothing playing" : State.current-title;
+                    color: State.current-title == "" ? Palette.muted-2 : Palette.text;
+                    font-size: 12px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+                Text {
+                    text: State.current-title == "" ? "Choose a song from your library" : (State.current-album == "" ? (State.current-unavailable ? "\{State.current-artist} · File unavailable" : State.current-artist) : (State.current-unavailable ? "\{State.current-artist} · \{State.current-album} · File unavailable" : "\{State.current-artist} · \{State.current-album}"));
+                    color: Palette.muted;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+            }
+            if State.window-width > 650 : VerticalLayout {
+                alignment: center;
+                IcBtn {
+                    width: 30px;
+                    height: 30px;
+                    icon: State.current-favorite ? @image-url("../../assets/icons/heart-filled.svg") : @image-url("../../assets/icons/heart.svg");
+                    icon-size: 16px;
+                    tint: State.current-favorite ? State.accent : Palette.icon-muted;
+                    tooltip: State.current-favorite ? "Remove from Favorites" : "Add to Favorites";
+                    clicked => {
+                        if (State.current-id != "") {
+                            State.current-favorite = !State.current-favorite;
+                            Actions.toggle-favorite(State.current-id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Right column: secondary actions and volume (maintains consistent right padding at every width)
+    right-col := VerticalLayout {
+        x: center-col.x + center-col.width + (State.window-width <= 650 ? 6px : 12px);
+        y: 10px;
+        width: max(0px, parent.width - self.x);
+        height: parent.height - 20px;
+        alignment: center;
+
+        HorizontalLayout {
+            padding-right: State.window-width <= 650 ? 12px : 20px;
+            spacing: State.window-width <= 650 ? 2px : (State.window-width <= 1060 ? 4px : 7px);
+            alignment: end;
+
+            if State.window-width > 860 : VerticalLayout {
+                alignment: center;
+                IcBtn {
+                    width: 30px;
+                    height: 30px;
+                    icon: @image-url("../../assets/icons/lyrics.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    active: State.view == "Lyrics";
+                    tooltip: "Lyrics";
+                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                IcBtn {
+                    width: 30px;
+                    height: 30px;
+                    icon: @image-url("../../assets/icons/queue.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    active: State.view == "Queue";
+                    tooltip: "Queue";
+                    clicked => { Actions.set-view("Queue", "", "", ""); }
+                }
+            }
+            if State.window-width > 860 : VerticalLayout {
+                alignment: center;
+                IcBtn {
+                    width: 30px;
+                    height: 30px;
+                    icon: @image-url("../../assets/icons/equalizer.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    active: State.view == "Audio";
+                    tooltip: "Equalizer";
+                    clicked => { Actions.set-view("Audio", "", "", ""); }
+                }
+            }
+            if State.window-width > 480 : VerticalLayout {
+                alignment: center;
+                IcBtn {
+                    width: 30px;
+                    height: 30px;
+                    icon: State.immersive-fullscreen ? @image-url("../../assets/icons/compress.svg") : @image-url("../../assets/icons/expand.svg");
+                    icon-size: 16px;
+                    tint: Palette.icon-muted;
+                    tooltip: "Immersive Player (F11)";
+                    clicked => { Actions.open-immersive-player(); }
+                }
+            }
+
+            // Volume control container (inline responsive matching WebUI)
+            vol-box := Rectangle {
+                width: (State.window-width <= 650 ? 27px : 30px) + 6px + (State.window-width > 1100 ? 88px : (State.window-width > 680 ? 66px : 44px));
+                height: 30px;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: center;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: State.window-width <= 650 ? 27px : 30px;
+                            height: State.window-width <= 650 ? 27px : 30px;
+
+                            vol-btn := IcBtn {
+                                width: 100%;
+                                height: 100%;
+                                icon: State.volume == 0 ? @image-url("../../assets/icons/mute.svg") : @image-url("../../assets/icons/volume.svg");
+                                icon-size: 16px;
+                                tint: State.volume == 0 ? State.accent : Palette.icon-muted;
+                                tooltip: State.volume == 0 ? "Unmute (M)" : "Mute (M)";
+                                clicked => { Actions.set-volume-muted(); }
+                                scrolled(event) => {
+                                    let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                                    if (delta != 0) {
+                                        Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                        return accept;
+                                    }
+                                    reject
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        PlayerSlider {
+                            width: State.window-width > 1100 ? 88px : (State.window-width > 680 ? 66px : 44px);
+                            height: 16px;
+                            minimum: 0.0;
+                            maximum: 100.0;
+                            value: State.volume;
+                            fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            thumb-color: State.artwork-palette || State.light-theme ? Palette.text : #ffffff;
+                            scrollable: true;
+                            scroll-step: 4.0;
+                            changed(val) => { Actions.volume-changed(round(val)); }
+                            scrolled(event) => {
+                                let delta = event.delta-y > 0px ? 4 : (event.delta-y < 0px ? -4 : 0);
+                                if (delta != 0) {
+                                    Actions.volume-changed(clamp(State.volume + delta, 0, 100));
+                                    return accept;
+                                }
+                                reject
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

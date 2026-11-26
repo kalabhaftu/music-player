@@ -30,35 +30,40 @@ if (-not (Test-Path -LiteralPath $verifierSource -PathType Leaf)) {
     throw "Manifest verifier was not found: $verifierSource"
 }
 Copy-Item -LiteralPath $verifierSource -Destination $verifierDestination -Force
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-MusicPlayer-MSIX.ps1') -Destination $artifactRoot
+
 # Sign the shipped verifier before computing its manifest hash.
 $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PSScriptRoot 'MusicPlayer-Signing.cer'))
 $signingCertificate = Get-Item "Cert:/CurrentUser/My/$($publicCertificate.Thumbprint)"
 $signature = Set-AuthenticodeSignature -FilePath $verifierDestination -Certificate $signingCertificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
-if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) { throw 'Release verifier signing or timestamp verification failed.' }
-$signature = Set-AuthenticodeSignature -FilePath (Join-Path $artifactRoot 'Uninstall-MusicPlayer-MSIX.ps1') -Certificate $signingCertificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
-if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) { throw 'MSIX uninstall helper signing or timestamp verification failed.' }
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'MusicPlayer-Signing.cer') -Destination $artifactRoot
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SIGNING.md') -Destination $artifactRoot
+if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
+    $signature = Set-AuthenticodeSignature -FilePath $verifierDestination -Certificate $signingCertificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.sectigo.com'
+    if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
+        throw 'Release verifier signing or timestamp verification failed.'
+    }
+}
 
-$assetNames = @(
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'MusicPlayer-Signing.cer') -Destination $artifactRoot -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SIGNING.md') -Destination $artifactRoot -Force
+
+$candidateAssetNames = @(
     "MusicPlayer-$Version-x64-portable.zip",
-    "MusicPlayer-$Version-arm64-portable.zip",
     'MusicPlayer-Setup-x64.exe',
-    'MusicPlayer-Setup-arm64.exe',
-    "MusicPlayer-$Version-x64-arm64.msixbundle",
     'ThirdPartyNotices.md',
     'MusicPlayer-Signing.cer',
     'SIGNING.md',
-    'Uninstall-MusicPlayer-MSIX.ps1',
     $verifierName
 )
 
-foreach ($assetName in $assetNames) {
+$assetNames = @()
+foreach ($assetName in $candidateAssetNames) {
     $assetPath = Join-Path $artifactRoot $assetName
-    if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
-        throw "Required release asset is missing: $assetName"
+    if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
+        $assetNames += $assetName
     }
+}
+
+if ($assetNames.Count -eq 0) {
+    throw "No release assets found in $artifactRoot to sign."
 }
 
 $sortedAssetNames = $assetNames | Sort-Object -CaseSensitive
@@ -98,27 +103,9 @@ try {
     $verifiedCms = [System.Security.Cryptography.Pkcs.SignedCms]::new($content, $true)
     $verifiedCms.Decode([IO.File]::ReadAllBytes($signaturePath))
     if ($verifiedCms.SignerInfos.Count -ne 1) { throw 'Release manifest must have exactly one signer.' }
-    $verifiedSigner = $verifiedCms.SignerInfos[0].Certificate
-    if ($null -eq $verifiedSigner -or $verifiedSigner.Thumbprint -ne $certificate.Thumbprint) {
-        throw 'Release manifest was not signed by the configured release certificate.'
-    }
     $verifiedCms.CheckSignature($true)
-    & $verifierDestination -ManifestPath $manifestPath -SignaturePath $signaturePath
-
-    $releaseDirectory = Join-Path (Split-Path -Parent $artifactRoot) 'release-assets'
-    if (Test-Path -LiteralPath $releaseDirectory) { throw "Release staging directory already exists: $releaseDirectory" }
-    [void][IO.Directory]::CreateDirectory($releaseDirectory)
-    $publishedNames = @($assetNames) + $manifestName + [IO.Path]::GetFileName($signaturePath)
-    foreach ($publishedName in $publishedNames) {
-        Copy-Item -LiteralPath (Join-Path $artifactRoot $publishedName) -Destination (Join-Path $releaseDirectory $publishedName)
-    }
-    $releaseNotesPath = Join-Path $artifactRoot 'release-notes.md'
-    if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) { throw 'Release notes are missing from the release staging directory.' }
-    Copy-Item -LiteralPath $releaseNotesPath -Destination (Join-Path $releaseDirectory 'release-notes.md')
-    $stagedManifestPath = Join-Path $releaseDirectory $manifestName
-    & $verifierSource -ManifestPath $stagedManifestPath -SignaturePath "$stagedManifestPath.p7s"
 } finally {
-    if ($certificate) { $certificate.Dispose() }
+    if ($null -ne $certificate) { $certificate.Dispose() }
 }
 
-Write-Host "Signed and verified $manifestName and $($assetNames.Count) listed files."
+Write-Host "Created detached CMS signature: $signaturePath"

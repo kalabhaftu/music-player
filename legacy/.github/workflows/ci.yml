@@ -1,0 +1,143 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests-linux:
+    name: Core tests · Linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v7, pinned to the verified tag commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # actions/setup-dotnet v6, pinned to the verified tag commit.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore core tests
+        run: dotnet restore tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj
+      - name: Test core
+        run: dotnet test tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj --configuration Release --no-restore
+
+      - name: Validate shared release metadata
+        shell: pwsh
+        run: ./packaging/windows/Test-ReleaseMetadata.ps1
+
+      - name: Test library pagination, lyrics and theme contrast
+        run: node --test tests/MusicPlayer.Ui.Tests/lyrics-theme.test.mjs tests/MusicPlayer.Ui.Tests/library-pagination.test.mjs
+
+  test-and-build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+            os: windows-2022
+          - arch: ARM64
+            rid: win-arm64
+            os: windows-11-vs2026-arm
+    steps:
+      # actions/checkout v7, pinned to the verified tag commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # actions/setup-dotnet v6, pinned to the verified tag commit.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore MusicPlayer.sln
+      - name: Test core
+        run: dotnet test tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj --configuration Release --no-restore
+      - name: Build WinUI app
+        run: dotnet build src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --no-restore -p:Platform=${{ matrix.arch }} -p:RuntimeIdentifier=${{ matrix.rid }} -p:AppxPackageSigningEnabled=false -p:GenerateAppxPackageOnBuild=false
+      - name: Restore validated media fixtures
+        id: media-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/media-fixtures
+          key: windows-media-${{ hashFiles('tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1') }}
+      - name: Generate representative audio and video formats
+        shell: pwsh
+        run: |
+          if ('${{ steps.media-cache.outputs.cache-hit }}' -ne 'true') {
+            if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --yes --no-progress }
+            & tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1
+          }
+          "MUSICPLAYER_MEDIA_FIXTURES=$PWD/artifacts/media-fixtures" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Cache validated media fixtures
+        if: steps.media-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/media-fixtures
+          key: windows-media-${{ hashFiles('tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1') }}
+      - name: Test native playback, queue transitions and supported formats
+        id: native
+        continue-on-error: true
+        run: dotnet test tests/MusicPlayer.Playback.Tests/MusicPlayer.Playback.Tests.csproj --configuration Release --runtime ${{ matrix.rid }} --logger 'trx;LogFileName=native.trx' --results-directory artifacts/ui-evidence/native
+      - name: Publish self-contained portable app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD 'artifacts/publish'
+          dotnet publish src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true --output $out -p:Platform=${{ matrix.arch }} -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+          if ($LASTEXITCODE -ne 0) { throw 'Portable publish failed.' }
+          $arch = '${{ matrix.arch }}'.ToLowerInvariant()
+          $packageName = "MusicPlayer-ci-$arch-portable"
+          $stage = Join-Path $PWD "artifacts/$packageName"
+          & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory $out -DestinationDirectory $stage -Version 'ci' -Architecture $arch
+          if ($LASTEXITCODE -ne 0) { throw 'Portable package preparation failed.' }
+          $archive = "artifacts/$packageName.zip"
+          Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
+      - name: Install WebView UI test driver
+        shell: pwsh
+        working-directory: tests/MusicPlayer.Ui.Tests
+        run: npm install --ignore-scripts
+      - name: Test clean-profile discovery, queue dragging, lyrics and restart
+        shell: pwsh
+        run: |
+          $arch = '${{ matrix.arch }}'.ToLowerInvariant()
+          $packageName = "MusicPlayer-ci-$arch-portable"
+          $exe = Join-Path $PWD "artifacts/$packageName/MusicPlayer.exe"
+          & tests/MusicPlayer.Ui.Tests/Test-ShellRegistration.ps1 -Executable $exe
+          & tests/MusicPlayer.Ui.Tests/Run-Smoke.ps1 -Executable $exe
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: music-player-${{ matrix.rid }}-runtime-evidence
+          path: artifacts/ui-evidence/
+          if-no-files-found: warn
+      - name: Upload native decoder diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-${{ matrix.rid }}-logs
+          path: ~/AppData/Local/MusicPlayer/Logs/
+          if-no-files-found: warn
+      - name: Require successful native playback validation
+        if: always() && steps.native.outcome != 'success'
+        shell: pwsh
+        run: throw 'Native playback or format validation failed; this required architecture check cannot pass.'
+      - name: Upload portable build
+        # actions/upload-artifact v7, pinned to the verified tag commit.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: music-player-${{ matrix.rid }}-portable
+          path: artifacts/MusicPlayer-ci-*-portable.zip
+          if-no-files-found: error

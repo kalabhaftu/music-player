@@ -1,0 +1,204 @@
+import { State, Actions } from "../state.slint";
+import { Palette } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// ---- Navigation rail entry -----------------------------------------------------
+component NavEntryRow inherits Rectangle {
+    in property <string> view;
+    in property <string> label;
+    in property <string> section-title;
+
+    height: root.section-title == "" ? 38px : 65px;
+
+    VerticalLayout {
+        spacing: 0px;
+        if root.section-title != "" : HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 7px;
+            padding-bottom: 5px;
+            height: 27px;
+            alignment: start;
+            Text {
+                text: root.section-title;
+                color: Palette.muted-2;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1.1px;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle {
+            height: 38px;
+            border-radius: 8px;
+            background: nav-area.pressed ? Palette.hover : (nav-area.has-hover ? #ffffff0d : (State.view == root.view ? Palette.raised : transparent));
+            animate background { duration: 120ms; }
+
+            nav-area := TouchArea {
+                clicked => { Actions.set-view(root.view, "", "", ""); }
+            }
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 13px;
+
+                Rectangle {
+                    width: 20px;
+                    height: 20px;
+                    y: (parent.height - self.height) / 2;
+
+                    Image {
+                        source: root.view == "Home" ? @image-url("../../assets/icons/home.svg")
+                            : root.view == "Search" ? @image-url("../../assets/icons/search.svg")
+                            : root.view == "Favorites" ? @image-url("../../assets/icons/heart.svg")
+                            : root.view == "Albums" ? @image-url("../../assets/icons/disc.svg")
+                            : root.view == "Artists" ? @image-url("../../assets/icons/users.svg")
+                            : root.view == "Genres" ? @image-url("../../assets/icons/tag.svg")
+                            : root.view == "Playlists" ? @image-url("../../assets/icons/list.svg")
+                            : root.view == "Folders" ? @image-url("../../assets/icons/folder.svg")
+                            : root.view == "Recently Added" ? @image-url("../../assets/icons/spark.svg")
+                            : @image-url("../../assets/icons/music.svg");
+                        width: 20px;
+                        height: 20px;
+                        colorize: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
+                        animate colorize { duration: 120ms; }
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: root.label;
+                    color: State.view == root.view ? Palette.text : (nav-area.has-hover ? Palette.text : Palette.muted);
+                    font-size: 13px;
+                    font-weight: 650;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                if root.view == "Search" : Text {
+                    text: "Ctrl K";
+                    color: Palette.muted-2;
+                    font-size: 9px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// ---- Navigation rail ---------------------------------------------------------
+export component NavRail inherits Rectangle {
+    width: State.navigation-collapsed ? 0px : State.navigation-width * 1px;
+    background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
+    clip: true;
+
+    // 1px right border matching original CSS
+    Rectangle {
+        x: parent.width - 1px;
+        y: 0px;
+        width: 1px;
+        height: parent.height;
+        background: Palette.border;
+    }
+
+    VerticalLayout {
+        padding-top: 12px;
+        padding-bottom: 12px;
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 2px;
+
+        VerticalLayout {
+            padding-left: 11px;
+            height: 48px;
+            spacing: 1px;
+            Text {
+                text: "Music Player";
+                color: Palette.text;
+                font-size: 18px;
+                font-weight: 800;
+                letter-spacing: -0.4px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "LOCAL LIBRARY";
+                color: Palette.muted-2;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { height: 4px; }
+
+        Rectangle {
+            vertical-stretch: 1;
+            min-height: 0px;
+            clip: true;
+
+            nav-scroll := Flickable {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                content-width: self.width;
+                content-height: nav-list.preferred-height;
+                nav-list := VerticalLayout {
+                    width: nav-scroll.width;
+                    height: self.preferred-height;
+                    spacing: 2px;
+                    for item in State.navigation-items : NavEntryRow {
+                        view: item.view;
+                        label: item.label;
+                        section-title: item.section-title;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Persisted, draggable column dividers mirror the release's sidebar and
+// Now Playing panel resize handles.
+export component PanelResizeHandle inherits Rectangle {
+    in property <bool> right-side: false;
+    in property <length> available-width;
+    in property <length> available-height;
+    in-out property <bool> drag-active: false;
+    in-out property <int> drag-start-x: 0;
+    in-out property <int> drag-start-width: 0;
+
+    x: root.right-side
+        ? root.available-width - State.right-panel-width * 1px - 4px
+        : State.navigation-width * 1px - 4px;
+    y: 0px;
+    width: 8px;
+    height: root.available-height;
+    visible: !State.immersive-player-open && (root.right-side ? State.right-panel-open : !State.navigation-collapsed);
+    background: root.drag-active || divider.has-hover ? State.accent.with-alpha(0.28) : #00000000;
+
+    divider := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.drag-active = true;
+                root.drag-start-x = round((root.absolute-position.x + divider.mouse-x) / 1px);
+                root.drag-start-width = root.right-side ? State.right-panel-width : State.navigation-width;
+            }
+            if (event.kind == PointerEventKind.move && root.drag-active) {
+                if (root.right-side) {
+                    State.right-panel-width = clamp(root.drag-start-width - (round((root.absolute-position.x + divider.mouse-x) / 1px) - root.drag-start-x), 240, 460);
+                } else {
+                    State.navigation-width = clamp(root.drag-start-width + (round((root.absolute-position.x + divider.mouse-x) / 1px) - root.drag-start-x), 180, 360);
+                }
+            }
+            if ((event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) && root.drag-active) {
+                root.drag-active = false;
+                if (root.right-side) { Actions.set-setting("right-panel-width", "\{State.right-panel-width}"); }
+                else { Actions.set-setting("navigation-width", "\{State.navigation-width}"); }
+            }
+        }
+    }
+}

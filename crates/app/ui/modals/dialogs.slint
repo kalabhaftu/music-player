@@ -1,0 +1,291 @@
+import { State, Actions } from "../state.slint";
+import { Palette, ActionBtn, CustomSelect } from "../widgets.slint";
+import { ModalFooterBar } from "common.slint";
+
+component CustomCheckBox inherits Rectangle {
+    in property <bool> checked: false;
+    callback toggled(bool);
+
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.checked ? State.accent : Palette.border-hover;
+    background: root.checked ? State.accent : Palette.panel-2;
+    animate background { duration: 100ms; }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+
+    if root.checked : Text {
+        text: "✓";
+        color: #0a0b0a;
+        font-size: 11px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ResetChoiceRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in-out property <bool> checked: true;
+
+    min-height: 54px;
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.checked = !root.checked; }
+    }
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 11px;
+        alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+            CustomCheckBox {
+                checked: root.checked;
+                toggled(v) => { root.checked = v; }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: Palette.text;
+                font-size: 11px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.description;
+                color: Palette.muted;
+                font-size: 10px;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Palette.border; }
+}
+
+export component ConfirmModal inherits Rectangle {
+    VerticalLayout {
+        spacing: 0px;
+
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 12px;
+
+            Text {
+                text: State.confirm-message;
+                color: Palette.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            if State.confirm-has-choices : VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: "Backup version";
+                    color: Palette.text;
+                    font-size: 11px;
+                    font-weight: 650;
+                }
+                CustomSelect {
+                    width: 100%;
+                    height: 36px;
+                    options: State.confirm-choices;
+                    current-value: State.confirm-choice;
+                    selected(value) => { State.confirm-choice = value; }
+                }
+            }
+        }
+
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
+                label: State.confirm-button-label == "" ? "Confirm" : State.confirm-button-label;
+                primary: !State.confirm-danger;
+                danger: State.confirm-danger;
+                clicked => { Actions.confirm-action(); }
+            }
+        }
+    }
+}
+
+export component RatingModal inherits Rectangle {
+    in-out property <int> selected-rating: State.rate-value;
+
+    pure function rating-to-label(val: int) -> string {
+        if (val <= 0) { return "Unrated"; }
+        if (val == 1) { return "★"; }
+        if (val == 2) { return "★★"; }
+        if (val == 3) { return "★★★"; }
+        if (val == 4) { return "★★★★"; }
+        return "★★★★★";
+    }
+
+    pure function label-to-rating(label: string) -> int {
+        if (label == "★") { return 1; }
+        if (label == "★★") { return 2; }
+        if (label == "★★★") { return 3; }
+        if (label == "★★★★") { return 4; }
+        if (label == "★★★★★") { return 5; }
+        return 0;
+    }
+
+    VerticalLayout {
+        spacing: 0px;
+
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 6px;
+
+            Text {
+                text: "Rating";
+                color: Palette.text;
+                font-size: 11px;
+                font-weight: 650;
+            }
+
+            CustomSelect {
+                width: 100%;
+                height: 36px;
+                options: ["Unrated", "★", "★★", "★★★", "★★★★", "★★★★★"];
+                current-value: root.rating-to-label(root.selected-rating);
+                selected(value) => { root.selected-rating = root.label-to-rating(value); }
+            }
+        }
+
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
+                label: "Save";
+                primary: true;
+                clicked => { Actions.rate-track(root.selected-rating); }
+            }
+        }
+    }
+}
+
+export component ResetModal inherits Rectangle {
+    VerticalLayout {
+        spacing: 0px;
+
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 10px;
+            spacing: 6px;
+
+            Text {
+                text: "Choose which interface preferences to restore. Every group is selected by default.";
+                color: Palette.muted;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            Rectangle { height: 4px; }
+
+            ResetChoiceRow {
+                title: "Colors and appearance";
+                description: "Theme, artwork palette, selection color, transparency, and motion";
+                checked <=> State.reset-appearance;
+            }
+            ResetChoiceRow {
+                title: "Panels and navigation";
+                description: "Sidebar and Now Playing widths, collapse state, navigation order, and browse spacing";
+                checked <=> State.reset-playback;
+            }
+            ResetChoiceRow {
+                title: "Library display";
+                description: "Visible song columns, resized column widths, and duplicate handling";
+                checked <=> State.reset-library;
+            }
+        }
+
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Cancel";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
+                primary: true;
+                label: "Reset selected settings";
+                clicked => {
+                    Actions.reset-settings(
+                        (State.reset-appearance ? "appearance," : "")
+                        + (State.reset-playback ? "layout," : "")
+                        + (State.reset-library ? "libraryDisplay" : "")
+                    );
+                }
+            }
+        }
+    }
+}
+
+export component UpdateModal inherits Rectangle {
+    VerticalLayout {
+        spacing: 0px;
+
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 8px;
+
+            Text {
+                text: "Music Player \{State.update-tag} is available";
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            Text {
+                text: "Updates are opened in your browser and are never installed automatically.";
+                color: Palette.muted;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+        }
+
+        ModalFooterBar {
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn {
+                label: "Later";
+                clicked => { Actions.close-modal(); }
+            }
+            ActionBtn {
+                label: "View release";
+                primary: true;
+                clicked => { Actions.open-release(); }
+            }
+        }
+    }
+}

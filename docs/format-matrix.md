@@ -1,27 +1,29 @@
-# Audio and tag format matrix
+# Audio, Video, and Tag Format Matrix
 
-The playback backend is bundled LibVLC. The list below records formats the scanner recognizes; it does not assert that every file variant, codec, metadata field or device configuration has passed Windows playback tests.
+The primary Rust application (`crates/core`) uses **LibVLC** for media playback and **Lofty** (plus container-specific writers in `crates/core/src/metadata/tag_editor.rs`) for metadata reading and writing.
 
-| File extension | Indexed | Playback status |
-|---|---:|---|
-| MP3, WAV/WAVE, FLAC | Yes | Passed x64 + ARM64 native fixture checks at `b1316ef` |
-| AAC, M4A, M4B | Yes | Passed x64 + ARM64 native fixture checks at `b1316ef` |
-| Ogg, OGA, Opus | Yes | Passed x64 + ARM64 native fixture checks at `b1316ef` |
-| WMA, APE, WV, TTA, MPC | Yes | Passed x64 + ARM64 native fixture checks at `b1316ef` |
-| AIFF/AIF, DSF, DFF | Yes | Passed x64 + ARM64 native fixture checks at `b1316ef` |
+## Supported Audio Containers
 
-TagLib# exposes the common title, artist, album, genre, track/disc numbering, composers, comments, sorting fields, grouping, BPM, conductor, copyright, publisher, ISRC, MusicBrainz IDs, ReplayGain, lyrics and artwork properties where the container supports them. The editor also exposes custom Xiph/Vorbis comments, ID3v2 text frames and user text, ASF text descriptors, and APEv2 text items; custom fields are unavailable for M4A/M4B. ID3v2 frame IDs use `ID3:XXXX` notation. TagLib# may ignore a standard property unsupported by a particular container. At `19577d5`, 17 editable formats passed title changes, preservation of artist/album/duration, and byte-for-byte backup/restore on x64 and ARM64. DFF and TTA are read-only with TagLib# 2.3; tests verify safe rejection without changing media bytes. Artwork and uncommon file variants still need separate validation.
+The library scanner indexes the following 19 audio extensions:
 
-Playback support depends on the bundled LGPL package and its modules. Codec patent rules vary by country; users and distributors are responsible for checking local requirements. No GPL-only LibVLC package is used.
+| Format Family | Extensions | Indexed | Tag Editing (`tag_editor.rs`) |
+| :--- | :--- | :---: | :--- |
+| **MPEG / RIFF / Lossless** | `.mp3`, `.wav`, `.wave`, `.flac` | Yes | Supported (ID3v2, RIFF INFO/ID3, Vorbis comments) |
+| **Apple / AAC** | `.aac`, `.m4a`, `.m4b` | Yes | Supported (MP4 atoms; `.m4a`/`.m4b` standard fields) |
+| **Xiph / Ogg** | `.ogg`, `.oga`, `.opus` | Yes | Supported (Vorbis / Opus comments) |
+| **Windows / Legacy Lossless** | `.wma`, `.ape`, `.wv`, `.tta`, `.mpc` | Yes | `.wma` (ASF), `.ape` (APEv2); `.wv`/`.tta`/`.mpc` read-only or container-limited |
+| **Apple AIFF / DSD** | `.aiff`, `.aif`, `.dsf`, `.dff` | Yes | `.aiff`/`.aif` (ID3/COMM), `.dsf` (ID3); `.dff` read-only |
 
-## Optional video files
+Tag edits create automatic backups in `%LOCALAPPDATA%\MusicPlayer` before atomic replacement.
 
-Video extensions are excluded from library scans by default. They can be enabled or added under **Music folders → Scan exclusions → File extensions**. Enabled video files open in a separate, resizable Music Player window with playback, seek, volume, previous, and next controls. This uses the LibVLC engine already bundled with the app; playback still depends on the codecs available for that file. Native H.264/AAC MKV rendering, embedded subtitles, rate changes, seeking and PNG snapshots passed x64 and ARM64 fixture tests at `19577d5`. The x64 portable video window also passed pause/play, seek, speed, subtitle selection, fullscreen/Escape and PNG snapshot interactions at `a73e62f`. Installed-package and ARM64 interactions remain separate gates.
+## Optional Video Files
 
-Fixture provenance: `tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1` generates genuine FFmpeg-encoded files and DSD silence containers, and obtains APE/MPC files from the official FFmpeg codec corpus. Final code CI [38053176126](https://github.com/kalabhaftu/music-player/actions/runs/38053176126) records decode/seek/pause/resume and metadata checks on both architectures using LibVLC 3.0.24. This validates native decoding rather than physical speakers or every codec variant.
+Video extensions (`.mp4`, `.m4v`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.webm`, etc.) are **excluded from library scans by default** until enabled under **Settings → Library → Scan exclusions**.
 
-At `b1316ef`, complete portable video interaction checks passed on x64 and ARM64.
-Signed installed setup/MSIX UI checks passed in [38053565166](https://github.com/kalabhaftu/music-player/actions/runs/38053565166),
-including pause/play, seek, speed, embedded subtitle selection, fullscreen with
-real Escape input, PNG snapshots, close/pause and restart. These results supersede
-the earlier open installed/ARM64 interaction gates described above.
+- Video files can still be opened directly from File Explorer at any time.
+- Video playback opens in a dedicated native Win32 child HWND window (`VideoWindow`) using LibVLC `mmdevice` output, with live subtitle track selection (embedded + nearby `.srt`, `.ass`, `.ssa`, `.vtt` sidecars), playback speed (`0.5x`–`2x`), repeat, PNG snapshots, and `F11`/`Esc` fullscreen.
+- Crossfading and automatic/online lyrics lookups are skipped for video files.
+
+## Licensing
+
+Playback support depends on the bundled LGPL LibVLC runtime (`libvlc.dll`, `libvlccore.dll`, and `plugins/`). No GPL-only LibVLC package is used. See [ThirdPartyNotices.md](../ThirdPartyNotices.md).

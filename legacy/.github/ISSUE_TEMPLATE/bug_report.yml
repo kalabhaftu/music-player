@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible Music Player problem.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach music files, database backups, credentials, or unredacted logs. Logs may contain your Windows username and local file paths; see SUPPORT.md before sharing them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the visible problem and the operation you were doing.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Music Player.
+        2. Open ...
+        3. Select ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Music Player version and build type
+      description: Include the version and whether this is portable or installed.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version and architecture
+      placeholder: Windows 11 24H2, x64
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant redacted log lines
+      description: Paste only relevant lines from Settings → Logs or %LOCALAPPDATA%\MusicPlayer\Logs. Remove usernames, music paths, and private metadata.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Screenshots or additional context
+      description: Redact private paths, account names, and personal media information.
+    validations:
+      required: false

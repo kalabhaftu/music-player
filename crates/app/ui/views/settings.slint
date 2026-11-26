@@ -1,0 +1,1303 @@
+import { State, Actions } from "../state.slint";
+import { NavSettingItem, FolderRootItem, ExtensionItem } from "../models.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, SectionTitle, PlayerSlider, CustomToggle, CustomSelect } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// ---- Settings Rows -----------------------------------------------------------
+component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <bool> highlighted: false;
+    min-width: 0px;
+    height: 52px;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        min-width: 0px;
+        Text {
+            min-width: 0px;
+            text: root.label;
+            color: root.highlighted ? State.accent : Palette.text-strong;
+            font-size: 12px;
+            font-weight: 700;
+            overflow: elide;
+        }
+        if root.description != "" : Text {
+            min-width: 0px;
+            text: root.description;
+            color: Palette.muted;
+            font-size: 10px;
+            overflow: elide;
+        }
+    }
+}
+
+component SettingSwitchRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
+    in property <bool> checked: false;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    callback toggled(bool);
+
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
+        spacing: 18px;
+        SettingRow {
+            label: root.label;
+            description: root.description;
+            highlighted: root.is-match;
+            horizontal-stretch: 1;
+        }
+        VerticalLayout {
+            alignment: center;
+            CustomToggle {
+                checked: root.checked;
+                toggled(v) => { root.toggled(v); }
+            }
+        }
+    }
+    if !root.is-match : Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.border;
+    }
+}
+
+component SettingComboRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
+    in property <[string]> options;
+    in property <string> value;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    callback changed(string);
+
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
+        spacing: 18px;
+        SettingRow {
+            label: root.label;
+            description: root.description;
+            highlighted: root.is-match;
+            horizontal-stretch: 1;
+        }
+        VerticalLayout {
+            alignment: center;
+            CustomSelect {
+                width: clamp(State.content-avail-width * 0.35, 140px, 220px);
+                options: root.options;
+                current-value: root.value;
+                selected(value) => { root.changed(value); }
+            }
+        }
+    }
+    if !root.is-match : Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.border;
+    }
+}
+
+component SettingsNavTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    min-width: 78px;
+    height: 34px;
+    border-radius: 8px;
+    background: area.pressed || root.selected
+        ? (State.artwork-palette ? Palette.raised : (State.light-theme ? Palette.control : #262b26))
+        : (area.has-hover ? Palette.hover : transparent);
+    animate background { duration: 110ms; }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        Text {
+            min-width: 0px;
+            text: root.label;
+            color: root.selected ? Palette.text-strong : Palette.muted;
+            font-size: 11px;
+            font-weight: root.selected ? 750 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    // Active tab bottom accent indicator
+    Rectangle {
+        y: parent.height - 2px;
+        x: 10px;
+        width: root.selected ? max(16px, parent.width - 20px) : 0px;
+        height: 2px;
+        border-radius: 1px;
+        background: State.accent;
+        opacity: root.selected ? 1.0 : 0.0;
+        animate width { duration: 160ms; easing: ease-out; }
+        animate opacity { duration: 140ms; }
+    }
+}
+
+component SettingColorRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in property <string> keywords: "";
+    in property <string> search-query: "";
+    in property <color> swatch;
+    in property <bool> enabled: true;
+    in property <string> setting;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
+        spacing: 18px;
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 42px;
+                height: 30px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.border;
+                background: Palette.panel-2;
+                opacity: root.enabled ? 1.0 : 0.38;
+
+                Rectangle {
+                    x: 3px;
+                    y: 3px;
+                    width: parent.width - 6px;
+                    height: parent.height - 6px;
+                    border-radius: 5px;
+                    background: root.swatch;
+                }
+            }
+        }
+    }
+    if !root.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
+
+component SettingRangeRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in property <string> keywords: "";
+    in property <string> search-query: "";
+    in-out property <int> value;
+    in property <int> minimum: 0;
+    in property <int> maximum: 60;
+    in property <bool> enabled: true;
+    in property <string> setting;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
+        spacing: 18px;
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                width: clamp(State.content-avail-width * 0.35, 130px, 240px);
+                spacing: 10px;
+                opacity: root.enabled ? 1.0 : 0.38;
+                slider := PlayerSlider {
+                    horizontal-stretch: 1;
+                    minimum: root.minimum;
+                    maximum: root.maximum;
+                    value: root.value;
+                    fill-color: slider.hovered ? State.accent : #e2e6e1;
+                    track-color: #2e332f;
+                    changed(v) => {
+                        if root.enabled {
+                            root.value = round(v);
+                            Actions.set-setting(root.setting, "\{round(v)}");
+                        }
+                    }
+                }
+                Text {
+                    width: 34px;
+                    text: "\{root.value}%";
+                    color: Palette.muted;
+                    font-size: 11px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    if !root.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
+
+component SettingNumberRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in property <string> keywords: "";
+    in property <string> search-query: "";
+    in-out property <int> value;
+    in property <int> minimum: 180;
+    in property <int> maximum: 480;
+    in property <int> step: 10;
+    in property <string> setting;
+    out property <bool> is-match: root.search-query != "" && Actions.setting-matches("\{root.label} \{root.description} \{root.keywords}", root.search-query);
+    height: 54px;
+    border-radius: 8px;
+    background: root.is-match ? State.accent.with-alpha(0.11) : transparent;
+    border-width: root.is-match ? 1.5px : 0px;
+    border-color: root.is-match ? State.accent : transparent;
+    opacity: root.search-query == "" || root.is-match ? 1.0 : 0.45;
+    animate background { duration: 140ms; }
+    animate opacity { duration: 140ms; }
+
+    if root.is-match : Rectangle {
+        x: 2px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: State.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: root.is-match ? 12px : 0px;
+        padding-right: root.is-match ? 8px : 0px;
+        spacing: 18px;
+        SettingRow { label: root.label; description: root.description; highlighted: root.is-match; horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 104px;
+                height: 31px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.border;
+                background: Palette.panel-2;
+
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    // Minus button
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            background: minus-area.has-hover ? Palette.hover : transparent;
+                            minus-area := TouchArea {
+                                clicked => {
+                                    root.value = max(root.minimum, root.value - root.step);
+                                    Actions.set-setting(root.setting, "\{root.value}");
+                                }
+                            }
+                            Text {
+                                text: "-";
+                                color: Palette.muted;
+                                font-size: 13px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Value display
+                    Text {
+                        text: "\{root.value}";
+                        color: Palette.text;
+                        font-size: 12px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    // Plus button
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            background: plus-area.has-hover ? Palette.hover : transparent;
+                            plus-area := TouchArea {
+                                clicked => {
+                                    root.value = min(root.maximum, root.value + root.step);
+                                    Actions.set-setting(root.setting, "\{root.value}");
+                                }
+                            }
+                            Text {
+                                text: "+";
+                                color: Palette.muted;
+                                font-size: 13px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
+
+component SettingNavOrderRow inherits Rectangle {
+    in property <NavSettingItem> item;
+    height: 48px;
+    HorizontalLayout {
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+                background: grip-area.has-hover && !root.item.always-visible ? Palette.hover : transparent;
+                grip-area := TouchArea {
+                    mouse-cursor: root.item.always-visible ? default : grab;
+                }
+                Image {
+                    source: @image-url("../../assets/icons/grip.svg");
+                    width: 14px;
+                    height: 14px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    colorize: root.item.always-visible ? Palette.muted-2 : (grip-area.has-hover ? Palette.text : Palette.muted);
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            Text {
+                min-width: 0px;
+                text: root.item.view;
+                color: Palette.text-strong;
+                font-size: 12px;
+                font-weight: 700;
+                overflow: elide;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 6px;
+            if root.item.always-visible : VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "Always shown";
+                    color: Palette.muted;
+                    font-size: 11px;
+                }
+            }
+            if !root.item.always-visible : HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        width: 28px;
+                        height: 28px;
+                        icon-size: 14px;
+                        icon: @image-url("../../assets/icons/chevron-up.svg");
+                        enabled: root.item.can-move-up;
+                        rest-background: Palette.panel-2;
+                        clicked => { Actions.move-navigation(root.item.view, -1); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        width: 28px;
+                        height: 28px;
+                        icon-size: 14px;
+                        icon: @image-url("../../assets/icons/chevron-down.svg");
+                        enabled: root.item.can-move-down;
+                        rest-background: Palette.panel-2;
+                        clicked => { Actions.move-navigation(root.item.view, 1); }
+                    }
+                }
+                Rectangle { width: 4px; }
+                VerticalLayout {
+                    alignment: center;
+                    CustomToggle {
+                        checked: !root.item.hidden;
+                        toggled(v) => { Actions.toggle-navigation(root.item.view); }
+                    }
+                }
+            }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+}
+
+export component SettingsView inherits Rectangle {
+    // Track scroll position read-only for the active tab underline; never feed it back
+    // into any parent geometry above `settings-scroll` (doing so recurses in Slint layout).
+    property <length> scroll-pos: max(0px, -settings-scroll.content-y);
+    property <string> watched-section: State.settings-section;
+    property <string> search-query: State.view == "Settings" ? State.view-search : "";
+    property <bool> has-any-match:
+        row-theme.is-match || row-accent.is-match || row-custom-accent.is-match
+        || row-accent-color.is-match || row-sel-mode.is-match || row-sel-color.is-match
+        || row-transparent.is-match || row-transparency.is-match || row-motion.is-match
+        || row-presets.is-match || row-indexed.is-match || row-backups.is-match
+        || row-dupes.is-match || row-col-artwork.is-match || row-col-artist.is-match
+        || row-col-album.is-match || row-col-added.is-match || row-col-year.is-match
+        || row-col-duration.is-match || row-col-fav.is-match || row-autoplay.is-match
+        || row-open-panel.is-match || row-auto-lyrics.is-match || row-seek-lyrics.is-match
+        || row-lyrics-storage.is-match || row-tray.is-match || row-nav-width.is-match
+        || row-browse-width.is-match || row-nav-order.is-match || row-updates.is-match
+        || row-version.is-match || row-privacy.is-match;
+    changed watched-section => {
+        root.scroll-only-to(self.watched-section);
+    }
+    changed search-query => {
+        if (self.search-query != "") {
+            let target-y = root.first-match-y();
+            if (target-y >= 0px) {
+                settings-scroll.content-y = -max(0px, min(target-y - 14px, max(0px, settings-content.preferred-height - settings-scroll.visible-height)));
+            }
+        }
+    }
+    property <string> active-tab:
+        root.scroll-pos >= about-section.y - 60px ? "About" :
+        root.scroll-pos >= advanced-section.y - 60px ? "Advanced" :
+        root.scroll-pos >= playback-section.y - 60px ? "Playback" :
+        root.scroll-pos >= library-section.y - 60px ? "Library" :
+        "Appearance";
+
+    function first-match-y() -> length {
+        if (row-theme.is-match) { return appearance-section.y + row-theme.y; }
+        if (row-accent.is-match) { return appearance-section.y + row-accent.y; }
+        if (row-custom-accent.is-match) { return appearance-section.y + row-custom-accent.y; }
+        if (row-accent-color.is-match) { return appearance-section.y + row-accent-color.y; }
+        if (row-sel-mode.is-match) { return appearance-section.y + row-sel-mode.y; }
+        if (row-sel-color.is-match) { return appearance-section.y + row-sel-color.y; }
+        if (row-transparent.is-match) { return appearance-section.y + row-transparent.y; }
+        if (row-transparency.is-match) { return appearance-section.y + row-transparency.y; }
+        if (row-motion.is-match) { return appearance-section.y + row-motion.y; }
+        if (row-presets.is-match) { return appearance-section.y + row-presets.y; }
+        if (row-indexed.is-match) { return library-section.y + row-indexed.y; }
+        if (row-backups.is-match) { return library-section.y + row-backups.y; }
+        if (row-dupes.is-match) { return library-section.y + row-dupes.y; }
+        if (row-col-artwork.is-match) { return library-section.y + row-col-artwork.y; }
+        if (row-col-artist.is-match) { return library-section.y + row-col-artist.y; }
+        if (row-col-album.is-match) { return library-section.y + row-col-album.y; }
+        if (row-col-added.is-match) { return library-section.y + row-col-added.y; }
+        if (row-col-year.is-match) { return library-section.y + row-col-year.y; }
+        if (row-col-duration.is-match) { return library-section.y + row-col-duration.y; }
+        if (row-col-fav.is-match) { return library-section.y + row-col-fav.y; }
+        if (row-autoplay.is-match) { return playback-section.y + row-autoplay.y; }
+        if (row-open-panel.is-match) { return playback-section.y + row-open-panel.y; }
+        if (row-auto-lyrics.is-match) { return playback-section.y + row-auto-lyrics.y; }
+        if (row-seek-lyrics.is-match) { return playback-section.y + row-seek-lyrics.y; }
+        if (row-lyrics-storage.is-match) { return playback-section.y + row-lyrics-storage.y; }
+        if (row-tray.is-match) { return advanced-section.y + row-tray.y; }
+        if (row-nav-width.is-match) { return advanced-section.y + row-nav-width.y; }
+        if (row-browse-width.is-match) { return advanced-section.y + row-browse-width.y; }
+        if (row-nav-order.is-match) { return advanced-section.y + row-nav-order.y; }
+        if (row-updates.is-match) { return about-section.y + row-updates.y; }
+        if (row-version.is-match) { return about-section.y + row-version.y; }
+        if (row-privacy.is-match) { return about-section.y + row-privacy.y; }
+        return -1px;
+    }
+
+    function scroll-only-to(section: string) {
+        if (section == "Appearance") {
+            settings-scroll.content-y = 0px;
+        } else if (section == "Library") {
+            settings-scroll.content-y = -max(0px, library-section.y - 16px);
+        } else if (section == "Playback") {
+            settings-scroll.content-y = -max(0px, playback-section.y - 16px);
+        } else if (section == "Advanced") {
+            settings-scroll.content-y = -max(0px, advanced-section.y - 16px);
+        } else if (section == "About") {
+            settings-scroll.content-y = -max(0px, about-section.y - 16px);
+        }
+    }
+
+    function jump-to(section: string) {
+        State.settings-section = section;
+        root.scroll-only-to(section);
+    }
+
+    VerticalLayout {
+        padding-top: 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-bottom: 24px;
+        spacing: 12px;
+
+        VerticalLayout {
+            spacing: 4px;
+            Text {
+                text: "Settings";
+                color: Palette.text;
+                font-size: 28px;
+                font-weight: 700;
+                letter-spacing: -0.65px;
+            }
+            Text {
+                text: "Choose how Music Player looks and behaves.";
+                color: Palette.muted;
+                font-size: 12px;
+            }
+        }
+
+        // Single compact scrollable navigation tab strip with live active indicator
+        Rectangle {
+            height: 46px;
+            border-radius: 10px;
+            background: Palette.raised;
+            animate background { duration: 350ms; easing: ease-in-out; }
+            clip: true;
+
+            tabs-flick := Flickable {
+                x: 6px;
+                y: 6px;
+                width: parent.width - 12px;
+                height: 34px;
+                interactive: tabs-row.preferred-width > self.width;
+                content-width: max(self.width, tabs-row.preferred-width);
+                content-height: 34px;
+
+                tabs-row := HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    SettingsNavTab { label: "Appearance"; selected: root.active-tab == "Appearance"; clicked => { root.jump-to("Appearance"); } }
+                    SettingsNavTab { label: "Library"; selected: root.active-tab == "Library"; clicked => { root.jump-to("Library"); } }
+                    SettingsNavTab { label: "Playback"; selected: root.active-tab == "Playback"; clicked => { root.jump-to("Playback"); } }
+                    SettingsNavTab { label: "Equalizer"; selected: false; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                    SettingsNavTab { label: "Advanced"; selected: root.active-tab == "Advanced"; clicked => { root.jump-to("Advanced"); } }
+                    SettingsNavTab { label: "About"; selected: root.active-tab == "About"; clicked => { root.jump-to("About"); } }
+                }
+            }
+        }
+
+        if root.search-query != "" : Rectangle {
+            height: 40px;
+            border-radius: 10px;
+            background: root.has-any-match ? State.accent.with-alpha(0.12) : Palette.panel-2;
+            border-width: 1px;
+            border-color: root.has-any-match ? State.accent.with-alpha(0.55) : Palette.border;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 10px;
+                spacing: 10px;
+                alignment: center;
+                Text {
+                    text: root.has-any-match
+                        ? "Highlighting settings matching \"\{root.search-query}\""
+                        : "No settings found matching \"\{root.search-query}\"";
+                    color: root.has-any-match ? Palette.text : Palette.muted;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                ActionBtn {
+                    label: "Clear";
+                    clicked => { Actions.search-input(""); }
+                }
+            }
+        }
+
+        // Settings panel container: padding 20px, background #171917 (Palette.raised), border-radius 10px.
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 10px;
+            background: Palette.raised;
+            clip: true;
+            settings-scroll := ScrollView {
+                content-width: self.visible-width;
+                settings-content := VerticalLayout {
+                    width: settings-scroll.visible-width;
+                    padding: 20px;
+                    spacing: 24px;
+
+                    // Section 1: Appearance
+                    appearance-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Appearance"; color: Palette.text; font-size: 15px; font-weight: 700; }
+                        Text { text: "Match the player to your desktop."; color: Palette.muted; font-size: 11px; }
+                        Rectangle { height: 8px; }
+                        row-theme := SettingComboRow {
+                            label: "Color theme";
+                            description: "System, light, or dark.";
+                            keywords: "appearance colour dark light system";
+                            search-query: root.search-query;
+                            options: ["System", "Light", "Dark"];
+                            value: State.theme;
+                            changed(value) => { Actions.set-setting("theme", value); }
+                        }
+                        row-accent := SettingComboRow {
+                            label: "Accent style";
+                            description: "Keep the Music Player lime or let album artwork color the whole interface.";
+                            keywords: "color colour artwork theme palette";
+                            search-query: root.search-query;
+                            options: ["Lime", "Album artwork"];
+                            value: State.accent-mode == "Native" ? "Lime" : "Album artwork";
+                            changed(value) => { Actions.set-setting("accent-mode", value == "Lime" ? "Native" : "Artwork"); }
+                        }
+                        row-custom-accent := SettingSwitchRow {
+                            label: "Use a custom accent";
+                            description: "Choose a color for active controls.";
+                            keywords: "color colour theme highlight";
+                            search-query: root.search-query;
+                            checked: State.accent-manual-enabled;
+                            toggled(value) => { Actions.set-setting("accent-manual", value ? "true" : "false"); }
+                        }
+                        row-accent-color := SettingColorRow {
+                            label: "Custom accent color";
+                            description: "Applied to controls when enabled; artwork still colors the interface.";
+                            keywords: "colour swatch palette";
+                            search-query: root.search-query;
+                            swatch: State.accent-manual;
+                            enabled: State.accent-manual-enabled;
+                            setting: "accent-color";
+                        }
+                        row-sel-mode := SettingComboRow {
+                            label: "Text selection color";
+                            description: "Follow the active theme accent or choose your own.";
+                            keywords: "highlight colour";
+                            search-query: root.search-query;
+                            options: ["Follow theme", "Custom"];
+                            value: State.selection-color-mode == "Theme" ? "Follow theme" : "Custom";
+                            changed(value) => { Actions.set-setting("selection-color-mode", value == "Follow theme" ? "Theme" : "Custom"); }
+                        }
+                        row-sel-color := SettingColorRow {
+                            label: "Custom selection color";
+                            description: "Used when text selection is set to Custom.";
+                            keywords: "highlight colour swatch";
+                            search-query: root.search-query;
+                            swatch: State.selection-color-value;
+                            enabled: State.selection-color-mode == "Custom";
+                            setting: "selection-color";
+                        }
+                        row-transparent := SettingSwitchRow {
+                            label: "Transparent window";
+                            description: "Show Windows acrylic translucency behind the player. Off by default.";
+                            keywords: "acrylic mica blur glass backdrop translucency opacity";
+                            search-query: root.search-query;
+                            checked: State.transparent-window;
+                            toggled(value) => { Actions.set-setting("transparent-window", value ? "true" : "false"); }
+                        }
+                        row-transparency := SettingRangeRow {
+                            label: "Transparency";
+                            description: "0% is opaque. The player always remains at least 40% solid.";
+                            keywords: "acrylic mica blur glass opacity";
+                            search-query: root.search-query;
+                            value: State.window-transparency;
+                            minimum: 0;
+                            maximum: 60;
+                            enabled: State.transparent-window;
+                            setting: "window-transparency";
+                        }
+                        row-motion := SettingComboRow {
+                            label: "Navigation motion";
+                            description: "Respect accessibility animation preferences.";
+                            keywords: "animation transition smooth subtle expressive";
+                            search-query: root.search-query;
+                            options: ["Off", "Subtle", "Expressive"];
+                            value: State.motion-style;
+                            changed(value) => { Actions.set-setting("motion-style", value); }
+                        }
+                        row-presets := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Accent presets Quick choices custom accent Lime Sky Violet Rose Amber color colour", root.search-query);
+                            height: 54px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-presets.is-match ? 12px : 0px;
+                                padding-right: row-presets.is-match ? 8px : 0px;
+                                spacing: 18px;
+                                SettingRow { label: "Accent presets"; description: "Quick choices for the custom accent."; highlighted: row-presets.is-match; horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 0;
+                                    HorizontalLayout {
+                                        spacing: 9px;
+                                        alignment: end;
+                                        for preset in ["Lime", "Sky", "Violet", "Rose", "Amber"] : Rectangle {
+                                            width: 24px;
+                                            height: 24px;
+                                            border-radius: 12px;
+                                            border-width: State.accent-preset-name == preset ? 2px : 0px;
+                                            border-color: #ffffff;
+                                            background: preset == "Sky" ? #59d7ff : (preset == "Violet" ? #a878ff : (preset == "Rose" ? #ff6e91 : (preset == "Amber" ? #ffb04a : #b7ff2d)));
+                                            TouchArea { clicked => { Actions.set-accent-preset(preset); } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; }
+                        Rectangle { height: 10px; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Reset UI settings…"; clicked => { Actions.open-modal("reset"); } }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Palette.border; }
+
+                    // Section 2: Library
+                    library-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Library"; color: Palette.text; font-size: 15px; font-weight: 700; }
+                        Text { text: "Local folders and indexed tracks."; color: Palette.muted; font-size: 11px; }
+                        Rectangle { height: 8px; }
+                        row-indexed := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Indexed library total size tracks folders", root.search-query);
+                            height: 54px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-indexed.is-match ? 12px : 0px;
+                                padding-right: row-indexed.is-match ? 8px : 0px;
+                                SettingRow { label: "Indexed library"; description: "Total size of tracks currently indexed."; highlighted: row-indexed.is-match; horizontal-stretch: 1; }
+                                Text { text: State.indexed-library-size; color: Palette.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                            }
+                            if !row-indexed.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+                        }
+                        row-backups := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Tag backups cleanup storage limit cache mb", root.search-query);
+                            height: 58px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            opacity: root.search-query == "" || self.is-match ? 1.0 : 0.45;
+                            HorizontalLayout {
+                                padding-left: row-backups.is-match ? 12px : 0px;
+                                padding-right: row-backups.is-match ? 8px : 0px;
+                                spacing: 10px;
+                                SettingRow {
+                                    label: "Tag backups";
+                                    description: "Backups kept when editing tags or embedding lyrics · \{State.tag-backup-stats}";
+                                    highlighted: row-backups.is-match;
+                                    horizontal-stretch: 1;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    CustomSelect {
+                                        width: 96px;
+                                        options: ["50 MB", "100 MB", "250 MB", "500 MB"];
+                                        current-value: State.tag-backup-max-mb-label;
+                                        selected(value) => { Actions.set-setting("tag-backup-max-mb", value); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    ActionBtn {
+                                        label: "Clear";
+                                        clicked => { Actions.cleanup-tag-backups(); }
+                                    }
+                                }
+                            }
+                            if !row-backups.is-match : Rectangle { y: parent.height - 1px; height: 1px; background: Palette.border; }
+                        }
+                        row-dupes := SettingSwitchRow {
+                            label: "Hide exact duplicates";
+                            description: "Hide verified identical files in song, album, artist, genre, and folder views. Explicit queue and playlist entries are retained.";
+                            keywords: "duplicates library dedupe";
+                            search-query: root.search-query;
+                            checked: State.hide-exact-duplicates;
+                            toggled(value) => { Actions.set-setting("hide-exact-duplicates", value ? "true" : "false"); }
+                        }
+                        row-col-artwork := SettingSwitchRow { label: "Artwork"; description: "Show this column when the window is wide enough."; keywords: "columns song list cover"; search-query: root.search-query; checked: State.show-list-artwork; toggled(value) => { Actions.set-setting("show-list-artwork", value ? "true" : "false"); } }
+                        row-col-artist := SettingSwitchRow { label: "Artist"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-artist; toggled(value) => { Actions.set-setting("show-list-artist", value ? "true" : "false"); } }
+                        row-col-album := SettingSwitchRow { label: "Album"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-album; toggled(value) => { Actions.set-setting("show-list-album", value ? "true" : "false"); } }
+                        row-col-added := SettingSwitchRow { label: "Added date"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-added; toggled(value) => { Actions.set-setting("show-list-added", value ? "true" : "false"); } }
+                        row-col-year := SettingSwitchRow { label: "Year"; description: "Show this column when the window is wide enough."; keywords: "columns song list"; search-query: root.search-query; checked: State.show-list-year; toggled(value) => { Actions.set-setting("show-list-year", value ? "true" : "false"); } }
+                        row-col-duration := SettingSwitchRow { label: "Duration"; description: "Show this column when the window is wide enough."; keywords: "columns song list length time"; search-query: root.search-query; checked: State.show-list-duration; toggled(value) => { Actions.set-setting("show-list-duration", value ? "true" : "false"); } }
+                        row-col-fav := SettingSwitchRow { label: "Favorite button"; description: "Show this column when the window is wide enough."; keywords: "columns song list heart like"; search-query: root.search-query; checked: State.show-list-favorite; toggled(value) => { Actions.set-setting("show-list-favorite", value ? "true" : "false"); } }
+
+                        Rectangle { height: 10px; }
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
+                                ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
+                                ActionBtn { label: "Scan library"; clicked => { Actions.scan-library(); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Manage folders"; clicked => { Actions.open-modal("folders"); } }
+                            ActionBtn { label: "Scan exclusions"; clicked => { Actions.open-modal("exclusions"); } }
+                            ActionBtn { label: "Find duplicates"; clicked => { Actions.set-view("Duplicates", "", "", ""); } }
+                            ActionBtn { label: "Scan library"; clicked => { Actions.scan-library(); } }
+                        }
+                        Rectangle { height: 6px; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Rebuild index and reconcile missing files"; clicked => { Actions.rebuild-library-index(); } }
+                        }
+                        Rectangle { height: 8px; }
+                        Text {
+                            text: "Rebuilding refreshes artwork and removes files confirmed missing from reachable locations. Confirmed deletions are removed from playlists, the queue and saved history. Offline drives are retained and hidden until they reconnect.";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Palette.border; }
+
+                    // Section 3: Playback
+                    playback-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Playback"; color: Palette.text; font-size: 15px; font-weight: 700; }
+                        Text { text: "Keep playback state and the queue easy to reach."; color: Palette.muted; font-size: 11px; }
+                        Rectangle { height: 8px; }
+                        row-autoplay := SettingSwitchRow {
+                            label: "Autoplay similar music";
+                            description: "Automatically queue and play songs from similar genres, artists, and favorites when playback ends.";
+                            keywords: "similar radio queue end";
+                            search-query: root.search-query;
+                            checked: State.autoplay-similar;
+                            toggled(value) => { Actions.set-setting("autoplay-similar", value ? "true" : "false"); }
+                        }
+                        row-open-panel := SettingSwitchRow {
+                            label: "Open the Now Playing pane when a song starts";
+                            description: "Show the current track and upcoming queue.";
+                            keywords: "right panel sidebar queue info";
+                            search-query: root.search-query;
+                            checked: State.auto-open-side-panel;
+                            toggled(value) => { Actions.set-setting("auto-open-side-panel", value ? "true" : "false"); }
+                        }
+                        row-auto-lyrics := SettingSwitchRow {
+                            label: "Automatically find lyrics";
+                            description: "If no saved lyrics exist, look for a likely LRCLIB match when playback starts. Sends the track title and artist; manual search remains available.";
+                            keywords: "lrclib online synchronized lrc";
+                            search-query: root.search-query;
+                            checked: State.auto-load-lyrics;
+                            toggled(value) => { Actions.set-setting("auto-load-lyrics", value ? "true" : "false"); }
+                        }
+                        row-seek-lyrics := SettingSwitchRow {
+                            label: "Seek when selecting a lyric line";
+                            description: "Jump playback to a timed lyric. Plain, untimed lyrics cannot seek.";
+                            keywords: "synced timestamp lrc jump";
+                            search-query: root.search-query;
+                            checked: State.seek-from-lyrics;
+                            toggled(value) => { Actions.set-setting("seek-from-lyrics", value ? "true" : "false"); }
+                        }
+                        row-lyrics-storage := SettingComboRow {
+                            label: "Lyrics storage";
+                            description: "Choose whether fetched or edited lyrics embed inside the audio file or save as an LRC file beside it.";
+                            keywords: "embed sidecar lrc file";
+                            search-query: root.search-query;
+                            options: ["Embed in audio file", "Save beside audio file"];
+                            value: State.lyrics-embed ? "Embed in audio file" : "Save beside audio file";
+                            changed(value) => { Actions.set-setting("lyrics-storage-mode", value == "Save beside audio file" ? "sidecar" : "embed"); }
+                        }
+                        Rectangle { height: 10px; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Equalizer and audio output"; clicked => { Actions.set-view("Audio", "", "", ""); } }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Palette.border; }
+
+                    // Section 4: Advanced
+                    advanced-section := VerticalLayout {
+                        spacing: 0px;
+                        Text { text: "Advanced"; color: Palette.text; font-size: 15px; font-weight: 700; }
+                        Text { text: "Application behavior, navigation, and diagnostics."; color: Palette.muted; font-size: 11px; }
+                        Rectangle { height: 8px; }
+                        row-tray := SettingSwitchRow {
+                            label: "Keep running in notification area";
+                            description: "Closing the window keeps Music Player and playback running. Use the tray icon to reopen it or choose Quit to exit.";
+                            keywords: "tray minimize background close";
+                            search-query: root.search-query;
+                            checked: State.minimize-to-tray;
+                            toggled(value) => { Actions.set-setting("minimize-to-tray", value ? "true" : "false"); }
+                        }
+                        row-nav-width := SettingNumberRow {
+                            label: "Navigation width";
+                            description: "Expanded sidebar width in logical pixels.";
+                            keywords: "sidebar layout size";
+                            search-query: root.search-query;
+                            value: State.navigation-width;
+                            minimum: 180;
+                            maximum: 360;
+                            setting: "navigation-width";
+                        }
+                        row-browse-width := SettingNumberRow {
+                            label: "Browse grid spacing";
+                            description: "Spacing between album, artist, and playlist tiles.";
+                            keywords: "cards grid tiles width";
+                            search-query: root.search-query;
+                            value: State.browse-width;
+                            minimum: 180;
+                            maximum: 480;
+                            setting: "browse-width";
+                        }
+                        Rectangle { height: 8px; }
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
+                                ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
+                            ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
+                            ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                        }
+                        Rectangle { height: 10px; }
+                        row-nav-order := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Navigation order and visibility sidebar drag reorder hide", root.search-query);
+                            height: nav-order-hdr.preferred-height + 8px;
+                            border-radius: 6px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            nav-order-hdr := VerticalLayout {
+                                padding-left: row-nav-order.is-match ? 10px : 0px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 2px;
+                                SectionTitle { text: "Navigation order and visibility"; font-size: 12px; letter-spacing: 0px; }
+                                Text { text: "Drag the grip or use the arrows to reorder. Use the switch to hide a destination."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                            }
+                        }
+                        Rectangle { height: 6px; }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for item in State.navigation-settings : SettingNavOrderRow { item: item; }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Palette.border; }
+
+                    // Section 5: About
+                    about-section := VerticalLayout {
+                        spacing: 8px;
+                        Text { text: "About Music Player"; color: Palette.text; font-size: 15px; font-weight: 700; }
+                        Text { text: "A local music library and player for Windows."; color: Palette.muted; font-size: 11px; }
+                        Rectangle { height: 4px; }
+                        HorizontalLayout {
+                            height: 50px;
+                            spacing: 12px;
+                            Text { text: "Music Player"; color: Palette.text; font-size: 18px; font-weight: 700; vertical-alignment: center; }
+                            Text { text: State.about-rows.length > 0 ? "Version " + State.about-rows[0].value : "Version unavailable"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            VerticalLayout {
+                                alignment: center;
+                                ActionBtn {
+                                    icon: @image-url("../../assets/icons/github.svg");
+                                    label: "View repository";
+                                    clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player"); }
+                                }
+                            }
+                        }
+                        row-version := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Latest release version update GitHub history", root.search-query);
+                            height: 56px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            HorizontalLayout {
+                                padding-left: row-version.is-match ? 12px : 0px;
+                                padding-right: row-version.is-match ? 8px : 0px;
+                                SettingRow { label: "Latest release"; description: State.update-tag == "" ? "Check GitHub for the latest published version." : "GitHub release \{State.update-tag} · updates are never installed automatically."; highlighted: row-version.is-match; horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    ActionBtn { label: State.update-tag == "" ? "Release history" : "View release"; clicked => { Actions.open-release(); } }
+                                }
+                            }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; }
+                        row-updates := SettingSwitchRow {
+                            label: "Check for updates automatically";
+                            description: "Checks GitHub release metadata every six hours; installs are always manual.";
+                            keywords: "github release update version";
+                            search-query: root.search-query;
+                            checked: State.check-updates;
+                            toggled(value) => { Actions.set-setting("check-updates", value ? "true" : "false"); }
+                        }
+                        Rectangle { height: 6px; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Keyboard shortcuts & help"; clicked => { Actions.open-modal("help"); } }
+                            ActionBtn {
+                                label: State.update-checking ? "Checking…" : "Check for updates";
+                                enabled: !State.update-checking;
+                                clicked => { Actions.check-updates(); }
+                            }
+                            ActionBtn { label: "View all releases"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/releases"); } }
+                        }
+                        Rectangle { height: 8px; }
+                        SectionTitle { text: "Version history"; font-size: 12px; letter-spacing: 0px; }
+                        if State.release-history.length == 0 : Text {
+                            text: "Release history is unavailable offline. Use “View all releases” when connected.";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                        if State.release-history.length > 0 : GridLayout {
+                            width: 100%;
+                            spacing: 8px;
+                            for rel[idx] in State.release-history : Rectangle {
+                                col: Math.mod(idx, State.content-width <= 600 ? 2 : 4);
+                                row: idx / (State.content-width <= 600 ? 2 : 4);
+                                height: 50px;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: Palette.border;
+                                background: rel-area.has-hover ? Palette.hover : Palette.panel-2;
+                                animate background { duration: 100ms; }
+                                rel-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Actions.open-url(rel.url); }
+                                }
+                                VerticalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: rel.tag;
+                                        color: Palette.text;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: rel.prerelease ? "Preview release" : "Stable release";
+                                        color: Palette.muted;
+                                        font-size: 10px;
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { height: 8px; }
+                        SectionTitle { text: "Open-source software"; font-size: 12px; letter-spacing: 0px; }
+                        Text {
+                            text: "Music Player is distributed under the MIT License. Third-party components keep their own licenses and attributions.";
+                            color: Palette.muted;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                        Rectangle { height: 6px; }
+                        if State.about-components.length > 0 : Rectangle {
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            background: Palette.panel;
+                            clip: true;
+                            VerticalLayout {
+                                // Table Header
+                                Rectangle {
+                                    height: 34px;
+                                    background: Palette.surface;
+                                    HorizontalLayout {
+                                        padding-left: 12px;
+                                        padding-right: 12px;
+                                        spacing: 12px;
+                                        Text { text: "COMPONENT"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; horizontal-stretch: 1; min-width: 0px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "VERSION"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 80px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "LICENSE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 110px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "SOURCE"; color: Palette.muted; font-size: 9px; font-weight: 700; letter-spacing: 0.6px; width: 100px; horizontal-stretch: 0; vertical-alignment: center; overflow: elide; }
+                                    }
+                                }
+                                Rectangle { height: 1px; background: Palette.border; }
+                                // Table Rows
+                                for comp in State.about-components : VerticalLayout {
+                                    Rectangle {
+                                        min-height: 48px;
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            padding-top: 8px;
+                                            padding-bottom: 8px;
+                                            spacing: 12px;
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                                spacing: 2px;
+                                                alignment: center;
+                                                Text { width: 100%; text: comp.name; color: Palette.text-strong; font-size: 11px; font-weight: 700; overflow: elide; min-width: 0px; }
+                                                if comp.description != "" : Text { width: 100%; text: comp.description; color: Palette.muted; font-size: 9px; overflow: elide; min-width: 0px; }
+                                            }
+                                            VerticalLayout {
+                                                width: 80px;
+                                                horizontal-stretch: 0;
+                                                alignment: center;
+                                                Text { width: 100%; text: comp.version; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
+                                            }
+                                            VerticalLayout {
+                                                width: 110px;
+                                                horizontal-stretch: 0;
+                                                alignment: center;
+                                                Text { width: 100%; text: comp.license; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
+                                            }
+                                            VerticalLayout {
+                                                width: 100px;
+                                                horizontal-stretch: 0;
+                                                alignment: center;
+                                                Text { width: 100%; text: comp.source; color: Palette.text-subtle; font-size: 10px; overflow: elide; min-width: 0px; }
+                                            }
+                                        }
+                                    }
+                                    Rectangle { height: 1px; background: Palette.border-soft; }
+                                }
+                            }
+                        }
+                        Rectangle { height: 4px; }
+                        if State.content-width <= 600 : VerticalLayout {
+                            spacing: 8px;
+                            ActionBtn { label: "Open MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ActionBtn { label: "Open third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
+                                ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }
+                            }
+                        }
+                        if State.content-width > 600 : HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionBtn { label: "Open MIT license"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LICENSE"); } }
+                            ActionBtn { label: "Open third-party notices"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/ThirdPartyNotices.md"); } }
+                            ActionBtn { label: "Open LGPL 2.1 text"; clicked => { Actions.open-url("https://github.com/kalabhaftu/music-player/blob/main/LGPL-2.1.txt"); } }
+                        }
+                        Rectangle { height: 8px; }
+                        row-privacy := Rectangle {
+                            property <bool> is-match: root.search-query != "" && Actions.setting-matches("Privacy and network use LRCLIB GitHub device", root.search-query);
+                            height: priv-col.preferred-height + 8px;
+                            border-radius: 8px;
+                            background: self.is-match ? State.accent.with-alpha(0.11) : transparent;
+                            border-width: self.is-match ? 1.5px : 0px;
+                            border-color: self.is-match ? State.accent : transparent;
+                            priv-col := VerticalLayout {
+                                padding-left: row-privacy.is-match ? 10px : 0px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 4px;
+                                SectionTitle { text: "Privacy and network use"; font-size: 12px; letter-spacing: 0px; }
+                                Text {
+                                    text: "Your music library stays on this device. Manual checks, and automatic checks when enabled, contact GitHub for release information. Searching LRCLIB sends the current track title and artist to LRCLIB to find matching lyrics.";
+                                    color: Palette.muted;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,285 @@
+// Root window: navigation rail, top bar, content area, right panel, player
+// bar, global context menu, toasts and every modal.
+
+import { State, Actions } from "state.slint";
+import {
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem,
+    TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem,
+    BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, NavEntry, NavSettingItem,
+    AboutComponentItem, ReleaseItem,
+} from "models.slint";
+import { Palette, IcBtn, PlayerSlider, TooltipOverlay } from "widgets.slint";
+import { ContentArea, QueueView, AudioView } from "views.slint";
+import { ModalHost } from "modals/modal_host.slint";
+import { NavRail, PanelResizeHandle } from "shell/sidebar.slint";
+import { TopBar, ToolsMenuOverlay } from "shell/top_bar.slint";
+import { RightPanel } from "shell/right_panel.slint";
+import { PlayerBar } from "shell/player_bar.slint";
+import { ContextMenuOverlay } from "shell/context_menu.slint";
+import { NoticeOverlay } from "shell/notice.slint";
+import { ImmersivePlayerOverlay } from "shell/immersive.slint";
+import { FramelessWindowChrome } from "shell/frameless_chrome.slint";
+
+// Export globals and DTO structs to the Rust host.
+export { State, Actions } from "state.slint";
+export { VideoWindow } from "video_window.slint";
+export {
+    TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem,
+    ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem,
+    GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem,
+    AboutComponentItem, ReleaseItem, VideoSubtitleItem,
+} from "models.slint";
+
+export component AppWindow inherits Window {
+    title: State.current-title == "" ? "Music Player" : "\{State.current-title} — \{State.current-artist} | Music Player";
+    icon: @image-url("../assets/MusicPlayer-dark.png");
+    no-frame: State.immersive-player-open;
+    min-width: 720px;
+    min-height: 500px;
+    preferred-width: 1024px;
+    preferred-height: 640px;
+    background: State.transparent-window ? #00000000 : Palette.canvas;
+    animate background { duration: 350ms; easing: ease-in-out; }
+
+    changed width => {
+        State.window-width = round(self.width / 1px);
+        Actions.window-resized(round(self.width / 1px), round(self.height / 1px));
+    }
+    changed height => {
+        State.window-height = round(self.height / 1px);
+        Actions.window-resized(round(self.width / 1px), round(self.height / 1px));
+    }
+
+    init => { Actions.ui-ready(); }
+
+    forward-focus: key-handler;
+
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                if (State.context-visible) {
+                    Actions.close-context-menu();
+                    return accept;
+                }
+                if (State.modal != "") {
+                    Actions.close-modal();
+                    return accept;
+                }
+                if (State.immersive-open) {
+                    Actions.close-immersive();
+                    return accept;
+                }
+                if (State.immersive-player-open) {
+                    Actions.close-immersive-player();
+                    return accept;
+                }
+                if (State.immersive-fullscreen) {
+                    Actions.toggle-immersive-fullscreen();
+                    return accept;
+                }
+                if (State.scan-details-open) {
+                    State.scan-details-open = false;
+                    return accept;
+                }
+            }
+
+            // Global Ctrl+K: focus global search (navigates to Search view if not in Search/Settings)
+            if (event.modifiers.control && (event.text == "k" || event.text == "K")) {
+                if (State.view != "Search" && State.view != "Settings") {
+                    Actions.set-view("Search", State.view-search, "", "");
+                }
+                topbar.focus-search();
+                return accept;
+            }
+
+            // Global F11: toggle fullscreen
+            if (event.text == Key.F11) {
+                Actions.toggle-immersive-fullscreen();
+                return accept;
+            }
+
+            // Global F1 or ? (when not typing in search/modal): toggle Help & shortcuts modal
+            if (event.text == Key.F1) {
+                if (State.modal == "help") {
+                    Actions.close-modal();
+                } else {
+                    Actions.open-modal("help");
+                }
+                return accept;
+            }
+
+            if (State.modal == "" && !State.context-visible && !topbar.search-has-focus) {
+                if (event.text == "?") {
+                    Actions.open-modal("help");
+                    return accept;
+                }
+                // Space: toggle play/pause
+                if (event.text == " ") {
+                    Actions.toggle-play();
+                    return accept;
+                }
+                // Left / Right arrows: seek backward/forward (5s; 10s if shift)
+                // Alt+Left / Alt+Right (or Ctrl+Left / Ctrl+Right): previous / next track
+                if (event.text == Key.LeftArrow) {
+                    if (event.modifiers.control || event.modifiers.alt) {
+                        Actions.previous();
+                    } else {
+                        Actions.seek-relative(event.modifiers.shift ? -10 : -5);
+                    }
+                    return accept;
+                }
+                if (event.text == Key.RightArrow) {
+                    if (event.modifiers.control || event.modifiers.alt) {
+                        Actions.next();
+                    } else {
+                        Actions.seek-relative(event.modifiers.shift ? 10 : 5);
+                    }
+                    return accept;
+                }
+                // Up / Down arrows: volume up / down (5%; 10% if shift)
+                if (event.text == Key.UpArrow) {
+                    Actions.volume-changed(min(100, State.volume + (event.modifiers.shift ? 10 : 5)));
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    Actions.volume-changed(max(0, State.volume - (event.modifiers.shift ? 10 : 5)));
+                    return accept;
+                }
+                // Home: rewind to start
+                if (event.text == Key.Home) {
+                    Actions.seek-fraction(0.0);
+                    return accept;
+                }
+                // End: skip to next track
+                if (event.text == Key.End) {
+                    Actions.next();
+                    return accept;
+                }
+                // Enter / Return: toggle playback
+                if (event.text == Key.Return) {
+                    Actions.toggle-play();
+                    return accept;
+                }
+                // M: toggle mute
+                if (event.text == "m" || event.text == "M") {
+                    Actions.set-volume-muted();
+                    return accept;
+                }
+                // L: toggle lyrics view (navigates to Lyrics in normal view; toggles lyrics in immersive player)
+                if (event.text == "l" || event.text == "L") {
+                    if (State.immersive-player-open) {
+                        Actions.toggle-immersive-lyrics();
+                    } else if (State.view == "Lyrics") {
+                        Actions.go-back();
+                    } else {
+                        Actions.set-view("Lyrics", "", "", "");
+                    }
+                    return accept;
+                }
+                // F11 or I: toggle immersive player / fullscreen
+                if (event.text == "i" || event.text == "I") {
+                    if (State.immersive-player-open) {
+                        Actions.close-immersive-player();
+                    } else {
+                        Actions.open-immersive-player();
+                    }
+                    return accept;
+                }
+                if (event.text == "s" || event.text == "S") {
+                    Actions.toggle-shuffle();
+                    return accept;
+                }
+                if (event.text == "r" || event.text == "R") {
+                    Actions.cycle-repeat();
+                    return accept;
+                }
+            }
+            reject
+        }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+
+        VerticalLayout {
+            width: parent.width;
+            height: parent.height;
+            HorizontalLayout {
+                vertical-stretch: 1;
+                NavRail { }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    min-width: 0px;
+                    topbar := TopBar { }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        clip: true;
+                        background: Palette.surface;
+                        animate background { duration: 350ms; easing: ease-in-out; }
+                        ContentArea { width: 100%; height: 100%; }
+                    }
+                }
+                RightPanel { }
+            }
+            PlayerBar { vertical-stretch: 0; }
+        }
+    }
+
+    PanelResizeHandle { available-width: parent.width; available-height: parent.height - 88px; }
+    PanelResizeHandle { right-side: true; available-width: parent.width; available-height: parent.height - 88px; }
+
+    if State.immersive-player-open : ImmersivePlayerOverlay { width: 100%; height: 100%; }
+
+    // Immersive drawer overlay: re-parents the content area with Queue/Audio.
+    if State.immersive-open && State.immersive-player-open : Rectangle {
+        x: parent.width - self.width - 20px;
+        y: 68px;
+        width: min(State.immersive-kind == "Queue" ? 480px : 780px, parent.width - 40px);
+        height: max(180px, parent.height - 68px - 170px);
+        border-radius: 18px;
+        border-width: 1px;
+        border-color: #ffffff24;
+        background: #171917f2;
+        clip: true;
+        VerticalLayout {
+            HorizontalLayout {
+                height: 54px;
+                padding-left: 18px;
+                padding-right: 14px;
+                Text {
+                    text: State.immersive-kind;
+                    color: #f7f8f6;
+                    font-size: 16px;
+                    font-weight: 750;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                IcBtn {
+                    icon: @image-url("../assets/icons/close.svg");
+                    icon-size: 13px;
+                    tint: Palette.muted-2;
+                    clicked => { Actions.close-immersive(); }
+                }
+            }
+            Rectangle { height: 1px; background: #ffffff1c; }
+            Rectangle {
+                vertical-stretch: 1;
+                if State.immersive-kind == "Queue" : QueueView { }
+                if State.immersive-kind == "Audio" : AudioView { }
+            }
+        }
+    }
+
+    if State.immersive-player-open && !State.immersive-fullscreen : FramelessWindowChrome { width: 100%; height: 100%; }
+
+    TooltipOverlay { width: 100%; height: 100%; }
+    if State.tools-menu-open : ToolsMenuOverlay { width: 100%; height: 100%; }
+    if State.context-visible : ContextMenuOverlay { width: 100%; height: 100%; }
+    if State.notice-visible : NoticeOverlay { width: 100%; height: 100%; }
+    if State.modal != "" : ModalHost { width: 100%; height: 100%; }
+}

@@ -1,0 +1,477 @@
+import { State, Actions } from "../state.slint";
+import { GroupItem } from "../models.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import {
+    Palette, ActionBtn, TrackTable, GroupGrid, HeroDetail, CardTile, EmptyState, SectionTitle, CustomSelect,
+} from "../widgets.slint";
+
+// ---- Songs-like table views ------------------------------------------------
+export component SongsView inherits Rectangle {
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 0px;
+        spacing: 0px;
+
+        HorizontalLayout {
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: State.view-title; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                Text { text: State.view-subtitle; color: Palette.muted; font-size: 12px; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            ActionBtn { label: "Play all"; primary: true; clicked => { Actions.play-view(State.view); } }
+            ActionBtn {
+                label: "Shuffle";
+                clicked => {
+                    Actions.shuffle-view(State.view);
+                }
+            }
+        }
+
+        Rectangle { height: 22px; }
+
+        HorizontalLayout {
+            height: 34px;
+            spacing: 8px;
+            alignment: end;
+            Text { text: "Sort"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+            CustomSelect {
+                width: 140px;
+                options: State.view == "Videos"
+                    ? ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating", "Type"]
+                    : ["Title", "Artist", "Album", "Genre", "Year", "Added", "Duration", "PlayCount", "LastPlayed", "Path", "Rating"];
+                current-value: State.view-sort;
+                selected(value) => { Actions.sort-view(value); }
+            }
+            ActionBtn {
+                label: State.view-descending ? "Descending" : "Ascending";
+                clicked => { Actions.sort-view(State.view-sort); }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+            TrackTable {
+                width: 100%;
+                height: 100%;
+                scrollable: true;
+                show-plays: State.view == "Most Played";
+                sort(column) => { Actions.sort-view(column); }
+                empty-text: State.view == "Videos" ? "No videos indexed. Enable video file types in scan exclusions." : "No tracks to show.";
+            }
+        }
+    }
+}
+
+// ---- Grid views (Albums / Artists / Genres) --------------------------------
+export component GridView inherits Rectangle {
+    in property <string> title: "";
+    in property <bool> round: false;
+    in property <string> empty-text: "Nothing here yet.";
+
+    grid-sv := ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            width: grid-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
+
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: root.title; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+            Text { text: root.title == "Albums" ? "\{State.groups-total} albums" : (root.title == "Artists" ? "\{State.groups-total} artists" : "\{State.groups-total} genres"); color: Palette.muted; font-size: 12px; }
+        }
+
+        Rectangle { height: 22px; }
+
+        GroupGrid {
+            scrollable: false;
+            round: root.round;
+            kind: root.title == "Albums" ? "album" : (root.title == "Artists" ? "artist" : (root.title == "Genres" ? "genre" : "folder"));
+            empty-text: root.empty-text;
+        }
+        if State.groups.length > 0 && State.groups-total > State.groups.length : VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 12px; }
+            ActionBtn {
+                label: "Load more";
+                clicked => { Actions.load-more-groups(); }
+            }
+            Rectangle { height: 12px; }
+        }
+      }
+    }
+}
+
+export component ArtistsView inherits GridView {
+    title: "Artists";
+    round: true;
+    empty-text: "No artists indexed yet.";
+}
+
+export component FoldersView inherits Rectangle {
+    folders-sv := ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            width: folders-sv.visible-width;
+            padding-left: folders-sv.visible-width <= 460px ? 14px : 24px;
+            padding-right: folders-sv.visible-width <= 460px ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
+
+            if folders-sv.visible-width <= 600px : VerticalLayout {
+                spacing: 10px;
+                Text {
+                    text: "Folders";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+                if folders-sv.visible-width <= 480px : VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ActionBtn {
+                            label: "＋ Add folder";
+                            primary: true;
+                            clicked => { Actions.open-modal("folders"); }
+                        }
+                        ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                        ActionBtn {
+                            label: "Rebuild";
+                            clicked => { Actions.rebuild-library-index(); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                        ActionBtn {
+                            label: "Exclusions";
+                            clicked => { Actions.open-modal("exclusions"); }
+                        }
+                    }
+                }
+                if folders-sv.visible-width > 480px : HorizontalLayout {
+                    spacing: 6px;
+                    ActionBtn {
+                        label: "＋ Add folder";
+                        primary: true;
+                        clicked => { Actions.open-modal("folders"); }
+                    }
+                    ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                    ActionBtn {
+                        label: "Rebuild";
+                        clicked => { Actions.rebuild-library-index(); }
+                    }
+                    ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                    ActionBtn {
+                        label: "Exclusions";
+                        clicked => { Actions.open-modal("exclusions"); }
+                    }
+                }
+            }
+            if folders-sv.visible-width > 600px : HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    spacing: 5px;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    Text {
+                        text: "Folders";
+                        color: Palette.text;
+                        font-size: 30px;
+                        font-weight: 700;
+                        letter-spacing: -0.65px;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    ActionBtn {
+                        label: "＋ Add folder";
+                        primary: true;
+                        clicked => { Actions.open-modal("folders"); }
+                    }
+                    ActionBtn { label: "Scan"; clicked => { Actions.scan-library(); } }
+                    ActionBtn {
+                        label: "Rebuild";
+                        clicked => { Actions.rebuild-library-index(); }
+                    }
+                    ActionBtn { label: "Roots"; clicked => { Actions.open-modal("folders"); } }
+                    ActionBtn {
+                        label: "Exclusions";
+                        clicked => { Actions.open-modal("exclusions"); }
+                    }
+                }
+            }
+
+            if State.library-warning != "" : Text {
+                text: State.library-warning;
+                color: #ffb04a;
+                font-size: 11px;
+            }
+
+            if State.scan-active || State.scan-paused : Rectangle { height: 22px; }
+            if !State.scan-active && !State.scan-paused : Rectangle { height: 24px; }
+
+            // Scan status row: dot + label + counters.
+            if State.scan-active || State.scan-paused : Rectangle {
+                height: 64px;
+                border-radius: 8px;
+                background: Palette.raised;
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 4px;
+                        background: State.scan-active ? State.accent : #ffb04a;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 3px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: State.scan-cancelling ? "Cancelling scan…"
+                                : State.scan-paused ? "Scan paused" : "Scanning library";
+                            color: Palette.text-strong;
+                            font-size: 12px;
+                            font-weight: 650;
+                        }
+                        Text {
+                            text: State.scan-scanned > 0
+                                ? "\{State.scan-scanned} files scanned · \{State.library-tracks} tracks · \{State.scan-path}"
+                                : (State.scan-path != ""
+                                    ? "\{State.scan-path} · \{State.library-tracks} tracks"
+                                    : "Scanning library files…");
+                            color: Palette.muted;
+                            font-size: 10px;
+                            overflow: elide;
+                        }
+                    }
+                    if State.scan-active : ActionBtn {
+                        label: State.scan-paused ? "Resume" : "Pause";
+                        clicked => { Actions.pause-scan(); }
+                    }
+                    if State.scan-active : ActionBtn {
+                        label: "Cancel";
+                        danger: true;
+                        clicked => { Actions.cancel-scan(); }
+                    }
+                }
+            }
+
+            if State.scan-active || State.scan-paused : Rectangle { height: 24px; }
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: "Indexed folders";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                    vertical-alignment: center;
+                }
+                Text { text: "\{State.groups-total}"; color: Palette.muted; font-size: 16px; vertical-alignment: center; }
+            }
+            Rectangle { height: 13px; }
+            if State.groups.length == 0 : EmptyState {
+                text: "Indexed folders will appear here.";
+            }
+            if State.groups.length > 0 : GroupGrid {
+                scrollable: false;
+                kind: "folder";
+                items: State.groups;
+                show-load-more: false;
+            }
+            if State.groups.length > 0 && State.groups-total > State.groups.length : VerticalLayout {
+                spacing: 0px;
+                Rectangle { height: 12px; }
+                ActionBtn {
+                    label: "Load more folders";
+                    clicked => { Actions.load-more-groups(); }
+                }
+            }
+
+            Rectangle { height: 24px; }
+
+            HorizontalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Library roots"; horizontal-stretch: 1; }
+                Rectangle {
+                    width: 48px;
+                    height: 26px;
+                    Text {
+                        text: "Manage";
+                        color: manage-area.has-hover ? Palette.text : Palette.muted;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                    manage-area := TouchArea { clicked => { Actions.open-modal("folders"); } }
+                }
+            }
+            Rectangle { height: 13px; }
+            if State.folder-roots.length == 0 : EmptyState { text: "No music folders added yet."; }
+            if State.folder-roots.length > 0 : GridLayout {
+                width: 100%;
+                spacing: 12px;
+                for rootEntry[index] in State.folder-roots : Rectangle {
+                    width: State.folder-card-width;
+                    height: rootEntry.is-available ? 64px : 80px;
+                    col: Math.mod(index, State.folder-columns);
+                    row: index / State.folder-columns;
+                    border-radius: 8px;
+                    background: Palette.raised;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        spacing: 12px;
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            background: Palette.hover;
+                            Image {
+                                source: rootEntry.icon == "download" ? @image-url("../../assets/icons/download.svg")
+                                    : rootEntry.icon == "music" ? @image-url("../../assets/icons/music.svg")
+                                    : rootEntry.icon == "disc" ? @image-url("../../assets/icons/disc.svg")
+                                    : @image-url("../../assets/icons/folder.svg");
+                                width: 18px;
+                                height: 18px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                colorize: State.accent;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            Text { text: rootEntry.name; color: Palette.text-strong; font-size: 12px; font-weight: 700; overflow: elide; }
+                            Text {
+                                text: rootEntry.is-available
+                                    ? "\{rootEntry.path} · \{rootEntry.track-count} tracks · Available"
+                                    : "\{rootEntry.path} · \{rootEntry.track-count} tracks · Unavailable";
+                                color: rootEntry.is-available ? Palette.muted : #ff5b74;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                            if !rootEntry.is-available : Text {
+                                text: "Reconnect this drive, then rescan the library.";
+                                color: #ff5b74;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                        }
+                        ActionBtn { label: "Remove"; clicked => { Actions.remove-root(rootEntry.path); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- Detail pages (Album / Artist / Genre / Folder) --------------------------
+export component DetailView inherits Rectangle {
+    in property <string> eyebrow: "";
+    in property <string> empty-text: "No tracks.";
+
+    detail-sv := ScrollView {
+        vertical-stretch: 1;
+        content-width: self.visible-width;
+
+        VerticalLayout {
+            width: detail-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
+            alignment: start;
+
+            HeroDetail {
+                eyebrow: root.eyebrow;
+                title: State.view-group-column == "folder" ? (State.view-group-title != "" ? State.view-group-title : State.view-group-value) : (State.view-group-value == "" ? State.view-title : State.view-group-value);
+                subtitle: State.hero-subtitle;
+                cover: State.hero-cover;
+                has-cover: State.hero-has-cover;
+                round: State.view-group-column == "artist";
+                play => { Actions.play-group(State.view-group-column, State.view-group-value); }
+                shuffle => { Actions.play-group-shuffle(State.view-group-column, State.view-group-value); }
+            }
+
+            if State.view-group-column == "artist" && State.artist-albums.length > 0 : VerticalLayout {
+                spacing: 0px;
+                alignment: start;
+                SectionTitle { text: "Albums"; }
+                Rectangle { height: 13px; }
+                GridLayout {
+                    width: 100%;
+                    spacing: State.card-gap;
+                    for album[index] in State.artist-albums : CardTile {
+                        item: album;
+                        col: Math.mod(index, State.card-columns);
+                        row: index / State.card-columns;
+                        play => { Actions.play-group("album", album.name); }
+                        open => { Actions.set-view("Album", "", album.name, ""); }
+                    }
+                }
+                if State.artist-albums-have-more : VerticalLayout {
+                    spacing: 0px;
+                    Rectangle { height: 12px; }
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionBtn {
+                            label: "More albums";
+                            clicked => { Actions.load-more-artist-albums(); }
+                        }
+                    }
+                    Rectangle { height: 12px; }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 13px;
+                alignment: start;
+
+                Text {
+                    text: State.view-group-column == "artist" ? "Popular tracks" : "Tracks";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+
+                TrackTable {
+                    scrollable: false;
+                    show-added: true;
+                    show-year: false;
+                    show-album: State.view != "Album" && State.view-group-column != "album" && root.eyebrow != "ALBUM";
+                    first-column: "TITLE";
+                    first-sort: State.view-group-column == "album" ? "TrackNumber" : (State.view-group-column == "artist" ? "PlayCount" : "Title");
+                    sort(column) => { Actions.sort-view(column); }
+                    empty-text: root.empty-text;
+                }
+            }
+        }
+    }
+}

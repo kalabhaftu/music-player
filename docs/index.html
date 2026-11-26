@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Music Player — Native Windows Audio &amp; Video Library</title>
+  <meta name="description" content="A fast, local-first Windows music and video player built with Rust, Slint, LibVLC, and SQLite." />
+  <link rel="icon" type="image/png" href="assets/music-player-icon.png" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070807;
+      --surface: #0e100f;
+      --raised: #171917;
+      --text: #f7f8f6;
+      --muted: #a0a79f;
+      --muted-2: #717970;
+      --line: rgba(255, 255, 255, 0.09);
+      --accent: #b7ff2d;
+      --accent-ink: #101210;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.9em;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 8, 7, 0.88);
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(16px);
+      z-index: 20;
+    }
+
+    nav {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .brand img {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .links a {
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .links a:hover {
+      color: var(--text);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--raised);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .button:hover {
+      background: #212421;
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    .button.primary:hover {
+      background: #c7ff59;
+      border-color: #c7ff59;
+    }
+
+    .nav-cta {
+      min-height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .hero {
+      padding: 64px 0 48px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(380px, 1.15fr);
+      gap: 36px;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(183, 255, 45, 0.1);
+      border: 1px solid rgba(183, 255, 45, 0.25);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(36px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+    }
+
+    .lead {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 560px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 24px 0 12px;
+    }
+
+    .note {
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    .screen-frame {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    .screen-frame img {
+      width: 100%;
+      display: block;
+    }
+
+    .screen-placeholder {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    section {
+      padding: 56px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      letter-spacing: -0.01em;
+    }
+
+    .section-sub {
+      margin: 0 0 26px;
+      color: var(--muted);
+      max-width: 680px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      padding: 18px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .shots-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .shot-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .shot-card img {
+      width: 100%;
+      display: block;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      background: var(--raised);
+    }
+
+    .shot-caption {
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .shot-caption strong {
+      display: block;
+      font-size: 14.5px;
+      margin-bottom: 4px;
+    }
+
+    .shot-caption span {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: var(--raised);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    kbd {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 2px 6px;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 28px 0;
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    .footer-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid,
+      .cards,
+      .shots-grid {
+        grid-template-columns: 1fr;
+      }
+      .links .hide-mobile {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <nav>
+        <a class="brand" href="#">
+          <img src="assets/music-player-icon.png" alt="Music Player icon" />
+          <span>Music Player</span>
+        </a>
+        <div class="links">
+          <a class="hide-mobile" href="#features">Features</a>
+          <a class="hide-mobile" href="#screenshots">Screenshots</a>
+          <a class="hide-mobile" href="#shortcuts">Shortcuts</a>
+          <a href="developer.html">Developer Docs</a>
+          <a class="button primary nav-cta" href="https://github.com/kalabhaftu/music-player/releases/latest" target="_blank" rel="noopener">Download</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap">
+      <section class="hero" style="border-top: none;">
+        <div class="hero-grid">
+          <div>
+            <span class="badge">Native Windows App · Rust + Slint</span>
+            <h1>Your local music &amp; video library, fast and private.</h1>
+            <p class="lead">
+              A lightweight Windows desktop player with incremental library scanning, a 10-band equalizer,
+              dual-player crossfading, synced lyrics, safe tag editing, and a dedicated video window.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="https://github.com/kalabhaftu/music-player/releases/latest" target="_blank" rel="noopener">Download for Windows</a>
+              <a class="button" href="https://github.com/kalabhaftu/music-player" target="_blank" rel="noopener">View on GitHub</a>
+              <a class="button" href="developer.html">Developer Docs</a>
+            </div>
+            <p class="note">
+              Windows 10 (1809+) &amp; Windows 11 (x64) · Bundled LibVLC · Zero accounts, telemetry, or WebView2 runtime required.
+            </p>
+          </div>
+
+          <div class="screen-frame">
+            <img src="screenshots/hero-main.png" alt="Music Player main library window" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+            <div class="screen-placeholder" style="display: none;">
+              Add <code>docs/screenshots/hero-main.png</code> to showcase the main Music Player window here.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <h2>Built for Real Local Libraries</h2>
+        <p class="section-sub">
+          Everything stays on your machine under <code>%LOCALAPPDATA%\MusicPlayer</code> with zero background cloud sync.
+        </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Fast Incremental Scanning</h3>
+            <p>Scans 19 audio formats using timestamp + size fast paths and watches folders live for additions or edits.</p>
+          </article>
+          <article class="card">
+            <h3>10-Band EQ &amp; Crossfade</h3>
+            <p>20 built-in EQ presets, preamp control, Windows audio output routing, and 2–10s dual-player audio crossfade.</p>
+          </article>
+          <article class="card">
+            <h3>Dedicated Video Window</h3>
+            <p>Opt-in video scanning or direct Explorer open with sidecar/embedded subtitles, speed control, and PNG snapshots.</p>
+          </article>
+          <article class="card">
+            <h3>Synced Lyrics &amp; LRCLIB</h3>
+            <p>Prioritizes timed <code>.lrc</code> sidecars and embedded lyrics, with optional on-demand LRCLIB search and sync editor.</p>
+          </article>
+          <article class="card">
+            <h3>Safe Tag Editing</h3>
+            <p>Edit metadata tags across supported containers with automatic byte-for-byte backups before atomic replacement.</p>
+          </article>
+          <article class="card">
+            <h3>Themes &amp; Transparency</h3>
+            <p>Switch between Dark, Light, Artwork-Adaptive palettes, custom selection colors, and adjustable window transparency.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <h2>Inside Music Player</h2>
+        <p class="section-sub">
+          A closer look at the immersive lyrics view, 10-band equalizer, and appearance customization.
+        </p>
+        <div class="cards">
+          <article class="shot-card">
+            <img src="screenshots/immersive-lyrics.png" alt="Immersive Now Playing and synced lyrics view" />
+            <div class="shot-caption">
+              <strong>Immersive Now Playing &amp; Synced Lyrics</strong>
+              <span>Adaptive artwork backdrop with live-scrolling timed LRCLIB lyrics and compact controls.</span>
+            </div>
+          </article>
+          <article class="shot-card">
+            <img src="screenshots/equalizer-audio.png" alt="10-band Equalizer and Crossfade settings" />
+            <div class="shot-caption">
+              <strong>Crossfade &amp; 10-Band Equalizer</strong>
+              <span>20 presets, custom bands (-20 dB to +20 dB), and dual-player audio crossfade timing.</span>
+            </div>
+          </article>
+          <article class="shot-card">
+            <img src="screenshots/settings-themes.png" alt="Settings and Appearance customization" />
+            <div class="shot-caption">
+              <strong>Settings &amp; Theme Customization</strong>
+              <span>System/Light/Dark themes, Album artwork accent mode, custom accents, and library controls.</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="shortcuts">
+        <h2>Keyboard Shortcuts</h2>
+        <p class="section-sub">Press <kbd>F1</kbd> or <kbd>?</kbd> anytime inside the app to open the shortcuts reference.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Shortcut</th><th>Scope</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><kbd>Space</kbd> / <kbd>Enter</kbd></td><td>Main &amp; Video</td><td>Play or pause playback</td></tr>
+              <tr><td><kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main &amp; Video</td><td>Seek &minus;5s / +5s (hold <kbd>Shift</kbd> for &plusmn;10s)</td></tr>
+              <tr><td><kbd>Ctrl</kbd> or <kbd>Alt</kbd> + <kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main Window</td><td>Previous / Next track</td></tr>
+              <tr><td><kbd>Up</kbd> / <kbd>Down</kbd></td><td>Main &amp; Video</td><td>Volume &plusmn;5% (<kbd>Shift</kbd> for &plusmn;10%)</td></tr>
+              <tr><td><kbd>M</kbd></td><td>Main Window</td><td>Mute / restore volume</td></tr>
+              <tr><td><kbd>S</kbd> / <kbd>R</kbd></td><td>Main Window</td><td>Toggle shuffle / cycle repeat mode</td></tr>
+              <tr><td><kbd>L</kbd> / <kbd>I</kbd></td><td>Main Window</td><td>Toggle Lyrics view / Immersive Now Playing</td></tr>
+              <tr><td><kbd>Ctrl</kbd> + <kbd>K</kbd></td><td>Main Window</td><td>Focus global search</td></tr>
+              <tr><td><kbd>F11</kbd></td><td>Main &amp; Video</td><td>Toggle fullscreen</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>All Windows</td><td>Close popup/modal or exit fullscreen</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-row">
+        <span>Music Player · MIT License · Local-first Windows desktop player</span>
+        <span>
+          <a href="developer.html">Developer Docs</a> ·
+          <a href="format-matrix.md">Format Matrix</a> ·
+          <a href="https://github.com/kalabhaftu/music-player" target="_blank" rel="noopener">GitHub</a>
+        </span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

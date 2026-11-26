@@ -1,0 +1,510 @@
+// Global state and action surface shared between the Rust host and all views.
+// The Actions callbacks mirror the WebUiCommandRouter command allowlist and the
+// State properties mirror the native -> JS event catalog payloads.
+
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, HomeCardRow, HomeTrackRow, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem, ExtensionItem, NavEntry, NavSettingItem, AboutComponentItem, ReleaseItem } from "models.slint";
+
+export global State {
+    // ---- Routing ----
+    in-out property <string> view: "Home";
+    in-out property <string> view-title: "Home";
+    in-out property <string> view-subtitle: "";
+    in-out property <string> view-search: "";
+    in-out property <string> view-group-column: "";
+    in-out property <string> view-group-value: "";
+    in-out property <string> view-group-title: "";
+    in-out property <string> view-playlist-id: "";
+    in-out property <string> view-sort: "Title";
+    in-out property <bool> view-descending: false;
+    in-out property <int> window-width: 1024;
+    in-out property <int> window-height: 640;
+    in-out property <string> search-filter: "all";
+    in-out property <bool> can-go-back: false;
+    in-out property <bool> can-go-forward: false;
+    in-out property <int> tracks-total: 0;
+    in-out property <bool> page-loading: false;
+
+    // ---- Library models ----
+    in property <[TrackItem]> tracks;
+    in property <[GroupItem]> groups;
+    in property <[GroupRowItem]> group-rows;
+    in property <int> groups-total: 0;
+    in property <[PlaylistCardItem]> playlists;
+    in property <[PlaylistCardItem]> smart-playlists;
+    in property <[GroupItem]> search-albums;
+    in property <[GroupItem]> search-artists;
+    in property <[PlaylistCardItem]> search-playlists;
+    in property <[TrackItem]> home-quick-tracks;
+    in property <[HomeCardItem]> home-recent-albums;
+    in property <[HomeCardItem]> home-library-cards;
+    in property <[HomeTrackRow]> home-quick-rows;
+    in property <[HomeCardRow]> home-recent-album-rows;
+    in property <[HomeCardRow]> home-library-card-rows;
+    in property <string> home-subtitle: "";
+    in property <string> home-library-view: "Playlists";
+    in property <string> home-library-title: "Made from your library";
+    in property <string> home-greeting: "";
+    in property <bool> library-empty: false;
+    in property <bool> has-roots: false;
+    in property <int> library-tracks: 0;
+    in property <int> library-folders: 0;
+    in property <string> library-warning: "";
+    in property <bool> can-load-more: false;
+    in property <[FolderRootItem]> folder-roots;
+    in property <[PlaylistRowItem]> playlist-rows;
+    in property <[NavEntry]> navigation-items;
+
+    // ---- Scan state ----
+    in property <bool> scan-active: false;
+    in property <bool> scan-paused: false;
+    in property <bool> scan-cancelling: false;
+    in property <string> scan-message: "";
+    in property <string> scan-path: "";
+    in property <int> scan-added: 0;
+    in property <int> scan-removed: 0;
+    in property <int> scan-scanned: 0;
+    in property <string> scan-outcome: "";
+    in property <float> scan-angle: 0.0;
+
+    // ---- Playback ----
+    in property <bool> is-playing: false;
+    in property <bool> has-track: false;
+    in property <bool> crossfading: false;
+    in property <float> progress: 0.0;
+    in property <string> current-time: "0:00";
+    in property <string> total-time: "0:00";
+    in property <int> volume: 75;
+    in property <bool> shuffle: false;
+    in property <string> repeat-mode: "Off";
+    in property <string> repeat-a: "";
+    in property <string> repeat-b: "";
+    in property <string> current-id: "";
+    in property <string> current-title: "";
+    in property <string> current-artist: "";
+    in property <string> current-album: "";
+    in property <bool> current-unavailable: false;
+    in property <bool> current-favorite: false;
+    in property <image> current-cover;
+    in property <image> current-blurred-backdrop;
+    in property <bool> current-has-cover: false;
+    in property <string> current-initials: "";
+    in property <color> current-badge-bg: #2a2f3f;
+    in property <color> accent: #b7ff2d;
+    in property <color> accent-ink: #101210;
+    in property <bool> light-theme: false;
+    in property <bool> artwork-palette: false;
+    in property <color> art-background: #070807;
+    in property <color> art-sidebar: #090a09;
+    in property <color> art-main: #090a09;
+    in property <color> art-panel: #0e100f;
+    in property <color> art-raised: #171917;
+    in property <color> art-hover: #212421;
+    in property <color> art-control: #242724;
+
+    // ---- Detail hero ----
+    in property <string> hero-subtitle: "";
+    in property <image> hero-cover;
+    in property <bool> hero-has-cover: false;
+    in property <[GroupItem]> artist-albums;
+    in property <bool> artist-albums-have-more: false;
+
+    // ---- Queue / right panel ----
+    in property <[QueueItem]> queue-items;
+    in property <[QueueItem]> panel-queue-items;
+    in property <int> queue-count: 0;
+    in property <int> queue-current-index: -1;
+    in-out property <int> queue-drag-index: -1;
+    in-out property <int> queue-drop-index: -1;
+    in-out property <bool> queue-drop-after: false;
+    in property <bool> right-panel-open: true;
+    in property <string> right-panel-tab: "queue";
+    in property <string> info-album: "";
+    in property <string> info-album-artist: "";
+    in property <string> info-year-genre: "";
+    in property <string> info-format: "";
+    in property <string> info-status: "";
+    in property <string> info-quality: "";
+    in property <string> info-location: "";
+    in property <string> info-folder: "";
+    in property <int> queue-more-count: 0;
+    in property <int> queue-panel-more-count: 0;
+
+    // ---- Lyrics ----
+    in property <[LyricLineItem]> lyrics-lines;
+    in property <bool> has-lyrics: false;
+    in property <string> lyrics-source: "none";
+    in property <bool> lyrics-timed: false;
+    in property <int> lyrics-active-line: -1;
+    in property <bool> lyrics-scroll-paused: false;
+    in property <int> lyrics-scroll-nonce: 0;
+    // Two-way with the lyrics ScrollView. Rust moves it when the active line
+    // changes; mouse-wheel scrolling writes the user's position back here.
+    in-out property <length> lyrics-scroll-y: 0px;
+    in-out property <length> lyrics-view-height: 0px;
+
+    // ---- Duplicates ----
+    in property <[DuplicateItem]> duplicates;
+    in property <int> duplicates-total: 0;
+    in property <int> duplicates-page: 0;
+    in property <int> duplicates-pages: 1;
+    in property <string> duplicates-sort: "Title";
+    in property <bool> duplicates-descending: false;
+    in property <bool> duplicate-loading: false;
+    in property <[TrackItem]> duplicate-files;
+    in property <string> duplicate-group-title: "";
+    in property <[string]> duplicate-locations;
+    in property <int> duplicate-locations-total: 0;
+
+    // ---- Search ----
+    in property <[string]> recent-searches;
+    in-out property <string> search-results-query: "";
+    in-out property <int> search-song-offset: 0;
+    in-out property <int> search-album-offset: 0;
+    in-out property <int> search-artist-offset: 0;
+    in-out property <int> search-playlist-offset: 0;
+    in property <int> search-song-count: 0;
+    in property <int> search-album-count: 0;
+    in property <int> search-artist-count: 0;
+    in property <int> search-playlist-count: 0;
+
+    // ---- Track details / tags modals ----
+    in property <[DetailRowItem]> detail-rows;
+    in property <[DetailRowItem]> detail-additional;
+    in property <[DetailRowItem]> detail-custom;
+    in property <[BackupItem]> detail-backups;
+    in property <string> tags-format-note: "";
+    in property <[TagFieldItem]> tags-additional;
+    in property <[TagFieldItem]> tags-custom;
+    in property <string> tags-artwork-name: "";
+    in property <bool> tags-has-artwork: false;
+    in-out property <string> tags-title: "";
+    in-out property <string> tags-artist: "";
+    in-out property <string> tags-album: "";
+    in-out property <string> tags-album-artist: "";
+    in-out property <string> tags-genre: "";
+    in-out property <string> tags-year: "";
+    in-out property <string> tags-track: "";
+
+    // ---- Find lyrics ----
+    in property <bool> lyrics-searching: false;
+    in property <string> lyrics-search-status: "";
+    in property <[LyricResultItem]> lyrics-results;
+    in-out property <string> find-lyrics-title: "";
+    in-out property <string> find-lyrics-artist: "";
+
+    // ---- Edit lyrics ----
+    in property <string> edit-lyrics-source-label: "";
+    in-out property <string> edit-lyrics-text: "";
+    in-out property <string> edit-lyrics-offset: "0";
+    in-out property <bool> edit-lyrics-sidecar: true;
+
+    // ---- Audio / equalizer ----
+    in property <[EqBandItem]> eq-bands;
+    in property <float> eq-preamp: 12.0412;
+    in property <string> eq-preset: "Off";
+    in property <[string]> eq-presets;
+    in property <[string]> output-devices;
+    in property <string> output-device: "";
+
+    // ---- Settings extras ----
+    in property <string> accent-preset-name: "Lime";
+    in property <string> crossfade-label: "Off";
+
+    // ---- Playlists ----
+    in property <[TrackItem]> playlist-tracks;
+    in property <int> playlist-track-total: 0;
+    in property <string> playlist-name: "";
+    in property <string> playlist-empty-message: "";
+    in property <[string]> playlist-names;
+
+    // ---- Settings (subset bound to switches) ----
+    in-out property <string> theme: "Dark";
+    in-out property <string> accent-mode: "Artwork";
+    in-out property <color> accent-manual: #b7ff2d;
+    in-out property <bool> accent-manual-enabled: false;
+    in-out property <bool> tools-menu-open: false;
+    in-out property <bool> navigation-collapsed: false;
+    in-out property <bool> scan-details-open: false;
+    in-out property <bool> immersive-player-open: false;
+    in-out property <bool> immersive-fullscreen: false;
+    in-out property <bool> immersive-lyrics-open: false;
+    in-out property <bool> window-maximized: false;
+    in-out property <bool> transparent-window: false;
+    in-out property <int> window-transparency: 0;
+    in-out property <string> accent-color: "#b7ff2d";
+    in-out property <string> selection-color: "#b7ff2d";
+    in-out property <color> selection-color-value: #b7ff2d;
+    in-out property <color> selection-color-ink: #101210;
+    in-out property <string> selection-color-mode: "Theme";
+    in-out property <string> indexed-library-size: "0 bytes";
+    in-out property <string> settings-section: "Appearance";
+    in property <[NavSettingItem]> navigation-settings;
+    in-out property <string> motion-style: "Subtle";
+    in-out property <bool> hide-exact-duplicates: true;
+    in-out property <bool> autoplay-similar: true;
+    in-out property <bool> auto-open-side-panel: true;
+    in-out property <bool> auto-load-lyrics: true;
+    in-out property <bool> seek-from-lyrics: true;
+    in-out property <bool> lyrics-embed: true;
+    in-out property <bool> show-remaining-time: false;
+    in-out property <bool> show-list-artwork: true;
+    in-out property <bool> show-list-artist: true;
+    in-out property <bool> show-list-album: true;
+    in-out property <bool> show-list-added: true;
+    in-out property <bool> show-list-year: false;
+    in-out property <bool> show-list-duration: true;
+    in-out property <bool> show-list-favorite: true;
+    in-out property <bool> check-updates: true;
+    in-out property <bool> minimize-to-tray: true;
+    in-out property <int> navigation-width: 232;
+    in-out property <int> browse-width: 280;
+    in-out property <int> right-panel-width: 294;
+    out property <int> content-width: State.window-width
+        - (State.navigation-collapsed ? 0 : State.navigation-width)
+        - (State.right-panel-open ? State.right-panel-width : 0);
+    out property <length> card-gap: clamp(State.browse-width * 0.05px, 10px, 20px);
+    out property <length> content-avail-width: max(140px, (State.content-width * 1px) - (State.window-width <= 650 ? 40px : 64px));
+    out property <int> card-columns: max(1, Math.floor((State.content-avail-width + State.card-gap) / (130px + State.card-gap)));
+    out property <length> card-width: (State.content-avail-width - (State.card-columns - 1) * State.card-gap) / max(1, State.card-columns);
+    out property <int> folder-columns: max(1, Math.floor((State.content-avail-width + 12px) / (310px + 12px)));
+    out property <length> folder-card-width: (State.content-avail-width - (State.folder-columns - 1) * 12px) / max(1, State.folder-columns);
+    in property <[DetailRowItem]> about-rows;
+    in property <[AboutComponentItem]> about-components;
+    in property <[ReleaseItem]> release-history;
+
+    // ---- Context menu ----
+    in property <[ContextMenuItem]> context-items;
+    in property <bool> context-visible: false;
+    in property <length> context-x: 0px;
+    in property <length> context-y: 0px;
+
+    // ---- Modal internals ----
+    in-out property <string> modal-text: "";
+    in-out property <string> confirm-choice: "";
+    in-out property <bool> reset-appearance: false;
+    in-out property <bool> reset-playback: false;
+    in-out property <bool> reset-library: false;
+    in property <[ExtensionItem]> exclusion-extensions;
+    in-out property <string> exclusion-new-extension: "";
+    in-out property <string> exclusion-new-kind: "Audio";
+    in property <[string]> ignored-directories;
+    in property <string> add-to-playlist-id: "";
+
+    // ---- Modals ----
+    in property <string> modal: "";
+    in property <string> modal-title: "";
+    in property <string> confirm-message: "";
+    in property <string> confirm-button-label: "Confirm";
+    in property <bool> confirm-danger: false;
+    in property <bool> confirm-has-choices: false;
+    in property <[string]> confirm-choices;
+    in property <int> confirm-choice-index: 0;
+    in property <string> rate-title: "";
+    in property <int> rate-value: 0;
+    in property <string> duplicate-locations-text: "";
+    in property <string> update-tag: "";
+    in property <bool> update-checking: false;
+
+    // ---- Toast ----
+    in property <string> notice-message: "";
+    in property <string> notice-severity: "Informational";
+    in property <bool> notice-visible: false;
+
+    // ---- Global tooltip overlay ----
+    in-out property <bool> tooltip-visible: false;
+    in-out property <string> tooltip-text: "";
+    in-out property <length> tooltip-anchor-x: 0px;
+    in-out property <length> tooltip-anchor-y: 0px;
+    in-out property <length> tooltip-anchor-width: 0px;
+    in-out property <length> tooltip-anchor-height: 0px;
+
+    // ---- Tag backups & settings search ----
+    in property <string> tag-backup-stats: "";
+    in-out property <string> tag-backup-max-mb-label: "100 MB";
+    in-out property <int> settings-match-count: -1;
+    in-out property <length> settings-match-y: -1px;
+
+    // ---- Immersive ----
+    in property <bool> immersive-open: false;
+    in property <string> immersive-kind: "Queue";
+
+    // ---- Availability ----
+    in property <string> track-unavailable-warning: "";
+}
+
+export global Actions {
+    // ---- Navigation ----
+    callback set-view(string, string, string, string); // view, search, group, playlistId
+    callback go-back();
+    callback go-forward();
+    callback begin-search();
+    callback search(string, string); // query, filter
+    callback search-page(string, int); // result kind, page delta
+    callback save-recent-search(string);
+    callback clear-recent-searches();
+    callback remove-recent-search(string);
+
+    // ---- Playback ----
+    callback play-track(string);
+    callback play-view(string); // view key
+    callback shuffle-view(string); // view key
+    callback play-group(string, string); // column, value
+    callback open-group(string, string); // column, value
+    callback play-group-shuffle(string, string); // column, value
+    callback sort-view(string); // sort column of the active view
+    callback search-input(string);
+    callback play-playlist(string);
+    callback play-playlist-shuffle(string);
+    callback play-queue-entry(int);
+    callback toggle-play();
+    callback pause();
+    callback resume();
+    callback stop();
+    callback next();
+    callback previous();
+    callback seek-fraction(float);
+    callback preview-seek-fraction(float);
+    callback seek-wheel(int);
+    callback seek-relative(int);
+    callback volume-changed(int);
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback toggle-ab();
+    callback toggle-favorite(string);
+    callback set-rating(string, int);
+    callback autoplay-toggle(bool);
+
+    // ---- Queue ----
+    callback queue-move(int, int);
+    pure callback queue-drag-data(int) -> data-transfer;
+    pure callback queue-drag-index(data-transfer) -> int;
+    callback queue-remove(int);
+    callback load-more-queue();
+    callback clear-queue();
+    callback add-to-queue(string);
+    callback play-next-in-queue(string);
+
+    // ---- Library / scan ----
+    callback scan-library();
+    callback pause-scan();
+    callback cancel-scan();
+    callback add-root(string);
+    callback remove-root(string);
+    callback rescan-root(string);
+
+    // ---- Tags / metadata ----
+    callback open-details(string);
+    callback open-tags(string);
+    callback save-tags();
+    callback pick-artwork();
+    callback restore-tags(string, string); // id, backupPath
+    callback get-tag-backups(string);
+    callback open-log-folder();
+    callback open-file-location(string);
+    callback copy-track-path(string);
+
+    // ---- Lyrics ----
+    callback open-find-lyrics(string);
+    callback find-lyrics();
+    callback use-lyric-result(string, bool); // id, timed
+    callback open-edit-lyrics();
+    callback save-lyrics(string, bool, string); // text, sidecar, offset
+    callback remove-lyrics();
+    callback stamp-lyric-position();
+    callback seek-to-lyric(int);
+    callback lyrics-scroll-changed(bool); // user scrolled away / resumed
+
+    // ---- Playlists ----
+    callback create-playlist(string);
+    callback rename-playlist(string, string);
+    callback delete-playlist(string);
+    callback add-track-to-playlist(string, string);
+    callback remove-from-playlist(int);
+    callback playlist-move(int, int);
+    callback import-m3u();
+    callback export-m3u(string);
+    callback open-add-to-playlist(string);
+
+    // ---- Audio ----
+    callback set-eq-band(int, float);
+    callback set-eq-preamp(float);
+    callback set-eq-preset(string);
+    callback save-eq-preset(string);
+    callback set-output-device(string);
+    callback refresh-audio-devices();
+
+    // ---- Settings ----
+    callback set-setting(string, string);
+    callback set-accent-preset(string);
+    callback set-crossfade-label(string);
+    callback move-navigation(string, int);
+    callback toggle-navigation(string);
+    callback rebuild-library-index();
+    callback export-logs();
+    callback open-default-apps();
+    callback open-url(string);
+    callback check-updates();
+    callback reset-settings(string); // groups csv
+    callback open-settings();
+
+    // ---- Duplicates ----
+    callback load-duplicates(string, bool, int); // sort, descending, page
+    callback load-more-duplicates();
+    callback load-more-artist-albums();
+    callback open-duplicate-files(string);
+    callback close-duplicate-files();
+    callback prepare-duplicates();
+    callback load-more();
+    callback load-more-groups();
+
+    // ---- Context menu ----
+    callback open-context-menu(string, int, int); // id, x, y
+    callback context-action(int);
+    callback close-context-menu();
+
+    // ---- Modals ----
+    callback open-modal(string);
+    callback close-modal();
+    callback confirm-action();
+    callback confirm-remove-root(string);
+    callback confirm-restore-backup(string);
+    callback pick-library-root();
+    callback pick-ignored-directory();
+    callback set-extension-enabled(string, bool);
+    callback add-extension();
+    callback remove-ignored-directory(string);
+    callback rate-track(int);
+    callback open-file-location-at(string);
+    callback open-release();
+    callback tags-field-changed(int, string);
+    callback tags-custom-key-changed(int, string);
+    callback tags-custom-value-changed(int, string);
+    callback tags-remove-custom(int);
+    callback tags-add-custom-field(string, string);
+
+    // ---- Window ----
+    callback close-window();
+    callback minimize-window();
+    callback toggle-maximize-window();
+    callback drag-window();
+    callback drag-resize-window(string);
+    callback toggle-immersive(string);
+    callback close-immersive();
+    callback open-immersive-player();
+    callback close-immersive-player();
+    callback toggle-immersive-fullscreen();
+    callback toggle-immersive-lyrics();
+    callback toggle-tools-menu();
+    callback toggle-sidebar();
+    callback toggle-scan-details();
+    callback toggle-right-panel();
+    callback set-right-tab(string);
+    callback ui-ready();
+    callback set-volume-muted();
+    callback toggle-remaining-time();
+    callback close-notice();
+    callback save-lyrics-modal();
+    callback window-resized(int, int);
+    callback cleanup-tag-backups();
+    pure callback setting-matches(string, string) -> bool;
+}

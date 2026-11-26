@@ -1,0 +1,189 @@
+import { State } from "../state.slint";
+import { Palette } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// Styled single-line input matching WebUI `.field` (dark rounded surface, focus accent border).
+export component ModalInput inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder: "";
+    in property <bool> numeric: false;
+    callback edited(string);
+    callback accepted(string);
+
+    height: 36px;
+    min-width: 60px;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: ti.has-focus ? State.accent : Palette.border;
+    background: Palette.panel-2;
+    animate border-color { duration: 120ms; }
+    clip: true;
+
+    public function focus-input() {
+        ti.focus();
+    }
+
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { ti.focus(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+
+        Rectangle {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            clip: true;
+
+            if root.text == "" && root.placeholder != "" : Text {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                color: Palette.muted-2;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            ti := TextInput {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                text <=> root.text;
+                color: Palette.text;
+                font-size: 12px;
+                single-line: true;
+                input-type: root.numeric ? InputType.number : InputType.text;
+                selection-background-color: Palette.selection;
+                selection-foreground-color: Palette.selection-ink;
+                vertical-alignment: center;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+            }
+        }
+    }
+}
+
+// Styled multiline textarea matching WebUI `.textarea` / `#lyricsEditor`.
+export component ModalTextArea inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder: "";
+    in property <bool> monospace: true;
+    callback edited(string);
+
+    min-height: 220px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: ti.has-focus ? State.accent : Palette.border;
+    background: Palette.panel-2;
+    animate border-color { duration: 120ms; }
+    clip: true;
+
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { ti.focus(); }
+    }
+
+    scroll := ScrollView {
+        x: 10px;
+        y: 8px;
+        width: max(0px, parent.width - 20px);
+        height: max(0px, parent.height - 16px);
+        content-width: max(self.visible-width, ti.preferred-width);
+        content-height: max(self.visible-height, ti.preferred-height);
+
+        ti := TextInput {
+            width: max(scroll.visible-width, self.preferred-width);
+            height: max(scroll.visible-height, self.preferred-height);
+            text <=> root.text;
+            color: Palette.text;
+            font-size: 12px;
+            font-family: root.monospace ? "Consolas" : "";
+            single-line: false;
+            wrap: no-wrap;
+            selection-background-color: Palette.selection;
+            selection-foreground-color: Palette.selection-ink;
+            edited => { root.edited(self.text); }
+            cursor-position-changed(cpos) => {
+                if (cpos.x + scroll.content-x < 0px) {
+                    scroll.content-x = min(0px, max(scroll.visible-width - self.width, -cpos.x));
+                } else if (cpos.x + scroll.content-x > scroll.visible-width) {
+                    scroll.content-x = min(0px, max(scroll.visible-width - self.width, scroll.visible-width - cpos.x));
+                }
+                if (cpos.y + scroll.content-y < 0px) {
+                    scroll.content-y = min(0px, scroll.visible-height - cpos.y - 20px, max(scroll.visible-height - self.height, -cpos.y));
+                } else if (cpos.y + scroll.content-y > scroll.visible-height - 20px) {
+                    scroll.content-y = min(0px, max(scroll.visible-height - self.height, scroll.visible-height - cpos.y - 20px));
+                }
+            }
+        }
+    }
+
+    if root.text == "" && root.placeholder != "" : Text {
+        x: 12px;
+        y: 10px;
+        width: max(0px, parent.width - 24px);
+        text: root.placeholder;
+        color: Palette.muted-2;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+}
+
+// Labeled form field matching WebUI `.modal-field`.
+export component ModalField inherits Rectangle {
+    in property <string> label;
+    in-out property <string> text;
+    in property <string> placeholder: "";
+    callback changed(string);
+    callback accepted(string);
+
+    height: 58px;
+    min-width: 0px;
+    horizontal-stretch: 1;
+
+    VerticalLayout {
+        spacing: 6px;
+        min-width: 0px;
+        Text {
+            text: root.label;
+            color: Palette.text;
+            font-size: 11px;
+            font-weight: 650;
+        }
+        ModalInput {
+            text <=> root.text;
+            placeholder: root.placeholder;
+            edited(value) => { root.changed(value); }
+            accepted(value) => { root.accepted(value); }
+        }
+    }
+}
+
+// Bordered footer matching WebUI `.modal footer`.
+export component ModalFooterBar inherits Rectangle {
+    height: 56px;
+    background: transparent;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 1px;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 1px;
+        spacing: 8px;
+        alignment: center;
+        @children
+    }
+}

@@ -1,0 +1,43 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn } from "../widgets.slint";
+
+// ---- Toast (notice) ----------------------------------------------------------------
+export component NoticeOverlay inherits Rectangle {
+    background: #00000000;
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 118px;
+        width: min(parent.width - 40px, 560px);
+        height: 46px;
+        border-radius: 8px;
+        background: Palette.raised;
+        border-width: 1px;
+        border-color: State.notice-severity == "Error" ? #ff5b7466
+            : (State.notice-severity == "Warning" ? #ffb04a55
+            : (State.notice-severity == "Success" ? State.accent : Palette.border));
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 10px;
+            spacing: 10px;
+            Text {
+                text: State.notice-message;
+                color: Palette.text-strong;
+                font-size: 12px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IcBtn {
+                icon: @image-url("../../assets/icons/close.svg");
+                icon-size: 12px;
+                tint: Palette.muted-2;
+                width: 26px;
+                height: 26px;
+                y: 10px;
+                clicked => { Actions.close-notice(); }
+            }
+        }
+    }
+}

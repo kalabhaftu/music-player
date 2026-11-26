@@ -1,0 +1,628 @@
+import { State, Actions } from "../state.slint";
+import { TrackItem, QueueItem, LyricLineItem, EqBandItem } from "../models.slint";
+import { Palette, IcBtn, TextBtn, ActionBtn, PlayerSlider, VerticalEqSlider, SectionTitle, EmptyState, HeroDetail, CustomSelect, SyncedLyricsList } from "../widgets.slint";
+import { ScrollView, ListView } from "std-widgets.slint";
+
+// ---- Queue ------------------------------------------------------------------
+component QueueRow inherits Rectangle {
+    in property <QueueItem> item;
+    in property <int> index: 0;
+
+    callback play();
+    callback move-to(int, int);
+    callback remove();
+
+    height: 52px;
+    border-radius: 6px;
+    background: row-area.has-hover ? Palette.panel-2 : (root.item.is-current ? Palette.border-soft : transparent);
+    animate background { duration: 100ms; }
+    opacity: State.queue-drag-index == root.item.queue-index ? 0.42 : 1;
+    animate opacity { duration: 100ms; }
+
+    row-area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                Actions.open-context-menu(root.item.id, round((root.absolute-position.x + row-area.mouse-x) / 1px), round((root.absolute-position.y + row-area.mouse-y) / 1px));
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 4px;
+            clip: true;
+            background: root.item.badge-bg;
+            y: (parent.height - self.height) / 2;
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: Palette.text;
+                font-size: 12px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.unavailable ? "\{root.item.title} (unavailable)" : root.item.title;
+                color: root.item.is-current ? State.accent : (root.item.unavailable ? #ff5b74 : Palette.text-strong);
+                font-size: 11px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.artist;
+                color: Palette.muted;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: root.item.duration;
+            color: Palette.muted;
+            font-size: 10px;
+            width: 48px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            width: 120px;
+            HorizontalLayout {
+                width: parent.width;
+                height: 30px;
+                y: (parent.height - self.height) / 2;
+                alignment: center;
+                spacing: 0px;
+                if !root.item.is-current : IcBtn {
+                    icon: @image-url("../../assets/icons/play.svg");
+                    icon-size: 12px;
+                    width: 30px;
+                    height: 30px;
+                    tint: Palette.muted-2;
+                    clicked => { root.play(); }
+                }
+                if !root.item.is-current : Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    drag-handle := DragArea {
+                        width: parent.width;
+                        height: parent.height;
+                        data: Actions.queue-drag-data(root.item.queue-index);
+                        allow-move: true;
+                        Text {
+                            text: "⠿";
+                            color: Palette.muted-2;
+                            font-size: 17px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        drag-finished(action) => {
+                            State.queue-drag-index = -1;
+                            State.queue-drop-index = -1;
+                            State.queue-drop-after = false;
+                        }
+                    }
+                }
+                if !root.item.is-current : IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 12px;
+                    width: 30px;
+                    height: 30px;
+                    tint: Palette.muted-2;
+                    hover-tint: #ff5b74;
+                    clicked => { root.remove(); }
+                }
+            }
+        }
+    }
+
+    drop-area := DropArea {
+        width: parent.width;
+        height: parent.height;
+        can-drop(event) => {
+            let from-index = Actions.queue-drag-index(event.data);
+            let first-upcoming = State.queue-current-index < 0 ? 0 : State.queue-current-index + 1;
+            let last-visible = State.queue-items[State.queue-items.length - 1].queue-index;
+            let target-index = root.item.queue-index;
+            let after = event.position.y >= root.height / 2;
+            let target-is-current-before = target-index == State.queue-current-index && !after;
+            let valid = from-index >= first-upcoming && from-index <= last-visible
+                && (target-index >= first-upcoming || (target-index == State.queue-current-index && after))
+                && target-index <= last-visible && !target-is-current-before;
+
+            State.queue-drag-index = valid ? from-index : -1;
+            State.queue-drop-index = valid ? target-index : -1;
+            State.queue-drop-after = valid && after;
+            valid ? DragAction.move : DragAction.none
+        }
+        dropped(event) => {
+            let from-index = Actions.queue-drag-index(event.data);
+            let after = event.position.y >= root.height / 2;
+            let boundary = root.item.queue-index + (after ? 1 : 0);
+            let to-index = boundary - (from-index < boundary ? 1 : 0);
+            if (from-index >= 0 && to-index != from-index) {
+                root.move-to(from-index, to-index);
+            }
+            State.queue-drag-index = -1;
+            State.queue-drop-index = -1;
+            State.queue-drop-after = false;
+            return event.proposed-action;
+        }
+    }
+
+    if drop-area.has-drag && State.queue-drop-index == root.item.queue-index : Rectangle {
+        y: State.queue-drop-after ? parent.height - 2px : 0px;
+        width: parent.width;
+        height: 2px;
+        background: State.accent;
+    }
+}
+
+export component QueueView inherits Rectangle {
+    queue-sv := ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            width: queue-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 0px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: "Queue";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: "\{State.queue-count} upcoming tracks";
+                    color: Palette.muted;
+                    font-size: 12px;
+                }
+            }
+            ActionBtn {
+                label: "Clear upcoming";
+                clicked => { Actions.clear-queue(); }
+            }
+        }
+
+        Rectangle { height: 22px; }
+
+        if State.queue-items.length > 0 : VerticalLayout {
+            for row[index] in State.queue-items : QueueRow {
+                item: row;
+                index: index;
+                play => { Actions.play-queue-entry(row.queue-index); }
+                move-to(from, to) => { Actions.queue-move(from, to); }
+                remove => { Actions.queue-remove(row.queue-index); }
+            }
+        }
+        if State.queue-items.length == 0 : EmptyState {
+            text: "Queue is empty";
+            subtitle: "Songs you add will appear here.";
+        }
+        if State.queue-more-count > 0 : VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 12px; }
+            ActionBtn {
+                label: "Load more queued tracks (\{State.queue-more-count} remaining)";
+                clicked => { Actions.load-more-queue(); }
+            }
+            Rectangle { height: 12px; }
+        }
+      }
+    }
+}
+
+
+// ---- Now Playing --------------------------------------------------------------
+export component NowPlayingView inherits Rectangle {
+    now-sv := ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            width: now-sv.visible-width;
+            padding-left: State.window-width <= 650 ? 14px : 24px;
+            padding-right: State.window-width <= 650 ? 14px : 24px;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 24px;
+
+            if State.has-track : HeroDetail {
+                eyebrow: "Now playing";
+                title: State.current-title;
+                subtitle: State.current-artist + (State.current-album != "" ? " · " + State.current-album : "");
+                cover: State.current-cover;
+                has-cover: State.current-has-cover;
+                initials: State.current-initials;
+                now-playing: true;
+                favorite: State.current-favorite;
+                toggle-favorite => { Actions.toggle-favorite(State.current-id); }
+                show-location => { Actions.open-file-location(State.current-id); }
+                details => { Actions.open-details(State.current-id); }
+            }
+
+            if !State.has-track : VerticalLayout {
+                spacing: 22px;
+                HorizontalLayout {
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Now Playing"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                        Text { text: "Nothing is playing."; color: Palette.muted; font-size: 12px; }
+                    }
+                }
+                EmptyState {
+                    text: "Choose a song to begin";
+                    subtitle: "Playback stays active as you move between views.";
+                }
+            }
+        }
+    }
+}
+
+// ---- Lyrics ------------------------------------------------------------------
+export component LyricsView inherits Rectangle {
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 16px;
+        spacing: 0px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: "Lyrics";
+                    color: Palette.text;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                }
+                Text {
+                    text: State.has-track
+                        ? "\{State.current-title} · \{State.current-artist}" + (State.lyrics-source != "" && State.lyrics-source != "none" ? " · " + (State.lyrics-source == "sidecar" ? "Sidecar file" : (State.lyrics-source == "embedded" ? "Embedded in audio tags" : "LRCLIB (online)")) : "")
+                        : "Choose a song to view lyrics.";
+                    color: Palette.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+            }
+            if State.has-track : ActionBtn {
+                label: "Edit lyrics";
+                clicked => { Actions.open-edit-lyrics(); }
+            }
+            if State.has-track : ActionBtn {
+                label: "Find lyrics";
+                clicked => { Actions.open-find-lyrics(State.current-id); }
+            }
+        }
+
+        Rectangle { height: 22px; }
+
+        if !State.has-track : EmptyState {
+            vertical-stretch: 1;
+            text: "No track selected";
+            subtitle: "Lyrics appear here when a track is playing.";
+        }
+
+        if State.has-track && State.has-lyrics : SyncedLyricsList {
+            vertical-stretch: 1;
+            width: 100%;
+            top-pad: 100px;
+            bottom-pad: 220px;
+            side-pad: 12px;
+            max-line-width: 720px;
+            active-font-size: 27px;
+            inactive-font-size: 19px;
+            active-font-weight: 800;
+            inactive-font-weight: 600;
+            active-pad-v: 14px;
+            inactive-pad-v: 10px;
+            active-color: Palette.text;
+            inactive-color: Palette.muted;
+            inactive-opacity: 0.42;
+            hover-bg: #ffffff10;
+            resume-bg: Palette.raised;
+        }
+
+        if State.has-track && !State.has-lyrics : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 12px;
+            Text { text: State.lyrics-searching ? "Finding lyrics…" : "No lyrics found"; color: Palette.text; font-size: 15px; font-weight: 750; horizontal-alignment: center; }
+            Text { text: State.lyrics-searching ? "Searching LRCLIB for a match to this track." : "Lyrics saved in the audio file or beside it load automatically. You can also search online."; color: Palette.muted; font-size: 11px; horizontal-alignment: center; wrap: word-wrap; }
+        }
+    }
+}
+
+// ---- Audio (equalizer) --------------------------------------------------------
+export component AudioView inherits Rectangle {
+    audio-scroll := ScrollView {
+        content-width: self.visible-width;
+
+        property <bool> compact: self.visible-width < 520px;
+        property <length> pad-x: self.visible-width < 460px ? 14px : 24px;
+        property <length> control-w: clamp(self.visible-width * 0.34, 150px, 220px);
+
+        VerticalLayout {
+            width: audio-scroll.visible-width;
+            padding-left: audio-scroll.pad-x;
+            padding-right: audio-scroll.pad-x;
+            padding-top: 20px;
+            padding-bottom: 32px;
+            spacing: 20px;
+            alignment: start;
+
+            VerticalLayout {
+                spacing: 5px;
+                Text { text: "Equalizer"; color: Palette.text; font-size: 30px; font-weight: 700; letter-spacing: -0.65px; }
+                Text { text: "Output, playback transitions, and equalizer."; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "Volume"; font-size: 15px; letter-spacing: 0px; }
+                if !audio-scroll.compact : HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        width: 140px;
+                        spacing: 3px;
+                        Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
+                        Text { text: "Shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        min-width: 60px;
+                        PlayerSlider {
+                            minimum: 0.0;
+                            maximum: 100.0;
+                            value: State.volume;
+                            fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                            track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                            scroll-step: 4.0;
+                            changed(val) => { Actions.volume-changed(round(val)); }
+                        }
+                    }
+                    Text { text: "\{State.volume}%"; color: Palette.muted; width: 36px; font-size: 10px; vertical-alignment: center; horizontal-alignment: right; }
+                    ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                }
+                if audio-scroll.compact : VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text { text: "Output level"; color: Palette.text-strong; font-size: 12px; font-weight: 650; }
+                            Text { text: "Shared with Windows media controls."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                        }
+                        Text { text: "\{State.volume}%"; color: Palette.muted; font-size: 11px; vertical-alignment: center; }
+                        ActionBtn { label: State.volume == 0 ? "Unmute" : "Mute"; clicked => { Actions.set-volume-muted(); } }
+                    }
+                    PlayerSlider {
+                        width: 100%;
+                        minimum: 0.0;
+                        maximum: 100.0;
+                        value: State.volume;
+                        fill-color: State.artwork-palette ? #f0eee6 : (State.light-theme ? #3a433a : #e2e6e1);
+                        track-color: State.artwork-palette ? #ffffff38 : (State.light-theme ? #c7cec6 : #2e332f);
+                        scroll-step: 4.0;
+                        changed(val) => { Actions.volume-changed(round(val)); }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 6px;
+                SectionTitle { text: "Audio output"; font-size: 15px; letter-spacing: 0px; }
+                Text { width: 100%; text: "Choose a connected Windows playback device."; color: Palette.muted; font-size: 10px; wrap: word-wrap; }
+                if !audio-scroll.compact : HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Device"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
+                    if State.output-devices.length > 0 : CustomSelect {
+                        width: audio-scroll.control-w;
+                        options: State.output-devices;
+                        current-value: State.output-device;
+                        selected(value) => { Actions.set-output-device(value); }
+                    }
+                    if State.output-devices.length == 0 : Text {
+                        text: "No audio output devices available.";
+                        color: Palette.muted;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                    ActionBtn {
+                        label: "Refresh";
+                        clicked => { Actions.refresh-audio-devices(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if audio-scroll.compact : HorizontalLayout {
+                    spacing: 8px;
+                    if State.output-devices.length > 0 : CustomSelect {
+                        horizontal-stretch: 1;
+                        min-width: 120px;
+                        options: State.output-devices;
+                        current-value: State.output-device;
+                        selected(value) => { Actions.set-output-device(value); }
+                    }
+                    if State.output-devices.length == 0 : Text {
+                        text: "No audio output devices available.";
+                        color: Palette.muted;
+                        font-size: 10px;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                    ActionBtn {
+                        label: "Refresh";
+                        clicked => { Actions.refresh-audio-devices(); }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 6px;
+                SectionTitle { text: "Playback transition"; font-size: 15px; letter-spacing: 0px; }
+                if !audio-scroll.compact : HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
+                    CustomSelect {
+                        width: audio-scroll.control-w;
+                        options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                        current-value: State.crossfade-label;
+                        selected(value) => { Actions.set-crossfade-label(value); }
+                    }
+                    Text { text: "Blend into the next track."; color: Palette.muted; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
+                }
+                if audio-scroll.compact : HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Crossfade"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 72px; }
+                    CustomSelect {
+                        horizontal-stretch: 1;
+                        min-width: 120px;
+                        options: ["Off", "2 s", "3 s", "5 s", "8 s", "10 s"];
+                        current-value: State.crossfade-label;
+                        selected(value) => { Actions.set-crossfade-label(value); }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 10px;
+                SectionTitle { text: "10-band equalizer"; font-size: 15px; letter-spacing: 0px; }
+                if !audio-scroll.compact : HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 96px; }
+                    CustomSelect {
+                        width: audio-scroll.control-w;
+                        options: State.eq-presets;
+                        current-value: State.eq-preset;
+                        selected(value) => { Actions.set-eq-preset(value); }
+                    }
+                    ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
+                    ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Normal"); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if audio-scroll.compact : VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Preset"; color: Palette.text-strong; font-size: 11px; vertical-alignment: center; width: 72px; }
+                        CustomSelect {
+                            horizontal-stretch: 1;
+                            min-width: 120px;
+                            options: State.eq-presets;
+                            current-value: State.eq-preset;
+                            selected(value) => { Actions.set-eq-preset(value); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ActionBtn { label: "Save preset…"; clicked => { Actions.open-modal("save-preset"); } }
+                        ActionBtn { label: "Reset"; clicked => { Actions.set-eq-preset("Normal"); } }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                }
+                Text {
+                    text: State.eq-preset == "Off"
+                        ? "Equalizer bypassed (keeping custom sliders). Drag any band to enable Custom, or pick Normal for flat 0 dB."
+                        : "Drag sliders to shape sound (-20 dB to +20 dB). Pick Normal for flat 0 dB or Off to bypass.";
+                    color: Palette.muted;
+                    font-size: 10px;
+                    wrap: word-wrap;
+                }
+
+                Rectangle {
+                    width: 100%;
+                    border-radius: 12px;
+                    background: Palette.raised;
+                    animate background { duration: 350ms; easing: ease-in-out; }
+                    min-height: 292px;
+                    HorizontalLayout {
+                        width: 100%;
+                        padding-top: 22px;
+                        padding-bottom: 22px;
+                        padding-left: audio-scroll.visible-width < 460px ? 6px : 18px;
+                        padding-right: audio-scroll.visible-width < 460px ? 6px : 18px;
+                        spacing: audio-scroll.visible-width < 460px ? 2px : 8px;
+                        opacity: State.eq-preset == "Off" ? 0.58 : 1.0;
+                        animate opacity { duration: 140ms; }
+                        for band[index] in State.eq-bands : VerticalLayout {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            spacing: 10px;
+                            alignment: center;
+                            Text {
+                                width: 100%;
+                                height: 16px;
+                                text: band.label;
+                                color: Palette.muted;
+                                font-size: audio-scroll.visible-width < 440px ? 10px : 11px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            HorizontalLayout {
+                                alignment: center;
+                                VerticalEqSlider {
+                                    minimum: -20.0;
+                                    maximum: 20.0;
+                                    value: band.value;
+                                    changed(val) => { Actions.set-eq-band(index, val); }
+                                }
+                            }
+                            Text {
+                                width: 100%;
+                                height: 16px;
+                                text: audio-scroll.visible-width < 480px
+                                    ? (band.value > 0.0 ? "+\{round(band.value * 10) / 10}" : "\{round(band.value * 10) / 10}")
+                                    : (band.value > 0.0 ? "+\{round(band.value * 10) / 10} dB" : "\{round(band.value * 10) / 10} dB");
+                                color: Palette.text;
+                                font-size: audio-scroll.visible-width < 480px ? 9px : 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

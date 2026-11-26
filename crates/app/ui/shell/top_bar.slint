@@ -1,0 +1,358 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn, TextBtn, DelayedTooltip } from "../widgets.slint";
+
+// ---- Top bar -----------------------------------------------------------------
+export component TopBar inherits Rectangle {
+    out property <bool> search-has-focus: search-input.has-focus;
+    public function focus-search() {
+        search-input.focus();
+    }
+
+    height: 56px;
+    background: Palette.surface;
+    animate background { duration: 350ms; easing: ease-in-out; }
+
+    // 1px bottom border matching original CSS
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: State.window-width <= 700 ? 8px : 16px;
+        padding-right: State.window-width <= 700 ? 8px : 16px;
+        spacing: State.window-width <= 700 ? 5px : 9px;
+
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/panel-left.svg");
+                icon-size: 16px;
+                tint: Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: State.navigation-collapsed ? "Show sidebar" : "Hide sidebar";
+                clicked => { Actions.toggle-sidebar(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/chevron-left.svg");
+                icon-size: 16px;
+                tint: State.can-go-back ? Palette.muted : Palette.muted.with-alpha(0.42);
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Back (Alt+Left)";
+                clicked => { if (State.can-go-back) { Actions.go-back(); } }
+            }
+        }
+        VerticalLayout {
+            visible: State.window-width > 480;
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/chevron-right.svg");
+                icon-size: 16px;
+                tint: State.can-go-forward ? Palette.muted : Palette.muted.with-alpha(0.42);
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Forward (Alt+Right)";
+                clicked => { if (State.can-go-forward) { Actions.go-forward(); } }
+            }
+        }
+
+        // Pill Search Box
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            max-width: 520px;
+
+            Rectangle {
+                width: 100%;
+                height: 38px;
+                border-radius: 19px;
+                background: search-input.has-focus ? Palette.hover : Palette.control;
+                animate background { duration: 100ms; }
+                clip: true;
+
+                search-box-area := TouchArea {
+                    mouse-cursor: text;
+                    clicked => { search-input.focus(); }
+                }
+
+                HorizontalLayout {
+                    padding-left: State.window-width <= 900 ? 10px : 13px;
+                    padding-right: State.window-width <= 900 ? 10px : 13px;
+                    spacing: 9px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../../assets/icons/search.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: Palette.muted;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        height: 38px;
+                        clip: true;
+
+                        if State.view-search == "" : Text {
+                            x: 0px;
+                            y: 0px;
+                            width: 100%;
+                            height: parent.height;
+                            text: State.view == "Settings" ? "Search settings…" : "Search songs, artists, albums, playlists…";
+                            color: Palette.muted-2;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        search-input := TextInput {
+                            x: 0px;
+                            y: 0px;
+                            width: 100%;
+                            height: parent.height;
+                            text <=> State.view-search;
+                            color: Palette.text;
+                            font-size: 13px;
+                            single-line: true;
+                            vertical-alignment: center;
+                            edited => { Actions.search-input(self.text); }
+                            accepted => { if (State.view != "Settings") { Actions.save-recent-search(self.text); } }
+                        }
+                    }
+
+                    if State.window-width > 900 : VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 31px;
+                            height: 18px;
+                            Text {
+                                text: "Ctrl K";
+                                color: Palette.muted-2;
+                                font-size: 9px;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    if State.view-search != "" && search-input.has-focus : VerticalLayout {
+                        alignment: center;
+                        IcBtn {
+                            icon: @image-url("../../assets/icons/close.svg");
+                            icon-size: 12px;
+                            tint: Palette.muted-2;
+                            width: 22px;
+                            height: 22px;
+                            tooltip: "Clear search";
+                            clicked => { Actions.search-input(""); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Spacer to push right actions to the edge
+        Rectangle { horizontal-stretch: 1; visible: State.window-width > 900; }
+
+        if State.scan-active || State.scan-paused : VerticalLayout {
+            alignment: center;
+            scan-btn := Rectangle {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                border-radius: self.width / 2;
+                background: scan-area.has-hover ? Palette.overlay : transparent;
+
+                // Track ring
+                Image {
+                    source: @image-url("../../assets/icons/scan-track.svg");
+                    width: parent.width;
+                    height: parent.height;
+                    colorize: Palette.border;
+                    opacity: 0.45;
+                }
+                // Rotating progress arc
+                Image {
+                    source: @image-url("../../assets/icons/scan-arc.svg");
+                    width: parent.width;
+                    height: parent.height;
+                    colorize: State.scan-paused ? #ffb04a : (State.scan-cancelling ? #ff5b74 : State.accent);
+                    transform-rotation: State.scan-angle * 1deg;
+                    transform-origin: { x: self.width / 2, y: self.height / 2 };
+                }
+                if State.scan-paused : Text {
+                    text: "Ⅱ";
+                    color: #ffb04a;
+                    font-size: 10px;
+                    font-weight: 800;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                if State.scan-cancelling : Text {
+                    text: "×";
+                    color: #ff5b74;
+                    font-size: 12px;
+                    font-weight: 800;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                scan-area := TouchArea { clicked => { Actions.toggle-scan-details(); } }
+                DelayedTooltip {
+                    text: State.scan-paused ? "Scan paused — click for details" : "Scanning library — click for details";
+                    active: scan-area.has-hover;
+                    pressed: scan-area.pressed;
+                    anchor-x: scan-btn.absolute-position.x;
+                    anchor-y: scan-btn.absolute-position.y;
+                    anchor-width: parent.width;
+                    anchor-height: parent.height;
+                }
+            }
+        }
+
+        VerticalLayout {
+            visible: State.window-width <= 1180 || !State.right-panel-open;
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/queue.svg");
+                icon-size: 16px;
+                tint: State.right-panel-open ? State.accent : Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: State.right-panel-open ? "Hide Now Playing panel" : "Show Now Playing panel";
+                clicked => { Actions.toggle-right-panel(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IcBtn {
+                width: State.window-width <= 650 ? 28px : 32px;
+                height: State.window-width <= 650 ? 28px : 32px;
+                icon: @image-url("../../assets/icons/more.svg");
+                icon-size: 16px;
+                tint: State.tools-menu-open ? Palette.text : Palette.muted;
+                rest-background: State.light-theme && !State.artwork-palette ? Palette.control : Palette.canvas;
+                tooltip: "Tools and settings";
+                clicked => { Actions.toggle-tools-menu(); }
+            }
+        }
+    }
+
+    if State.scan-details-open : Rectangle {
+        x: max(10px, parent.width - 320px);
+        y: 60px;
+        width: 300px;
+        height: 128px;
+        border-radius: 8px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 7px;
+            Text {
+                text: State.scan-cancelling ? "Cancelling scan"
+                    : State.scan-paused ? "Library scan paused"
+                    : State.scan-outcome != "" ? "Library scan complete"
+                    : "Scanning library";
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            Text {
+                text: State.scan-outcome != "" ? State.scan-outcome
+                    : (State.scan-scanned > 0 ? "\{State.scan-scanned} files scanned" + (State.scan-path != "" ? " · \{State.scan-path}" : "")
+                    : (State.scan-path != "" ? State.scan-path : "Scanning library files…"));
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if State.scan-active : TextBtn {
+                    label: State.scan-paused ? "Resume" : "Pause";
+                    clicked => { Actions.pause-scan(); }
+                }
+                if State.scan-active : TextBtn {
+                    label: "Cancel";
+                    danger: true;
+                    clicked => { Actions.cancel-scan(); State.scan-details-open = false; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                IcBtn {
+                    icon: @image-url("../../assets/icons/close.svg");
+                    icon-size: 12px;
+                    clicked => { State.scan-details-open = false; }
+                }
+            }
+        }
+    }
+}
+
+component ToolMenuRow inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <string> view;
+    callback clicked();
+    height: 38px;
+    border-radius: 5px;
+    background: area.has-hover ? Palette.hover : transparent;
+    area := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        alignment: start;
+        Image {
+            source: root.icon;
+            width: 17px;
+            height: 17px;
+            colorize: Palette.muted;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.label;
+            color: Palette.text-strong;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ToolsMenuOverlay inherits Rectangle {
+    background: #00000000;
+    TouchArea { clicked => { State.tools-menu-open = false; } }
+    Rectangle {
+        x: max(10px, parent.width - (State.right-panel-open ? State.right-panel-width * 1px : 0px) - 216px - (State.window-width <= 700 ? 8px : 16px));
+        y: 58px;
+        width: 216px;
+        height: menu-col.preferred-height + 2px;
+        border-radius: 8px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-blur: 14px;
+        drop-shadow-color: #00000050;
+        clip: true;
+        menu-col := VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+            ToolMenuRow { label: "Settings"; icon: @image-url("../../assets/icons/settings.svg"); clicked => { Actions.open-settings(); State.tools-menu-open = false; } }
+            ToolMenuRow { label: "Scan library"; icon: @image-url("../../assets/icons/refresh.svg"); clicked => { Actions.scan-library(); State.tools-menu-open = false; } }
+            ToolMenuRow { label: "Shortcuts & help"; icon: @image-url("../../assets/icons/spark.svg"); clicked => { Actions.open-modal("help"); State.tools-menu-open = false; } }
+        }
+    }
+}

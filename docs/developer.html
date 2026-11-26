@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Music Player — Developer Documentation</title>
+  <link rel="icon" type="image/png" href="assets/music-player-icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="assets/music-player-icon.png" alt="Music Player icon" style="width: 30px; height: 30px; border-radius: 8px;" />
+        <div>
+          <div class="brand-title">Music Player</div>
+          <div class="brand-sub">Developer Docs</div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <input id="doc-search" type="search" placeholder="Search docs… ( / )" aria-label="Search developer documentation" />
+      </div>
+
+      <nav class="nav" aria-label="Developer sections">
+        <a class="nav-link active" href="#overview">Overview</a>
+        <a class="nav-link" href="#architecture">Workspace Architecture</a>
+        <a class="nav-link" href="#cold-start">Cold Start &amp; Lifecycle</a>
+        <a class="nav-link" href="#scanner">Scanner &amp; Database</a>
+        <a class="nav-link" href="#audio-video">Audio, EQ &amp; Video Host</a>
+        <a class="nav-link" href="#build">Build, Test &amp; Packaging</a>
+        <a class="nav-link" href="#legacy">Legacy .NET Workspace</a>
+        <a class="nav-link" href="#reference-docs">Markdown References</a>
+      </nav>
+
+      <div class="sidebar-footer" style="display: flex; flex-direction: column; gap: 8px;">
+        <a class="theme-btn" href="index.html" style="text-align: center; text-decoration: none;">&larr; User Guide &amp; Download</a>
+        <button id="theme-toggle" class="theme-btn" type="button">Light / Dark theme</button>
+      </div>
+    </aside>
+
+    <main class="content" id="doc-content">
+      <header class="hero">
+        <span class="badge">Rust + Slint Workspace</span>
+        <h1>Developer &amp; Architecture Reference</h1>
+        <p>
+          Technical documentation for <code>music-player-core</code> (headless Rust engine) and
+          <code>music-player-app</code> (Slint UI + Win32 desktop host). Looking for downloads and user guides? Visit <a href="index.html">the main page</a>.
+        </p>
+      </header>
+
+      <section id="overview" class="doc-section" data-search="overview crates core app sqlite libvlc slint windows">
+        <h2>Overview</h2>
+        <div class="card-grid">
+          <article class="card">
+            <h3>Headless Core (<code>crates/core</code>)</h3>
+            <p>SQLite WAL store, Lofty metadata reading, container-specific tag writers, scanner/watcher pipelines, LRCLIB client, queue/EQ state, and LibVLC FFI with zero UI toolkit dependencies.</p>
+          </article>
+          <article class="card">
+            <h3>Desktop Host (<code>crates/app</code>)</h3>
+            <p>Slint UI views/modals, controller state orchestration, SMTC media controls, tray icon, taskbar thumbnail buttons, COM drag-and-drop, and child HWND video hosting.</p>
+          </article>
+          <article class="card">
+            <h3>Design &amp; Code Rules</h3>
+            <p>All UI tokens live in <code>crates/app/ui/widgets.slint</code> (<code>Palette</code>) per <code>DESIGN.md</code>, and all test code stays in dedicated test targets per <code>AGENTS.md</code>.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture" class="doc-section" data-search="architecture workspace crates core app tests slint controllers">
+        <h2>Workspace Architecture</h2>
+        <pre><code>music-player/
+├── Cargo.toml &amp; Cargo.lock       # Primary Rust workspace
+├── crates/
+│   ├── core/                     # Headless engine &amp; persistence
+│   │   ├── src/
+│   │   │   ├── audio/            # LibVLC engine, crossfade machine, EQ, volume, queue
+│   │   │   ├── db/               # SQLite WAL store, track queries, playlists, sessions
+│   │   │   ├── duplicates/       # Exact duplicate grouping &amp; paging
+│   │   │   ├── lyrics/           # LRC parser, .lrc sidecar R/W, LRCLIB HTTP client
+│   │   │   ├── metadata/         # Lofty reader, tag_editor writers, artwork &amp; palette
+│   │   │   └── scanner/          # Parallel metadata pipeline, watcher, scan session
+│   │   └── tests/                # unit_tests, integration_tests, benchmark_validation
+│   └── app/                      # Desktop host
+│       ├── ui/                   # Slint views, shell, modals, widgets, VideoWindow
+│       └── src/
+│           ├── controllers/      # Playback, Navigation, Library, Modals, Views, Platform
+│           ├── video_window.rs   # Native Win32 child HWND stage + subtitle/snapshot host
+│           ├── os.rs / os_shell.rs # SMTC, tray, taskbar buttons, MMDevice routing
+│           ├── com_drop.rs       # Native OLE/COM IDropTarget implementation
+│           └── app_tests.rs      # App-level unit tests
+├── packaging/windows/            # Rust Inno Setup &amp; portable packaging scripts
+└── legacy/                       # Archived C# WebUI &amp; experimental Avalonia projects</code></pre>
+      </section>
+
+      <section id="cold-start" class="doc-section" data-search="cold start splash screen startup launch deferred vlc">
+        <h2>Cold Start &amp; Deferred Initialization</h2>
+        <ol class="steps">
+          <li><strong>Parallel LibVLC Pre-Warm:</strong> Before constructing <code>AppWindow</code>, a background thread (<code>AudioEngine::prepare_vlc</code>) loads <code>libvlc.dll</code> and plugins concurrently while Slint initializes the window.</li>
+          <li><strong>Non-Blocking First Frame:</strong> <code>App::startup()</code> populates settings, navigation, folder roots, and restored queue metadata from SQLite without blocking on LibVLC or Windows COM endpoint enumeration.</li>
+          <li><strong>Post-Paint Hydration:</strong> Once <code>ui.show()</code> paints the main window and dismisses the splash, <code>complete_deferred_startup()</code> attaches LibVLC, enumerates MMDevice outputs, restores paused track position, refreshes smart playlists, and triggers incremental scanning.</li>
+        </ol>
+      </section>
+
+      <section id="scanner" class="doc-section" data-search="library scanner indexer watch filesystem sqlite wal">
+        <h2>Library Scanner &amp; SQLite WAL</h2>
+        <ul>
+          <li><strong>Artwork Cache Snapshot:</strong> <code>LibraryScanSession</code> snapshots cached artwork filenames in memory once per scan rather than calling <code>stat()</code> per track.</li>
+          <li><strong>Mtime + Size Fast Path:</strong> Unchanged files (matching byte length, UTC timestamp, lyrics flag, and cached artwork) are marked seen in batched 1,024-row SQLite statements.</li>
+          <li><strong>Bounded Parallel Pipeline:</strong> New or changed files stream into a 2&ndash;4 worker <code>HybridMetadataEngine</code> pool and a dedicated single SQLite writer actor.</li>
+          <li><strong>Safe Pruning:</strong> Unseen tracks are pruned only inside completed, reachable roots while protecting offline drives and reparse points.</li>
+        </ul>
+      </section>
+
+      <section id="audio-video" class="doc-section" data-search="audio engine equalizer eq crossfade directsound video hwnd">
+        <h2>Audio, Equalizer &amp; Child HWND Video</h2>
+        <ul>
+          <li><strong>Equalizer &amp; Volume:</strong> Quadratic perceptual volume curve + 10-band ISO equalizer (<code>32 Hz</code>&ndash;<code>16 kHz</code>) with 20 presets.</li>
+          <li><strong>Non-Blocking Crossfade:</strong> Dual-player state machine (<code>Opening &rarr; Holding &rarr; Ramping</code>) using DirectSound per-stream volume.</li>
+          <li><strong>Video Hosting:</strong> <code>VideoWindow</code> attaches a Win32 child HWND via <code>libvlc_media_player_set_hwnd</code> using <code>mmdevice</code> output, supporting embedded + nearby sidecar subtitles.</li>
+        </ul>
+      </section>
+
+      <section id="build" class="doc-section" data-search="build cargo test release windows installer packaging">
+        <h2>Build, Test &amp; Packaging</h2>
+        <pre><code># Check all targets without producing binaries
+cargo check --all-targets
+
+# Run full workspace tests (unit, integration, app, benchmark_validation)
+cargo test --workspace
+
+# Build optimized release binary
+cargo build --release --bin music-player-app
+
+# Build local Inno Setup installer (requires Inno Setup + PowerShell 7)
+pwsh -NoProfile -File .\packaging\windows\Build-LocalInstaller.ps1 -RebuildApp</code></pre>
+      </section>
+
+      <section id="legacy" class="doc-section" data-search="legacy dotnet webui avalonia archive">
+        <h2>Legacy .NET Workspace (<code>legacy/</code>)</h2>
+        <p>
+          The retired WinUI 3 + WebView2 application (<code>legacy/src/MusicPlayer.App/</code>), shared .NET 10 library (<code>legacy/src/MusicPlayer.Core/</code>),
+          and experimental Avalonia 11.2 prototype (<code>legacy/src/MusicPlayer.Desktop/</code>) are preserved under <code>legacy/</code> for historical reference and parity checks.
+        </p>
+      </section>
+
+      <section id="reference-docs" class="doc-section" data-search="markdown design agents format matrix development">
+        <h2>Markdown References</h2>
+        <ul class="doc-links">
+          <li><a href="development.md">development.md</a> &mdash; Setup, requirements &amp; commands</li>
+          <li><a href="format-matrix.md">format-matrix.md</a> &mdash; Audio, video &amp; tag format matrix</li>
+          <li><a href="../DESIGN.md">DESIGN.md</a> &mdash; Slint <code>Palette</code> tokens &amp; layout geometry</li>
+          <li><a href="../AGENTS.md">AGENTS.md</a> &mdash; Workspace conventions &amp; commit rules</li>
+          <li><a href="../CONTRIBUTING.md">CONTRIBUTING.md</a> &mdash; Contribution guidelines</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

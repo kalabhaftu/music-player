@@ -1,0 +1,441 @@
+import { State, Actions } from "../state.slint";
+import { TrackItem, GroupItem } from "../models.slint";
+import { Palette, ActionBtn, EmptyState, TrackRow, TrackHeader, TrackTable, GroupGrid, CardTile, Chip } from "../widgets.slint";
+import { PlaylistsList } from "playlists.slint";
+import { ScrollView, ListView } from "std-widgets.slint";
+
+// ---- Search -----------------------------------------------------------------
+component SearchSectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <int> count: 0;
+
+    height: 26px;
+    HorizontalLayout {
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.title;
+                color: Palette.text;
+                font-size: 19px;
+                font-weight: 700;
+                letter-spacing: -0.65px;
+                vertical-alignment: center;
+            }
+            if root.count > 0 : Text {
+                text: "\{root.count}";
+                color: Palette.muted;
+                font-size: 16px;
+                vertical-alignment: center;
+            }
+        }
+
+    }
+}
+
+component SearchPagination inherits Rectangle {
+    in property <string> kind;
+    in property <int> total;
+    in property <int> offset;
+    in property <int> page-size;
+
+    height: 58px;
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        ActionBtn {
+            label: "Previous";
+            enabled: root.offset > 0;
+            clicked => { Actions.search-page(root.kind, -1); }
+        }
+        Text {
+            text: "Page \{Math.floor(root.offset * 1.0 / root.page-size) + 1} of \{max(1, Math.ceil(root.total * 1.0 / root.page-size))}";
+            color: Palette.muted;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        ActionBtn {
+            label: "Next";
+            enabled: root.offset + root.page-size < root.total;
+            clicked => { Actions.search-page(root.kind, 1); }
+        }
+    }
+}
+
+export component SearchView inherits Rectangle {
+    search-sv := ScrollView {
+      content-width: self.visible-width;
+      VerticalLayout {
+        width: search-sv.visible-width;
+        padding-left: State.window-width <= 650 ? 14px : 24px;
+        padding-right: State.window-width <= 650 ? 14px : 24px;
+        padding-top: 20px;
+        padding-bottom: 32px;
+        spacing: 0px;
+
+        // View Header: Title and subtitle matching WebUI
+        VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: "Search";
+                color: Palette.text;
+                font-size: 30px;
+                font-weight: 700;
+                letter-spacing: -0.65px;
+            }
+            Text {
+                text: State.view-search != ""
+                    ? "Results in your local library for “\{State.view-search}”"
+                    : "Find songs, artists, albums, and playlists.";
+                color: Palette.muted;
+                font-size: 12px;
+            }
+        }
+
+        Rectangle { height: 22px; }
+
+        // Filter chips: All, Songs, Albums, Artists, Playlists (height 28px, border-radius 99px)
+        if State.view-search != "" : HorizontalLayout {
+            spacing: 6px;
+            Chip {
+                label: "All";
+                active: State.search-filter == "all";
+                clicked => { Actions.search(State.view-search, "all"); }
+            }
+            Chip {
+                label: "Songs";
+                active: State.search-filter == "song";
+                clicked => { Actions.search(State.view-search, "song"); }
+            }
+            Chip {
+                label: "Albums";
+                active: State.search-filter == "album";
+                clicked => { Actions.search(State.view-search, "album"); }
+            }
+            Chip {
+                label: "Artists";
+                active: State.search-filter == "artist";
+                clicked => { Actions.search(State.view-search, "artist"); }
+            }
+            Chip {
+                label: "Playlists";
+                active: State.search-filter == "playlist";
+                clicked => { Actions.search(State.view-search, "playlist"); }
+            }
+        }
+
+        if State.view-search != "" && (
+            (State.search-filter == "all" && State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count > 0)
+            || (State.search-filter == "song" && State.search-song-count > 0)
+            || (State.search-filter == "album" && State.search-album-count > 0)
+            || (State.search-filter == "artist" && State.search-artist-count > 0)
+            || (State.search-filter == "playlist" && State.search-playlist-count > 0)
+        ) : Rectangle { height: 24px; }
+        if State.view-search != "" && !(
+            (State.search-filter == "all" && State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count > 0)
+            || (State.search-filter == "song" && State.search-song-count > 0)
+            || (State.search-filter == "album" && State.search-album-count > 0)
+            || (State.search-filter == "artist" && State.search-artist-count > 0)
+            || (State.search-filter == "playlist" && State.search-playlist-count > 0)
+        ) : Rectangle { height: 16px; }
+
+        // Recent searches when query is empty
+        if State.view-search == "" && State.recent-searches.length > 0 : VerticalLayout {
+            spacing: 12px;
+            HorizontalLayout {
+                Text {
+                    text: "Recent searches";
+                    color: Palette.text;
+                    font-size: 19px;
+                    font-weight: 700;
+                    letter-spacing: -0.65px;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                ActionBtn {
+                    label: "Clear all";
+                    clicked => { Actions.clear-recent-searches(); }
+                }
+            }
+            recent-flick := Flickable {
+                height: 32px;
+                width: 100%;
+                interactive: recent-row.preferred-width > self.width;
+                content-width: max(self.width, recent-row.preferred-width);
+                content-height: 32px;
+
+                recent-row := HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    for term in State.recent-searches : Rectangle {
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Palette.panel-2;
+                        border-width: 1px;
+                        border-color: Palette.border-soft;
+
+                        HorizontalLayout {
+                            height: 100%;
+                            padding-left: 10px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            TouchArea {
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => { Actions.search(term, "all"); }
+                                HorizontalLayout {
+                                    height: 100%;
+                                    spacing: 5px;
+                                    alignment: center;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image {
+                                            source: @image-url("../../assets/icons/search.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: Palette.muted;
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text {
+                                            text: term;
+                                            color: Palette.text;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    background: close-area.has-hover ? Palette.hover : transparent;
+                                    close-area := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { Actions.remove-recent-search(term); }
+                                    }
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "×";
+                                        color: close-area.has-hover ? #ff5b74 : Palette.muted;
+                                        font-size: 13px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if State.view-search == "" && State.recent-searches.length > 0 : Rectangle { height: 16px; }
+
+        // Empty state when search query is empty
+        if State.view-search == "" : EmptyState {
+            vertical-stretch: 1;
+            text: "Search your library";
+            subtitle: "Type in the search field above to find songs, albums, and artists.";
+        }
+
+        // All results: section cards and song rows with source-matched pagination
+        if State.view-search != "" && State.search-filter == "all" : VerticalLayout {
+                spacing: 24px;
+
+                // Songs table for matched songs
+                if State.search-song-count > 0 : VerticalLayout {
+                    spacing: 13px;
+                    SearchSectionHeader {
+                        title: "Songs";
+                        count: State.search-song-count;
+                    }
+                    TrackTable {
+                        scrollable: false;
+                        show-added: false;
+                        first-column: "Title";
+                        sort(column) => { Actions.sort-view(column); }
+                        empty-text: "No matching songs.";
+                    }
+                    if State.search-song-count > 40 : SearchPagination {
+                        kind: "song";
+                        total: State.search-song-count;
+                        offset: State.search-song-offset;
+                        page-size: 40;
+                    }
+                }
+
+                // Card grid for matched albums
+                if State.search-album-count > 0 : VerticalLayout {
+                    spacing: 13px;
+                    SearchSectionHeader {
+                        title: "Albums";
+                        count: State.search-album-count;
+                    }
+                    GroupGrid {
+                        scrollable: false;
+                        kind: "album";
+                        items: State.search-albums;
+                        show-load-more: false;
+                        empty-text: "No matching albums.";
+                    }
+                    if State.search-album-count > 24 : SearchPagination {
+                        kind: "album";
+                        total: State.search-album-count;
+                        offset: State.search-album-offset;
+                        page-size: 24;
+                    }
+                }
+
+                // Round avatar grid for matched artists
+                if State.search-artist-count > 0 : VerticalLayout {
+                    spacing: 13px;
+                    SearchSectionHeader {
+                        title: "Artists";
+                        count: State.search-artist-count;
+                    }
+                    GroupGrid {
+                        scrollable: false;
+                        round: true;
+                        kind: "artist";
+                        items: State.search-artists;
+                        show-load-more: false;
+                        empty-text: "No matching artists.";
+                    }
+                    if State.search-artist-count > 24 : SearchPagination {
+                        kind: "artist";
+                        total: State.search-artist-count;
+                        offset: State.search-artist-offset;
+                        page-size: 24;
+                    }
+                }
+
+                // Playlists grid
+                if State.search-playlist-count > 0 : VerticalLayout {
+                    spacing: 13px;
+                    SearchSectionHeader {
+                        title: "Playlists";
+                        count: State.search-playlist-count;
+                    }
+                    PlaylistsList { }
+                    if State.search-playlist-count > 20 : SearchPagination {
+                        kind: "playlist";
+                        total: State.search-playlist-count;
+                        offset: State.search-playlist-offset;
+                        page-size: 20;
+                    }
+                }
+
+                if State.search-song-count + State.search-album-count + State.search-artist-count + State.search-playlist-count == 0 : EmptyState {
+                    text: "No results for “\{State.view-search}”";
+                    subtitle: "Try another song, artist, album, or playlist name.";
+                }
+        }
+
+        // Filtered views
+        if State.view-search != "" && State.search-filter == "song" && State.search-song-count > 0 : VerticalLayout {
+            spacing: 13px;
+            SearchSectionHeader {
+                title: "Songs";
+                count: State.search-song-count;
+            }
+            TrackTable {
+                scrollable: false;
+                show-added: false;
+                first-column: "Title";
+                sort(column) => { Actions.sort-view(column); }
+                empty-text: "No matching songs.";
+            }
+            if State.search-song-count > 40 : SearchPagination {
+                kind: "song";
+                total: State.search-song-count;
+                offset: State.search-song-offset;
+                page-size: 40;
+            }
+        }
+
+        if State.view-search != "" && State.search-filter == "album" && State.search-album-count > 0 : VerticalLayout {
+            spacing: 13px;
+            SearchSectionHeader {
+                title: "Albums";
+                count: State.search-album-count;
+            }
+            GroupGrid {
+                scrollable: false;
+                kind: "album";
+                items: State.search-albums;
+                show-load-more: false;
+                empty-text: "No matching albums.";
+            }
+            if State.search-album-count > 24 : SearchPagination {
+                kind: "album";
+                total: State.search-album-count;
+                offset: State.search-album-offset;
+                page-size: 24;
+            }
+        }
+
+        if State.view-search != "" && State.search-filter == "artist" && State.search-artist-count > 0 : VerticalLayout {
+            spacing: 13px;
+            SearchSectionHeader {
+                title: "Artists";
+                count: State.search-artist-count;
+            }
+            GroupGrid {
+                scrollable: false;
+                round: true;
+                kind: "artist";
+                items: State.search-artists;
+                show-load-more: false;
+                empty-text: "No matching artists.";
+            }
+            if State.search-artist-count > 24 : SearchPagination {
+                kind: "artist";
+                total: State.search-artist-count;
+                offset: State.search-artist-offset;
+                page-size: 24;
+            }
+        }
+
+        if State.view-search != "" && State.search-filter == "playlist" && State.search-playlist-count > 0 : VerticalLayout {
+            spacing: 13px;
+            SearchSectionHeader {
+                title: "Playlists";
+                count: State.search-playlist-count;
+            }
+            PlaylistsList { }
+            if State.search-playlist-count > 20 : SearchPagination {
+                kind: "playlist";
+                total: State.search-playlist-count;
+                offset: State.search-playlist-offset;
+                page-size: 20;
+            }
+        }
+
+        if State.view-search != "" && (
+            (State.search-filter == "song" && State.search-song-count == 0)
+            || (State.search-filter == "album" && State.search-album-count == 0)
+            || (State.search-filter == "artist" && State.search-artist-count == 0)
+            || (State.search-filter == "playlist" && State.search-playlist-count == 0)
+        ) : EmptyState {
+            vertical-stretch: 1;
+            text: "No results for “\{State.view-search}”";
+            subtitle: "Try another song, artist, album, or playlist name.";
+        }
+      }
+    }
+}
+
+

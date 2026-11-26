@@ -1,0 +1,113 @@
+import { State, Actions } from "../state.slint";
+import { Palette, IcBtn } from "../widgets.slint";
+import { TagsModal, DetailsModal } from "tags.slint";
+import { FindLyricsModal, EditLyricsModal } from "lyrics.slint";
+import { FoldersModal, ExclusionsModal, LocationsModal } from "library.slint";
+import { AddToPlaylistModal, NameModal } from "playlists.slint";
+import { ConfirmModal, RatingModal, ResetModal, UpdateModal } from "dialogs.slint";
+import { HelpModal } from "help.slint";
+
+export component ModalHost inherits Rectangle {
+    background: #00000094;
+
+    property <bool> is-scrollable-modal:
+        State.modal == "edit-lyrics"
+        || State.modal == "find-lyrics"
+        || State.modal == "tags"
+        || State.modal == "details"
+        || State.modal == "folders"
+        || State.modal == "exclusions"
+        || State.modal == "duplicate-locations"
+        || State.modal == "add-to-playlist"
+        || State.modal == "help";
+
+    in property <length> modal-width:
+        State.modal == "edit-lyrics" ? min(680px, root.width - 32px) :
+        State.modal == "details" ? min(660px, root.width - 32px) :
+        State.modal == "help" ? min(620px, root.width - 32px) :
+        State.modal == "find-lyrics" ? min(580px, root.width - 32px) :
+        State.modal == "tags" ? min(580px, root.width - 32px) :
+        State.modal == "folders" || State.modal == "exclusions" || State.modal == "duplicate-locations" ? min(560px, root.width - 32px) :
+        min(520px, root.width - 32px);
+
+    in property <length> scrollable-height:
+        State.modal == "edit-lyrics" ? min(580px, root.height - 40px) :
+        State.modal == "help" ? min(560px, root.height - 40px) :
+        State.modal == "find-lyrics" ? min(520px, root.height - 40px) :
+        State.modal == "tags" ? min(590px, root.height - 40px) :
+        State.modal == "details" ? min(560px, root.height - 40px) :
+        State.modal == "exclusions" ? min(560px, root.height - 40px) :
+        State.modal == "folders" ? min(440px, root.height - 40px) :
+        State.modal == "add-to-playlist" ? min(400px, root.height - 40px) :
+        min(420px, root.height - 40px);
+
+    TouchArea {
+        clicked => { Actions.close-modal(); }
+    }
+
+    Rectangle {
+        width: root.modal-width;
+        height: root.is-scrollable-modal ? root.scrollable-height : min(modal-layout.preferred-height, root.height - 40px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 14px;
+        background: Palette.panel;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 20px;
+        drop-shadow-blur: 60px;
+        drop-shadow-color: #00000073;
+        clip: true;
+
+        // Absorb clicks on the modal surface so they don't bubble to the backdrop close handler.
+        TouchArea { }
+
+        modal-layout := VerticalLayout {
+            // WebUI `.modal header`: padding 11px 14px, 1px bottom border, 14px title + close icon
+            HorizontalLayout {
+                height: 48px;
+                padding-left: 14px;
+                padding-right: 12px;
+                spacing: 8px;
+                Text {
+                    text: State.modal-title;
+                    color: Palette.text;
+                    font-size: 14px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IcBtn {
+                        icon: @image-url("../../assets/icons/close.svg");
+                        icon-size: 13px;
+                        tint: Palette.muted-2;
+                        clicked => { Actions.close-modal(); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Palette.border; }
+
+            // Body + footer (each modal includes its own `ModalFooterBar` at the bottom)
+            if State.modal == "tags" : TagsModal { vertical-stretch: 1; }
+            if State.modal == "details" : DetailsModal { vertical-stretch: 1; }
+            if State.modal == "find-lyrics" : FindLyricsModal { vertical-stretch: 1; }
+            if State.modal == "edit-lyrics" : EditLyricsModal { vertical-stretch: 1; }
+            if State.modal == "folders" : FoldersModal { vertical-stretch: 1; }
+            if State.modal == "exclusions" : ExclusionsModal { vertical-stretch: 1; }
+            if State.modal == "add-to-playlist" : AddToPlaylistModal { vertical-stretch: 1; }
+            if State.modal == "duplicate-locations" : LocationsModal { vertical-stretch: 1; }
+            if State.modal == "help" : HelpModal { vertical-stretch: 1; }
+            if State.modal == "new-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Create playlist"; submit(text) => { Actions.create-playlist(text); } }
+            if State.modal == "rename-playlist" : NameModal { field-label: "Playlist name"; placeholder: "Playlist name"; action: "Save"; submit(text) => { Actions.rename-playlist(State.view-playlist-id, text); } }
+            if State.modal == "save-preset" : NameModal { field-label: "Preset name"; placeholder: "Preset name"; action: "Save preset"; submit(text) => { Actions.save-eq-preset(text); } }
+            if State.modal == "confirm" : ConfirmModal { }
+            if State.modal == "rating" : RatingModal { }
+            if State.modal == "reset" : ResetModal { }
+            if State.modal == "update" : UpdateModal { }
+        }
+    }
+}

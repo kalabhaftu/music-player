@@ -1,0 +1,98 @@
+import { State, Actions } from "../state.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Palette } from "../widgets.slint";
+
+component ContextMenuItemRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    in property <bool> separator: false;
+    callback clicked();
+
+    height: root.separator ? 7px : 29px;
+    border-radius: 5px;
+    background: area.has-hover && !root.separator && root.enabled ? Palette.hover : transparent;
+
+    area := TouchArea {
+        mouse-cursor: !root.separator && root.enabled ? pointer : default;
+        enabled: !root.separator && root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    if root.separator : Rectangle {
+        x: 8px;
+        width: parent.width - 16px;
+        height: 1px;
+        y: 3px;
+        background: Palette.border;
+    }
+    if !root.separator : Text {
+        text: root.label;
+        color: root.danger ? #ff5b74 : (root.enabled ? Palette.text-strong : Palette.disabled);
+        font-size: 11px;
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// ---- Context menu ----------------------------------------------------------------
+export component ContextMenuOverlay inherits Rectangle {
+    background: #00000000;
+
+    // Dismiss on outside click; Escape closes first.
+    TouchArea {
+        clicked => { Actions.close-context-menu(); }
+    }
+
+    property <length> menu-width: 224px;
+    property <length> desired-height: menu-col.preferred-height + 8px;
+    property <length> menu-height: min(root.height - 16px, max(44px, root.desired-height));
+    property <length> anchor-x: State.context-x + root.menu-width <= root.width - 8px
+        ? max(8px, State.context-x)
+        : max(8px, min(State.context-x - root.menu-width, root.width - root.menu-width - 8px));
+    property <length> anchor-y: State.context-y + root.menu-height <= root.height - 8px
+        ? max(8px, State.context-y)
+        : (State.context-y - root.menu-height >= 8px
+            ? State.context-y - root.menu-height
+            : max(8px, root.height - root.menu-height - 8px));
+
+    Rectangle {
+        x: root.anchor-x;
+        y: root.anchor-y;
+        width: root.menu-width;
+        height: root.menu-height;
+        border-radius: 8px;
+        background: Palette.panel-3;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 12px;
+        drop-shadow-blur: 28px;
+        drop-shadow-color: #00000066;
+        clip: true;
+
+        ScrollView {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: parent.height - 8px;
+            content-width: self.visible-width;
+            content-height: menu-col.preferred-height;
+
+            menu-col := VerticalLayout {
+                width: parent.visible-width;
+                spacing: 0px;
+                for item[index] in State.context-items : ContextMenuItemRow {
+                    label: item.label;
+                    enabled: item.enabled;
+                    danger: item.danger;
+                    separator: item.separator;
+                    clicked => { Actions.context-action(index); }
+                }
+            }
+        }
+    }
+}

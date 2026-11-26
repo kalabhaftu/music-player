@@ -1,0 +1,1883 @@
+// Shared view widgets: icons, track rows and tables, card grids, heroes.
+
+import { State, Actions } from "state.slint";
+import { TrackItem, GroupItem, QueueItem, PlaylistCardItem, HomeCardItem, LyricLineItem, TagFieldItem, ContextMenuItem, EqBandItem, DuplicateItem, DetailRowItem, BackupItem, LyricResultItem, GroupRowItem, PlaylistRowItem, FolderRootItem } from "models.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+
+// Gradient classes c1..c10 from the original components.css.
+export global Palette {
+    in property <float> background-opacity: State.transparent-window ? 1.0 - State.window-transparency * 0.01 : 1.0;
+    in property <color> canvas: (State.artwork-palette ? State.art-background : (State.light-theme ? #f0f2ef : #070807)).with-alpha(background-opacity);
+    in property <color> surface: (State.artwork-palette ? State.art-sidebar : (State.light-theme ? #e7eae6 : #090a09)).with-alpha(background-opacity);
+    in property <color> main: (State.artwork-palette ? State.art-main : (State.light-theme ? #f0f2ef : #090a09)).with-alpha(background-opacity);
+    in property <color> panel: (State.artwork-palette ? State.art-panel : (State.light-theme ? #e7eae6 : #0e100f)).with-alpha(background-opacity);
+    in property <color> panel-2: (State.artwork-palette ? State.art-panel : (State.light-theme ? #dfe3de : #131614)).with-alpha(background-opacity);
+    in property <color> panel-3: (State.artwork-palette ? State.art-raised : (State.light-theme ? #d4d9d3 : #181b19)).with-alpha(background-opacity);
+    in property <color> raised: (State.artwork-palette ? State.art-raised : (State.light-theme ? #e3e6e2 : #171917)).with-alpha(background-opacity);
+    in property <color> hover: (State.artwork-palette ? State.art-hover : (State.light-theme ? #d9ded8 : #212421)).with-alpha(background-opacity);
+    in property <color> control: (State.artwork-palette ? State.art-control : (State.light-theme ? #dfe3de : #242724)).with-alpha(background-opacity);
+    in property <color> text: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f7f8f6);
+    in property <color> text-strong: State.artwork-palette ? #f7f6f2 : (State.light-theme ? #191d19 : #f2f4f1);
+    in property <color> text-subtle: State.artwork-palette ? #e0dfd8 : (State.light-theme ? #343b34 : #cdd2cc);
+    in property <color> muted: State.artwork-palette ? #d1d0c9 : (State.light-theme ? #545c54 : #a0a79f);
+    in property <color> muted-2: State.artwork-palette ? #aaa9a2 : (State.light-theme ? #747c74 : #717970);
+    in property <color> row-hover: State.artwork-palette ? State.art-hover : (State.light-theme ? #e5e8e4 : #131613);
+    in property <color> icon-muted: State.light-theme && !State.artwork-palette ? #727a72 : #939a93;
+    in property <color> disabled: State.light-theme && !State.artwork-palette ? #aab2aa : #3a403a;
+    in property <color> border: State.light-theme && !State.artwork-palette ? #1219121f : #ffffff14;
+    in property <color> border-soft: State.light-theme && !State.artwork-palette ? #12191214 : #ffffff0d;
+    in property <color> border-hover: State.light-theme && !State.artwork-palette ? #1219122b : #ffffff22;
+    in property <color> overlay: State.light-theme && !State.artwork-palette ? #0000000d : #ffffff12;
+    in property <color> overlay-strong: State.light-theme && !State.artwork-palette ? #00000018 : #ffffff1c;
+    in property <color> accent-ink: State.accent-ink;
+    in property <color> selection: State.selection-color-mode == "Custom" ? State.selection-color-value : State.accent;
+    in property <color> selection-ink: State.selection-color-mode == "Custom" ? State.selection-color-ink : State.accent-ink;
+
+    public pure function ga(index: int) -> color {
+        if (index <= 1) { return #1b1d26; }
+        if (index == 2) { return #162124; }
+        if (index == 3) { return #251b1d; }
+        if (index == 4) { return #172019; }
+        if (index == 5) { return #231f18; }
+        if (index == 6) { return #1b1b20; }
+        if (index == 7) { return #1d1d21; }
+        if (index == 8) { return #251726; }
+        if (index == 9) { return #112324; }
+        return #272116;
+    }
+    public pure function gb(index: int) -> color {
+        if (index <= 1) { return #3b4358; }
+        if (index == 2) { return #30494e; }
+        if (index == 3) { return #4e373c; }
+        if (index == 4) { return #364a3b; }
+        if (index == 5) { return #4b4432; }
+        if (index == 6) { return #3d3d48; }
+        if (index == 7) { return #484954; }
+        if (index == 8) { return #5f3263; }
+        if (index == 9) { return #29595d; }
+        return #665536;
+    }
+    // Row thumbnail badge uses the middle stop.
+    public pure function badge(index: int) -> color {
+        if (index <= 1) { return #2a2f3f; }
+        if (index == 2) { return #213337; }
+        if (index == 3) { return #38272b; }
+        if (index == 4) { return #243328; }
+        if (index == 5) { return #353025; }
+        if (index == 6) { return #2a2a32; }
+        if (index == 7) { return #2e2f36; }
+        if (index == 8) { return #3e2140; }
+        if (index == 9) { return #1b393b; }
+        return #403623;
+    }
+
+    public pure function card-gap(browse-width: int) -> length {
+        return clamp(browse-width * 0.05px, 10px, 20px);
+    }
+}
+
+export component DelayedTooltip inherits Rectangle {
+    in property <string> text: "";
+    in property <bool> active: false;
+    in property <bool> pressed: false;
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> anchor-width: 0px;
+    in property <length> anchor-height: 0px;
+    in property <duration> delay: 500ms;
+    in property <bool> use-global: true;
+
+    property <bool> shown: false;
+
+    delay-timer := Timer {
+        interval: root.delay;
+        running: root.active && !root.pressed && root.text != "" && !root.shown;
+        triggered => {
+            root.shown = true;
+            if (root.use-global) {
+                State.tooltip-text = root.text;
+                State.tooltip-anchor-x = root.anchor-x;
+                State.tooltip-anchor-y = root.anchor-y;
+                State.tooltip-anchor-width = root.anchor-width;
+                State.tooltip-anchor-height = root.anchor-height;
+                State.tooltip-visible = true;
+            }
+        }
+    }
+
+    changed active => {
+        if (!self.active) {
+            root.shown = false;
+            if (root.use-global && State.tooltip-text == root.text && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
+        }
+    }
+    changed pressed => {
+        if (self.pressed) {
+            root.shown = false;
+            if (root.use-global && State.tooltip-text == root.text && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
+        }
+    }
+    changed text => {
+        if (self.text == "") {
+            root.shown = false;
+            if (root.use-global && State.tooltip-anchor-x == root.anchor-x && State.tooltip-anchor-y == root.anchor-y) {
+                State.tooltip-visible = false;
+            }
+        }
+    }
+
+    visible: !root.use-global && root.shown && root.text != "" && !root.pressed;
+    x: clamp((root.anchor-width - self.width) / 2, 4px - root.anchor-x, max(4px - root.anchor-x, (State.window-width * 1px) - self.width - 4px - root.anchor-x));
+    y: root.anchor-y < 36px ? root.anchor-height + 6px : -(self.height + 6px);
+    width: root.use-global ? 0px : tt-layout.preferred-width;
+    height: root.use-global ? 0px : tt-layout.preferred-height;
+    z: 1000;
+    background: Palette.panel-3;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+    drop-shadow-blur: 6px;
+    drop-shadow-color: #00000048;
+
+    tt-layout := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        Text {
+            text: root.text;
+            color: Palette.text;
+            font-size: 11px;
+        }
+    }
+}
+
+export component TooltipOverlay inherits Rectangle {
+    visible: State.tooltip-visible && State.tooltip-text != "" && !State.tools-menu-open && !State.context-visible;
+    x: clamp(
+        State.tooltip-anchor-x + (State.tooltip-anchor-width - tt-box.width) / 2,
+        8px,
+        max(8px, (State.window-width * 1px) - tt-box.width - 8px)
+    );
+    y: State.tooltip-anchor-y < 42px
+        ? State.tooltip-anchor-y + State.tooltip-anchor-height + 6px
+        : max(6px, State.tooltip-anchor-y - tt-box.height - 6px);
+    width: tt-box.width;
+    height: tt-box.height;
+
+    tt-box := Rectangle {
+        width: tt-layout.preferred-width;
+        height: tt-layout.preferred-height;
+        background: Palette.panel-3;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000058;
+
+        tt-layout := HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            Text {
+                text: State.tooltip-text;
+                color: Palette.text;
+                font-size: 11px;
+            }
+        }
+    }
+}
+
+export component IcBtn inherits Rectangle {
+    in property <image> icon;
+    in property <color> tint: Palette.muted;
+    in property <color> hover-tint: Palette.text;
+    // Most icon buttons are transparent controls.  The Web UI's top-bar
+    // `.icon-btn` instances alone rest on `--bg`, so callers can opt into
+    // that exact surface without changing buttons elsewhere.
+    in property <color> rest-background: transparent;
+    in property <length> icon-size: 16px;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <string> tooltip: "";
+    in property <bool> global-tooltip: true;
+    out property <bool> hovered: area.has-hover;
+    callback clicked();
+    callback scrolled(PointerScrollEvent) -> EventResult;
+
+    width: 32px;
+    height: 32px;
+    border-radius: self.width / 2;
+    background: !root.enabled ? transparent : (area.pressed ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : root.rest-background));
+    opacity: root.enabled ? 1.0 : 0.35;
+    animate background { duration: 100ms; }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        scroll-event(event) => { root.scrolled(event) }
+    }
+
+    Image {
+        source: root.icon;
+        width: root.icon-size;
+        height: root.icon-size;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.active ? State.accent : (area.has-hover && root.enabled ? root.hover-tint : root.tint);
+        animate colorize { duration: 100ms; }
+    }
+
+    DelayedTooltip {
+        text: root.tooltip;
+        active: area.has-hover && root.enabled;
+        pressed: area.pressed;
+        anchor-x: root.absolute-position.x;
+        anchor-y: root.absolute-position.y;
+        anchor-width: parent.width;
+        anchor-height: parent.height;
+        use-global: root.global-tooltip;
+    }
+}
+
+export component SyncedLyricsList inherits Rectangle {
+    in property <length> top-pad: 100px;
+    in property <length> bottom-pad: 220px;
+    in property <length> side-pad: 12px;
+    in property <length> max-line-width: 720px;
+    in property <length> active-font-size: 27px;
+    in property <length> inactive-font-size: 19px;
+    in property <int> active-font-weight: 800;
+    in property <int> inactive-font-weight: 600;
+    in property <length> active-pad-v: 14px;
+    in property <length> inactive-pad-v: 10px;
+    in property <color> active-color: Palette.text;
+    in property <color> inactive-color: Palette.muted;
+    in property <float> inactive-opacity: 0.42;
+    in property <color> hover-bg: #ffffff10;
+    in property <color> resume-bg: Palette.raised;
+
+    property <length> active-line-y: -1px;
+    property <length> active-line-h: 0px;
+    property <int> scroll-seq: State.lyrics-scroll-nonce * 100000 + State.lyrics-active-line;
+
+    function scroll-to-active() {
+        if (!State.lyrics-timed || State.lyrics-scroll-paused) {
+            return;
+        }
+        if (State.lyrics-active-line < 0) {
+            flickable.content-y = 0px;
+            return;
+        }
+        if (root.active-line-y < 0px) {
+            return;
+        }
+        let max-neg = min(0px, flickable.height - col.preferred-height);
+        let center-y = -(root.active-line-y + root.active-line-h / 2 - root.height / 2);
+        flickable.content-y = max(max-neg, min(0px, center-y));
+    }
+
+    changed active-line-y => { root.scroll-to-active(); }
+    changed scroll-seq => { root.scroll-to-active(); }
+    changed height => { root.scroll-to-active(); }
+
+    clip: true;
+
+    flickable := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: col.height;
+
+        flicked => {
+            if (State.lyrics-timed && !State.lyrics-scroll-paused) {
+                State.lyrics-scroll-paused = true;
+                Actions.lyrics-scroll-changed(true);
+            }
+        }
+
+        col := VerticalLayout {
+            width: flickable.width;
+            height: self.preferred-height;
+            alignment: start;
+            padding-top: root.top-pad;
+            padding-bottom: root.bottom-pad;
+            padding-left: root.side-pad;
+            padding-right: root.side-pad;
+            spacing: 4px;
+
+            for line[index] in State.lyrics-lines : line-box := Rectangle {
+                width: 100%;
+                height: line-inner.preferred-height;
+                border-radius: 12px;
+                background: line-ta.has-hover && State.lyrics-timed ? root.hover-bg : transparent;
+                animate background { duration: 120ms; }
+
+                property <bool> is-current: line.is-active;
+                property <length> box-y: self.y;
+                changed is-current => {
+                    if (self.is-current && self.y > 0px) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+                changed box-y => {
+                    if (self.is-current) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+                init => {
+                    if (self.is-current && self.y > 0px) {
+                        root.active-line-y = self.y;
+                        root.active-line-h = self.height;
+                    }
+                }
+
+                line-ta := TouchArea {
+                    mouse-cursor: State.lyrics-timed && State.seek-from-lyrics ? pointer : default;
+                    clicked => {
+                        if (State.lyrics-timed && State.seek-from-lyrics) {
+                            Actions.seek-to-lyric(index);
+                        }
+                    }
+                }
+
+                line-inner := VerticalLayout {
+                    width: min(parent.width, root.max-line-width);
+                    x: max(0px, (parent.width - self.width) / 2);
+                    padding-top: line.is-active ? root.active-pad-v : root.inactive-pad-v;
+                    padding-bottom: line.is-active ? root.active-pad-v : root.inactive-pad-v;
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    alignment: center;
+
+                    Text {
+                        width: 100%;
+                        text: line.text;
+                        color: line.is-active ? root.active-color : root.inactive-color;
+                        opacity: line.is-active ? 1.0 : (line-ta.has-hover ? 0.9 : root.inactive-opacity);
+                        font-size: line.is-active ? root.active-font-size : root.inactive-font-size;
+                        font-weight: line.is-active ? root.active-font-weight : root.inactive-font-weight;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        animate color { duration: 220ms; }
+                        animate opacity { duration: 220ms; }
+                    }
+                }
+            }
+        }
+    }
+
+    if State.lyrics-scroll-paused && State.lyrics-timed : resume-btn := Rectangle {
+        x: parent.width - 52px;
+        y: parent.height - 52px;
+        width: 38px;
+        height: 38px;
+        border-radius: 19px;
+        border-width: 1px;
+        border-color: resume-ta.has-hover ? State.accent : State.accent.with-alpha(0.55);
+        background: resume-ta.has-hover ? State.accent : root.resume-bg;
+        drop-shadow-offset-x: 0px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: #00000073;
+        animate background { duration: 150ms; }
+
+        Image {
+            source: @image-url("../assets/icons/locate.svg");
+            width: 18px;
+            height: 18px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            colorize: resume-ta.has-hover ? Palette.accent-ink : State.accent;
+        }
+
+        resume-ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                State.lyrics-scroll-paused = false;
+                Actions.lyrics-scroll-changed(false);
+                root.scroll-to-active();
+            }
+        }
+
+        DelayedTooltip {
+            text: "Jump to current lyric";
+            active: resume-ta.has-hover;
+            pressed: resume-ta.pressed;
+            anchor-x: resume-btn.absolute-position.x;
+            anchor-y: resume-btn.absolute-position.y;
+            anchor-width: parent.width;
+            anchor-height: parent.height;
+        }
+    }
+}
+
+export component PlayerSlider inherits Rectangle {
+    out property <bool> hovered: area.has-hover;
+    in property <float> value: 0.0;
+    in property <float> minimum: 0.0;
+    in property <float> maximum: 1.0;
+    in property <color> fill-color: #e2e6e1;
+    in property <color> track-color: #2e332f;
+    in property <color> thumb-color: #ffffff;
+    in property <bool> scrollable: false;
+    in property <bool> commit-on-release: false;
+    in property <float> scroll-step: 0.0;
+
+    property <bool> is-dragging: false;
+    property <float> drag-value: 0.0;
+    property <float> current-val: is-dragging ? drag-value : value;
+
+    callback changed(float);
+    callback preview(float);
+    callback finished(float);
+    callback scrolled(PointerScrollEvent) -> EventResult;
+
+    height: 16px;
+    min-width: 40px;
+
+    area := TouchArea {
+        scroll-event(event) => {
+            if (root.scrolled(event) == accept) {
+                return accept;
+            }
+            if (root.scrollable) {
+                let step = root.scroll-step > 0.0 ? root.scroll-step : max(0.01, (root.maximum - root.minimum) * 0.04);
+                let delta = event.delta-y > 0px ? step : (event.delta-y < 0px ? -step : 0.0);
+                if (delta != 0.0) {
+                    let next-val = clamp(root.current-val + delta, root.minimum, root.maximum);
+                    root.changed(next-val);
+                    return accept;
+                }
+            }
+            reject
+        }
+        clicked => {
+            let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+            root.drag-value = next-val;
+            if (root.commit-on-release) { root.finished(next-val); }
+            else { root.changed(next-val); }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.is-dragging = true;
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                if (root.commit-on-release) { root.preview(next-val); }
+                else { root.changed(next-val); }
+            } else if (event.kind == PointerEventKind.move && area.pressed) {
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                if (root.commit-on-release) { root.preview(next-val); }
+                else { root.changed(next-val); }
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                let next-val = clamp(root.minimum + ((self.mouse-x / 1px) / max(1.0, self.width / 1px)) * (root.maximum - root.minimum), root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.is-dragging = false;
+                if (root.commit-on-release) {
+                    root.finished(next-val);
+                } else {
+                    root.changed(next-val);
+                }
+            } else if (event.kind == PointerEventKind.cancel) {
+                root.is-dragging = false;
+            }
+        }
+    }
+
+    // Track background (unfilled)
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        height: 4px;
+        width: parent.width;
+        border-radius: 99px;
+        background: root.track-color;
+
+        // Filled progress portion
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            height: 4px;
+            width: parent.width * clamp((root.current-val - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0);
+            border-radius: 99px;
+            background: area.has-hover || area.pressed ? State.accent : root.fill-color;
+            animate background { duration: 100ms; }
+        }
+    }
+
+    // Thumb dot
+    Rectangle {
+        x: clamp(parent.width * clamp((root.current-val - root.minimum) / max(0.0001, root.maximum - root.minimum), 0.0, 1.0) - self.width / 2, 0px, parent.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: area.pressed ? State.accent : root.thumb-color;
+        opacity: area.has-hover || area.pressed ? 1.0 : 0.0;
+        animate opacity { duration: 120ms; }
+    }
+}
+
+export component VerticalEqSlider inherits Rectangle {
+    in property <float> value: 0.0;
+    in property <float> minimum: -20.0;
+    in property <float> maximum: 20.0;
+    in property <float> step: 0.5;
+
+    property <bool> is-dragging: false;
+    property <float> drag-value: 0.0;
+    property <float> current-val: is-dragging ? drag-value : value;
+
+    callback changed(float);
+
+    width: 24px;
+    height: 200px;
+    vertical-stretch: 0;
+
+    area := TouchArea {
+        mouse-cursor: ns-resize;
+        scroll-event(event) => {
+            let delta = event.delta-y > 0px ? root.step : (event.delta-y < 0px ? -root.step : 0.0);
+            if (delta != 0.0) {
+                let next-val = clamp(root.current-val + delta, root.minimum, root.maximum);
+                root.changed(next-val);
+                return accept;
+            }
+            reject
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.is-dragging = true;
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.move && area.pressed) {
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                let frac = 1.0 - clamp((self.mouse-y - 10px) / 180px, 0.0, 1.0);
+                let raw = root.minimum + frac * (root.maximum - root.minimum);
+                let stepped = round(raw / root.step) * root.step;
+                let next-val = clamp(stepped, root.minimum, root.maximum);
+                root.drag-value = next-val;
+                root.is-dragging = false;
+                root.changed(next-val);
+            } else if (event.kind == PointerEventKind.cancel) {
+                root.is-dragging = false;
+            }
+        }
+    }
+
+    // Vertical track line
+    Rectangle {
+        x: (parent.width - 4px) / 2;
+        y: 10px;
+        width: 4px;
+        height: 180px;
+        border-radius: 2px;
+        background: Palette.border;
+
+        // 0 dB center tick
+        Rectangle {
+            y: 90px;
+            x: -4px;
+            width: 12px;
+            height: 1px;
+            background: Palette.muted;
+        }
+
+        // Active fill from center
+        Rectangle {
+            x: 0px;
+            width: 4px;
+            border-radius: 2px;
+            background: area.has-hover || area.pressed ? State.accent : Palette.text-subtle;
+            animate background { duration: 100ms; }
+            y: root.current-val >= 0.0
+                ? (1.0 - clamp((root.current-val - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px
+                : 90px;
+            height: root.current-val >= 0.0
+                ? 90px - self.y
+                : (1.0 - clamp((root.current-val - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - 90px;
+        }
+    }
+
+    // Circular Thumb (fixed size prevents hover/drag center-shift jitter)
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: clamp(10px + (1.0 - clamp((root.current-val - root.minimum) / (root.maximum - root.minimum), 0.0, 1.0)) * 180px - self.height / 2, 0px, parent.height - self.height);
+        width: 15px;
+        height: 15px;
+        border-radius: 7.5px;
+        background: area.pressed ? State.accent : #ffffff;
+        border-width: area.has-hover ? 1px : 0px;
+        border-color: State.accent;
+        drop-shadow-blur: 4px;
+        drop-shadow-color: #00000050;
+        animate background { duration: 100ms; }
+    }
+}
+
+export component TextBtn inherits Rectangle {
+    in property <string> label;
+    in property <bool> danger: false;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    min-width: 34px;
+    height: 34px;
+    border-radius: 6px;
+    border-width: root.primary || root.danger ? 1px : 0px;
+    border-color: root.danger ? #ff5b7455 : State.accent;
+    background: !root.enabled ? Palette.panel-2 : (area.pressed ? Palette.border-soft : (root.primary ? State.accent : (area.has-hover ? Palette.overlay : Palette.panel-2)));
+    opacity: root.enabled ? 1.0 : 0.35;
+    animate background { duration: 100ms; }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.label;
+        color: !root.enabled ? Palette.muted : (root.primary ? Palette.accent-ink : (root.danger ? #ff5b74 : (area.has-hover ? Palette.text : Palette.text-subtle)));
+        font-size: 12px;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}
+
+export component CustomSelect inherits Rectangle {
+    in property <[string]> options;
+    in-out property <string> current-value;
+    in-out property <int> current-index: -1;
+    in property <bool> enabled: true;
+    in property <length> max-popup-height: 280px;
+    callback selected(string);
+
+    min-width: 90px;
+    height: 32px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: area.has-hover && root.enabled ? State.accent.with-alpha(0.45) : Palette.border;
+    background: Palette.panel-2;
+
+    property <length> raw-list-h: max(38px, root.options.length * 30px + 8px);
+    property <length> desired-popup-h: min(root.max-popup-height, raw-list-h);
+    property <length> space-below: max(0px, State.window-height * 1px - (root.absolute-position.y + root.height) - 10px);
+    property <length> space-above: max(0px, root.absolute-position.y - 10px);
+    property <bool> open-upwards: space-below < min(desired-popup-h, 160px) && space-above > space-below;
+    property <length> avail-vertical: max(84px, open-upwards ? space-above : space-below);
+    property <length> final-popup-h: min(desired-popup-h, avail-vertical);
+    property <length> final-popup-w: min(max(root.width, 190px), max(120px, State.window-width * 1px - 24px));
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+        spacing: 6px;
+        Text {
+            text: root.current-value;
+            color: root.enabled ? Palette.text : Palette.muted;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            overflow: elide;
+        }
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: popup.is-open
+                    ? @image-url("../assets/icons/chevron-up.svg")
+                    : @image-url("../assets/icons/chevron-down.svg");
+                width: 10px;
+                height: 10px;
+                colorize: Palette.muted;
+            }
+        }
+    }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            if popup.is-open {
+                popup.close();
+            } else {
+                popup.show();
+            }
+        }
+    }
+
+    popup := PopupWindow {
+        close-policy: PopupClosePolicy.close-on-click-outside;
+        x: max(12px - root.absolute-position.x, min(0px, (State.window-width * 1px - 12px) - (root.absolute-position.x + root.final-popup-w)));
+        y: root.open-upwards ? -(root.final-popup-h + 4px) : root.height + 4px;
+        width: root.final-popup-w;
+        height: root.final-popup-h;
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: Palette.border;
+            background: Palette.panel-3;
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000050;
+            clip: true;
+
+            popup-scroll := ScrollView {
+                width: 100%;
+                height: 100%;
+                content-width: self.visible-width;
+                content-height: opts-col.preferred-height;
+                opts-col := VerticalLayout {
+                    width: popup-scroll.visible-width;
+                    padding: 4px;
+                    spacing: 2px;
+                    for opt[idx] in root.options : Rectangle {
+                        height: 28px;
+                        border-radius: 6px;
+                        background: item-area.has-hover ? Palette.hover : (opt == root.current-value ? Palette.hover : transparent);
+                        item-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.current-value = opt;
+                                root.current-index = idx;
+                                root.selected(opt);
+                                popup.close();
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: start;
+                            Text {
+                                text: opt;
+                                color: opt == root.current-value ? State.accent : Palette.text;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ActionBtn inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    horizontal-stretch: 0;
+    height: 34px;
+    border-radius: 999px;
+    background: !root.enabled
+        ? Palette.panel-2
+        : (root.primary
+            ? (area.has-hover ? #ffffff : #f4f6f3)
+            : (root.danger ? (area.has-hover ? #ff5b7444 : #ff5b7422) : (area.has-hover ? Palette.hover : Palette.control)));
+    opacity: root.enabled ? 1.0 : 0.38;
+    animate background { duration: 100ms; }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        alignment: center;
+        if root.icon.width > 0 : VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+                colorize: !root.enabled ? Palette.muted : (root.primary ? #0a0b0a : (root.danger ? #ff5b74 : (State.light-theme && !State.artwork-palette ? Palette.text : #ffffff)));
+            }
+        }
+        Text {
+            text: root.label;
+            color: !root.enabled ? Palette.muted : (root.primary ? #0a0b0a : (root.danger ? #ff5b74 : (State.light-theme && !State.artwork-palette ? Palette.text : #ffffff)));
+            font-size: 11px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+export component CustomToggle inherits Rectangle {
+    in property <bool> checked: false;
+    callback toggled(bool);
+
+    width: 35px;
+    height: 20px;
+    border-radius: 10px;
+    background: root.checked ? State.accent.with-alpha(0.3) : Palette.control;
+    animate background { duration: 140ms; }
+
+    thumb := Rectangle {
+        x: root.checked ? 17px : 2px;
+        y: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: root.checked ? State.accent : (State.artwork-palette ? Palette.muted : #858d84);
+        animate x { duration: 140ms; }
+        animate background { duration: 140ms; }
+    }
+
+    TouchArea {
+        clicked => {
+            root.toggled(!root.checked);
+        }
+    }
+}
+
+export component HeaderCell inherits TouchArea {
+    in property <string> label;
+    in property <bool> active: false;
+    in property <bool> descending: false;
+    in property <bool> right-align: false;
+    callback sort();
+    min-width: 0px;
+
+    HorizontalLayout {
+        alignment: root.right-align ? end : start;
+        spacing: 4px;
+        min-width: 0px;
+        Text {
+            min-width: 0px;
+            text: root.label;
+            color: root.active ? State.accent : Palette.muted-2;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            vertical-alignment: center;
+        }
+        if root.active : VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.descending ? @image-url("../assets/icons/chevron-down.svg") : @image-url("../assets/icons/chevron-up.svg");
+                width: 9px;
+                height: 9px;
+                colorize: State.accent;
+            }
+        }
+    }
+    clicked => { root.sort(); }
+}
+
+// One table row. Triggers: click plays, right-click or the overflow button
+// opens the global context menu, heart toggles the favorite.
+export component TrackRow inherits Rectangle {
+    in property <TrackItem> track;
+    in property <int> index: 1;
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <bool> show-remove: false;
+
+    callback play();
+    callback favorite();
+    callback context(int, int);
+    callback remove();
+
+    height: 58px;
+    background: area.pressed ? Palette.hover : (area.has-hover ? Palette.row-hover : (root.track.is-playing ? Palette.panel-2 : transparent));
+    animate background { duration: 120ms; }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.border;
+    }
+
+    area := TouchArea {
+        clicked => { root.play(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.context(round((root.absolute-position.x + area.mouse-x) / 1px), round((root.absolute-position.y + area.mouse-y) / 1px));
+            }
+        }
+
+        HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        Rectangle {
+            width: 44px;
+            if area.has-hover : Image {
+                source: @image-url("../assets/icons/play.svg");
+                width: 14px;
+                height: 14px;
+                y: (parent.height - self.height) / 2;
+                x: (parent.width - self.width) / 2;
+                colorize: Palette.text;
+            }
+            if !area.has-hover && root.track.is-playing : Image {
+                source: @image-url("../assets/icons/music.svg");
+                width: 15px;
+                height: 15px;
+                y: (parent.height - self.height) / 2;
+                x: (parent.width - self.width) / 2;
+                colorize: State.accent;
+            }
+            if !area.has-hover && !root.track.is-playing : Text {
+                text: "\{root.index}";
+                color: root.track.unavailable ? #ff5b74 : Palette.muted-2;
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        if State.show-list-artwork : Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            clip: true;
+            y: (parent.height - self.height) / 2;
+            background: root.track.badge-bg;
+            if root.track.has-cover : Image {
+                source: root.track.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.track.has-cover : Text {
+                text: root.track.initials;
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            spacing: 6px;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                alignment: center;
+                spacing: 3px;
+
+                Text {
+                    min-width: 0px;
+                    text: root.track.unavailable ? "\{root.track.title} (unavailable)" : root.track.title;
+                    color: root.track.is-playing ? State.accent : (root.track.unavailable ? #ff5b74 : Palette.text-strong);
+                    font-size: 12px;
+                    font-weight: 650;
+                    overflow: elide;
+                    animate color { duration: 150ms; }
+                }
+                if State.show-list-artist : Text {
+                    min-width: 0px;
+                    text: root.track.artist;
+                    color: Palette.muted;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 0;
+                width: (State.show-list-favorite ? 28px : 0px) + (root.show-remove ? 28px : 0px) + 28px + ((State.show-list-favorite ? 1 : 0) + (root.show-remove ? 1 : 0)) * 2px;
+                actions-layout := HorizontalLayout {
+                    width: parent.width;
+                    height: 28px;
+                    y: (parent.height - self.height) / 2;
+                    spacing: 2px;
+                    alignment: end;
+                    opacity: area.has-hover || fav-btn.hovered || remove-btn.hovered || more-btn.hovered || root.track.is-favorite ? 1.0 : 0.0;
+                    animate opacity { duration: 120ms; }
+
+                    fav-btn := IcBtn {
+                        visible: State.show-list-favorite;
+                        enabled: State.show-list-favorite;
+                        icon: root.track.is-favorite ? @image-url("../assets/icons/heart-filled.svg") : @image-url("../assets/icons/heart.svg");
+                        tint: root.track.is-favorite ? State.accent : Palette.muted-2;
+                        hover-tint: root.track.is-favorite ? State.accent : Palette.text;
+                        icon-size: 14px;
+                        width: State.show-list-favorite ? 28px : 0px;
+                        height: 28px;
+                        clicked => { root.favorite(); }
+                    }
+                    remove-btn := IcBtn {
+                        visible: root.show-remove;
+                        enabled: root.show-remove;
+                        icon: @image-url("../assets/icons/close.svg");
+                        tint: Palette.muted-2;
+                        hover-tint: #ff5b74;
+                        icon-size: 13px;
+                        width: root.show-remove ? 28px : 0px;
+                        height: 28px;
+                        clicked => { root.remove(); }
+                    }
+                    more-btn := IcBtn {
+                        icon: @image-url("../assets/icons/more.svg");
+                        tint: Palette.muted-2;
+                        hover-tint: Palette.text;
+                        icon-size: 14px;
+                        width: 28px;
+                        height: 28px;
+                        clicked => {
+                            root.context(
+                                round((more-btn.absolute-position.x + more-btn.width / 2) / 1px),
+                                round((more-btn.absolute-position.y + more-btn.height + 4px) / 1px)
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.show-album && State.show-list-album && State.content-avail-width > 380px : Rectangle {
+            width: clamp(State.content-avail-width * 0.21, 76px, 190px);
+            album-area := TouchArea {
+                clicked => { Actions.set-view("Album", "", root.track.album, ""); }
+            }
+            Text {
+                width: 100%;
+                text: root.track.album;
+                color: album-area.has-hover ? Palette.text : Palette.text-subtle;
+                font-size: 11px;
+                overflow: elide;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                animate color { duration: 100ms; }
+            }
+        }
+
+        if State.show-list-added && root.show-added && State.content-avail-width > 470px : Text {
+            text: root.track.added;
+            color: Palette.text-subtle;
+            font-size: 11px;
+            overflow: elide;
+            width: 86px;
+            vertical-alignment: center;
+        }
+
+        if State.show-list-year && root.show-year && State.content-avail-width > 720px : Text {
+            text: root.track.year;
+            color: Palette.text-subtle;
+            font-size: 11px;
+            width: 56px;
+            vertical-alignment: center;
+        }
+
+        if root.show-plays : Text {
+            text: root.track.play-count == 1 ? "1 play" : "\{root.track.play-count} plays";
+            color: Palette.text-subtle;
+            font-size: 11px;
+            width: 76px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        if State.show-list-duration : Text {
+            text: root.track.duration;
+            color: Palette.muted;
+            font-size: 11px;
+            width: 54px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+}
+
+// Sortable table header.
+export component TrackHeader inherits Rectangle {
+    in property <string> first-column: "TITLE";
+    in property <string> first-sort: "Title";
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <string> active-sort: "Title";
+    in property <bool> descending: false;
+
+    callback sort(string);
+
+    height: 37px;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: parent.width;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        HeaderCell {
+            label: "#";
+            width: 44px;
+        }
+        if State.show-list-artwork : Rectangle { width: 38px; }
+
+        HeaderCell {
+            label: root.first-column;
+            active: root.active-sort == root.first-sort;
+            descending: root.descending;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            sort => { root.sort(root.first-sort); }
+        }
+
+        if root.show-album && State.show-list-album && State.content-avail-width > 380px : HeaderCell {
+            label: "ALBUM";
+            width: clamp(State.content-avail-width * 0.21, 76px, 190px);
+            active: root.active-sort == "Album";
+            descending: root.descending;
+            sort => { root.sort("Album"); }
+        }
+
+        if State.show-list-added && root.show-added && State.content-avail-width > 470px : HeaderCell {
+            label: "ADDED";
+            width: 86px;
+            active: root.active-sort == "Added";
+            descending: root.descending;
+            sort => { root.sort("Added"); }
+        }
+
+        if State.show-list-year && root.show-year && State.content-avail-width > 720px : HeaderCell {
+            label: "YEAR";
+            width: 56px;
+            active: root.active-sort == "Year";
+            descending: root.descending;
+            sort => { root.sort("Year"); }
+        }
+
+        if root.show-plays : HeaderCell {
+            label: "PLAYS";
+            width: 76px;
+            active: root.active-sort == "PlayCount";
+            descending: root.descending;
+            sort => { root.sort("PlayCount"); }
+        }
+
+        if State.show-list-duration : HeaderCell {
+            label: "TIME";
+            width: 54px;
+            right-align: true;
+            sort => { root.sort("Duration"); }
+        }
+    }
+}
+
+// The standard table view: header + rows + "Load more" affordance.
+export component TrackTable inherits Rectangle {
+    in property <bool> show-added: true;
+    in property <bool> show-year: true;
+    in property <bool> show-album: true;
+    in property <bool> show-plays: false;
+    in property <string> first-column: "Title";
+    in property <string> first-sort: "Title";
+    in property <bool> show-remove: false;
+    in property <string> empty-text: "No tracks to show.";
+    in property <bool> scrollable: true;
+
+    callback sort(string);
+
+    vertical-stretch: root.scrollable ? 1 : 0;
+
+    VerticalLayout {
+        TrackHeader {
+            first-column: root.first-column;
+            first-sort: root.first-sort;
+            show-added: root.show-added;
+            show-year: root.show-year;
+            show-album: root.show-album;
+            show-plays: root.show-plays;
+            active-sort: State.view-sort;
+            descending: State.view-descending;
+            sort(column) => { root.sort(column); }
+        }
+
+        if root.scrollable : tt-sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+
+            VerticalLayout {
+                width: tt-sv.visible-width;
+                spacing: 0px;
+                alignment: start;
+
+                for row[index] in State.tracks : TrackRow {
+                    track: row;
+                    index: index + 1;
+                    show-added: root.show-added;
+                    show-year: root.show-year;
+                    show-album: root.show-album;
+                    show-plays: root.show-plays;
+                    show-remove: root.show-remove;
+                    play => { Actions.play-track(row.id); }
+                    favorite => { Actions.toggle-favorite(row.id); }
+                    context(x, y) => { Actions.open-context-menu(row.id, x, y); }
+                    remove => { Actions.remove-from-playlist(row.position); }
+                }
+
+                if State.can-load-more : Rectangle {
+                    height: 56px;
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionBtn {
+                            label: "Load more tracks";
+                            clicked => { Actions.load-more(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !root.scrollable : VerticalLayout {
+            alignment: start;
+            for row[index] in State.tracks : TrackRow {
+                track: row;
+                index: index + 1;
+                show-added: root.show-added;
+                show-year: root.show-year;
+                show-album: root.show-album;
+                show-plays: root.show-plays;
+                show-remove: root.show-remove;
+                play => { Actions.play-track(row.id); }
+                favorite => { Actions.toggle-favorite(row.id); }
+                context(x, y) => { Actions.open-context-menu(row.id, x, y); }
+                remove => { Actions.remove-from-playlist(row.position); }
+            }
+
+            if State.can-load-more : Rectangle {
+                height: 56px;
+                HorizontalLayout {
+                    alignment: center;
+                    ActionBtn {
+                        label: "Load more tracks";
+                        clicked => { Actions.load-more(); }
+                    }
+                }
+            }
+        }
+
+        if State.tracks.length == 0 && !State.page-loading : Rectangle {
+            height: 120px;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.empty-text;
+                    color: Palette.muted-2;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// Gradient card tile used by the albums/artists/genres/folders grids.
+export component CardTile inherits Rectangle {
+    in property <GroupItem> item;
+    in property <bool> round: false;
+
+    callback play();
+    callback open();
+
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    width: State.card-width;
+    border-radius: 10px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        card := Rectangle {
+            width: 100%;
+            height: self.width;
+            vertical-stretch: 0;
+            horizontal-stretch: 0;
+
+            cover-box := Rectangle {
+                width: 100%;
+                height: 100%;
+                border-radius: root.round ? self.width / 2 : 8px;
+                clip: true;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 14px;
+                drop-shadow-blur: 28px;
+                drop-shadow-color: #00000040;
+                background: @linear-gradient(150deg, Palette.ga(root.item.gradient) 0%, Palette.badge(root.item.gradient) 58%, Palette.gb(root.item.gradient) 100%);
+
+                if root.item.has-cover : Image {
+                    source: root.item.cover;
+                    width: parent.width;
+                    height: parent.height;
+                    preferred-width: parent.width;
+                    preferred-height: parent.height;
+                    image-fit: ImageFit.cover;
+                }
+
+                if !root.item.has-cover : Text {
+                    text: root.item.initials;
+                    color: #ffffffe0;
+                    font-size: clamp(State.window-width * 0.02px, 16px, 26px);
+                    font-weight: 900;
+                    letter-spacing: -1px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
+                }
+            }
+
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                border-radius: 22px;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-blur: 20px;
+                drop-shadow-color: #00000061;
+                background: fab-area.has-hover ? State.accent.brighter(0.12) : State.accent;
+                opacity: area.has-hover || fab-area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+                animate background { duration: 150ms; }
+
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 18px;
+                    height: 18px;
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+
+                fab-area := TouchArea {
+                    width: 48px;
+                    height: 48px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    mouse-cursor: pointer;
+                    clicked => { root.play(); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 4px;
+            min-width: 0px;
+            Text {
+                min-width: 0px;
+                text: root.item.display-name != "" ? root.item.display-name : root.item.name;
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 750;
+                overflow: elide;
+            }
+            if root.item.subtitle != "" : Text {
+                min-width: 0px;
+                text: root.item.subtitle;
+                color: Palette.muted;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+export component HomeCardTile inherits Rectangle {
+    in property <HomeCardItem> item;
+    in property <bool> round: false;
+    callback open();
+    callback play();
+
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    width: State.card-width;
+    border-radius: 10px;
+    background: area.has-hover ? Palette.hover : Palette.raised;
+    animate background { duration: 140ms; }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        card := Rectangle {
+            width: 100%;
+            height: self.width;
+            vertical-stretch: 0;
+            horizontal-stretch: 0;
+            border-radius: (root.round || root.item.kind == "artist") ? self.width / 2 : 6px;
+            clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #00000040;
+            background: @linear-gradient(150deg, Palette.ga(root.item.gradient) 0%, Palette.badge(root.item.gradient) 58%, Palette.gb(root.item.gradient) 100%);
+            if root.item.has-cover : Image {
+                source: root.item.cover;
+                width: parent.width;
+                height: parent.height;
+                preferred-width: parent.width;
+                preferred-height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.item.has-cover : Text {
+                text: root.item.initials;
+                color: #ffffffe0;
+                font-size: clamp(State.window-width * 0.02px, 16px, 26px);
+                font-weight: 900;
+                letter-spacing: -1px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(180deg, transparent 45%, #00000047 100%);
+            }
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                x: parent.width - self.width - 10px;
+                y: parent.height - self.height - 10px;
+                border-radius: 19px;
+                drop-shadow-offset-x: 0px;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-blur: 20px;
+                drop-shadow-color: #00000061;
+                background: fab-area.has-hover ? State.accent.brighter(0.12) : State.accent;
+                opacity: area.has-hover || fab-area.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 150ms; }
+                animate background { duration: 150ms; }
+                Image {
+                    source: @image-url("../assets/icons/play.svg");
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    colorize: Palette.accent-ink;
+                }
+                fab-area := TouchArea {
+                    width: 44px;
+                    height: 44px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    mouse-cursor: pointer;
+                    clicked => { root.play(); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 4px;
+            min-width: 0px;
+            Text { min-width: 0px; text: root.item.title; color: Palette.text; font-size: 13px; font-weight: 750; overflow: elide; }
+            if root.item.subtitle != "" : Text { min-width: 0px; text: root.item.subtitle; color: Palette.muted; font-size: 11px; overflow: elide; }
+        }
+    }
+}
+
+// Responsive catalog grid. CSS in the release uses auto-fill with a 130px
+// minimum card size; leave a little room for the card gap when deriving columns.
+export component GroupGrid inherits Rectangle {
+    in property <bool> round: false;
+    in property <string> kind: "";
+    in property <string> empty-text: "Nothing here yet.";
+    in property <[GroupItem]> items: State.groups;
+    in property <bool> show-load-more: true;
+    in property <bool> scrollable: true;
+
+    VerticalLayout {
+        if root.items.length == 0 : Rectangle {
+            width: 100%;
+            height: 100%;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.empty-text;
+                    color: Palette.muted-2;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        if root.items.length > 0 && root.scrollable : gg-sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            VerticalLayout {
+                width: gg-sv.visible-width;
+                spacing: 16px;
+                GridLayout {
+                    width: 100%;
+                    spacing: State.card-gap;
+                    for item[index] in root.items : CardTile {
+                        item: item;
+                        round: root.round || root.kind == "artist" || State.view == "Artists";
+                        col: Math.mod(index, State.card-columns);
+                        row: index / State.card-columns;
+                        play => {
+                            Actions.play-group(
+                                root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                                item.name
+                            );
+                        }
+                        open => {
+                            Actions.open-group(
+                                root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                                item.name
+                            );
+                        }
+                    }
+                }
+                if root.show-load-more && State.groups-total > root.items.length : Rectangle {
+                    height: 44px;
+                    ActionBtn {
+                        label: "Load more";
+                        clicked => { Actions.load-more-groups(); }
+                    }
+                }
+            }
+        }
+        if root.items.length > 0 && !root.scrollable : GridLayout {
+            width: 100%;
+            spacing: State.card-gap;
+            for item[index] in root.items : CardTile {
+                item: item;
+                round: root.round || root.kind == "artist" || State.view == "Artists";
+                col: Math.mod(index, State.card-columns);
+                row: index / State.card-columns;
+                play => {
+                    Actions.play-group(
+                        root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                        item.name
+                    );
+                }
+                open => {
+                    Actions.open-group(
+                        root.kind != "" ? root.kind : (State.view == "Albums" ? "album" : (State.view == "Artists" ? "artist" : (State.view == "Genres" ? "genre" : "folder"))),
+                        item.name
+                    );
+                }
+            }
+        }
+    }
+}
+
+// Detail page hero: cover block + eyebrow + title + subtitle.
+export component HeroDetail inherits Rectangle {
+    in property <string> eyebrow: "";
+    in property <string> title: "";
+    in property <string> subtitle: "";
+    in property <image> cover;
+    in property <bool> has-cover: false;
+    in property <bool> round: false;
+    in property <string> initials: "";
+    in property <int> gradient: 1;
+    in property <bool> now-playing: false;
+    in property <bool> favorite: false;
+
+    callback play();
+    callback shuffle();
+    callback toggle-favorite();
+    callback show-location();
+    callback details();
+
+    min-height: 230px;
+    border-radius: 12px;
+    clip: true;
+    background: State.light-theme ? Palette.panel : #0e100e;
+    animate background { duration: 400ms; easing: ease-in-out; }
+
+    // Blurred artwork backdrop behind the hero card (like immersive player & WebUI)
+    if root.has-cover : Image {
+        source: root.cover;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * 1.25;
+        height: parent.height * 1.45;
+        image-fit: ImageFit.cover;
+        opacity: State.light-theme ? 0.14 : 0.26;
+    }
+    if !root.has-cover : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(135deg, State.accent.with-alpha(0.24) 0%, #151815 60%, #0e100e 100%);
+    }
+
+    // Gradient overlay to keep text fully legible and contrast crisp
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(90deg,
+            (State.light-theme ? #ffffffea : #0e100ef2) 0%,
+            (State.light-theme ? #ffffffd0 : #0e100ec0) 50%,
+            (State.light-theme ? #ffffff98 : #0e100e70) 100%
+        );
+    }
+
+    // Accent wash
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(110deg, State.accent.with-alpha(0.18) 0%, transparent 60%);
+    }
+
+    // 1px subtle border
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding: 20px;
+        spacing: 24px;
+
+        Rectangle {
+            width: clamp(State.content-avail-width * 0.28, 120px, 190px);
+            height: self.width;
+            border-radius: root.round ? self.width / 2 : 8px;
+            clip: true;
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 18px;
+            drop-shadow-blur: 38px;
+            drop-shadow-color: #0000006b;
+            background: @linear-gradient(150deg, Palette.ga(root.gradient) 0%, Palette.badge(root.gradient) 58%, Palette.gb(root.gradient) 100%);
+            if root.has-cover : Image {
+                source: root.cover;
+                width: parent.width;
+                height: parent.height;
+                image-fit: ImageFit.cover;
+            }
+            if !root.has-cover : Text {
+                text: root.initials != "" ? root.initials : root.title;
+                color: #ffffffe0;
+                font-size: clamp(State.window-width * 0.02px, 16px, 26px);
+                font-weight: 900;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: end;
+            spacing: 0px;
+            horizontal-stretch: 1;
+            min-width: 0px;
+
+            if root.eyebrow != "" : Text {
+                text: root.eyebrow == "album" || root.eyebrow == "Album" ? "ALBUM"
+                    : (root.eyebrow == "artist" || root.eyebrow == "Artist" ? "ARTIST"
+                    : (root.eyebrow == "playlist" || root.eyebrow == "Playlist" ? "PLAYLIST"
+                    : (root.eyebrow == "folder" || root.eyebrow == "Folder" ? "FOLDER"
+                    : (root.eyebrow == "genre" || root.eyebrow == "Genre" ? "GENRE"
+                    : root.eyebrow))));
+                color: Palette.muted;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+            }
+
+            Rectangle { height: 8px; }
+
+            Text {
+                min-width: 0px;
+                text: root.title;
+                color: Palette.text;
+                font-size: clamp(State.window-width * 0.028px, 24px, 38px);
+                font-weight: 700;
+                letter-spacing: -1.2px;
+                wrap: word-wrap;
+            }
+
+            Rectangle { height: 10px; }
+
+            if root.subtitle != "" : Text {
+                min-width: 0px;
+                text: root.subtitle;
+                color: Palette.muted;
+                font-size: 12px;
+                overflow: elide;
+            }
+
+            Rectangle { height: 18px; }
+
+            if root.now-playing : HorizontalLayout {
+                spacing: 7px;
+                ActionBtn {
+                    label: root.favorite ? "♥ Favorited" : "♡ Favorite";
+                    clicked => { root.toggle-favorite(); }
+                }
+                ActionBtn {
+                    label: "Show in folder";
+                    clicked => { root.show-location(); }
+                }
+                ActionBtn {
+                    label: "Track details";
+                    clicked => { root.details(); }
+                }
+            }
+
+            if !root.now-playing : HorizontalLayout {
+                spacing: 7px;
+                ActionBtn {
+                    label: "Play";
+                    primary: true;
+                    clicked => { root.play(); }
+                }
+                ActionBtn {
+                    label: "Shuffle";
+                    clicked => { root.shuffle(); }
+                }
+            }
+        }
+    }
+}
+
+export component EmptyState inherits Rectangle {
+    in property <string> text: "Nothing here yet.";
+    in property <string> subtitle: "";
+    in property <string> action-label: "";
+    callback action();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+        padding-top: 70px;
+        padding-bottom: 70px;
+        padding-left: 20px;
+        padding-right: 20px;
+        Text {
+            text: root.text;
+            color: Palette.text;
+            font-size: 16px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        if root.subtitle != "" : Text {
+            text: root.subtitle;
+            color: Palette.muted;
+            font-size: 11px;
+            horizontal-alignment: center;
+        }
+        if root.action-label != "" : Rectangle { height: 8px; }
+        if root.action-label != "" : HorizontalLayout {
+            alignment: center;
+            ActionBtn {
+                label: root.action-label;
+                primary: true;
+                clicked => { root.action(); }
+            }
+        }
+    }
+}
+
+export component SectionTitle inherits Rectangle {
+    in property <string> text;
+    in property <color> text-color: Palette.text;
+    in property <length> font-size: 19px;
+    in property <int> font-weight: 700;
+    in property <length> letter-spacing: -0.65px;
+    height: font-size >= 19px ? 26px : (font-size >= 15px ? 18px : 15px);
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        letter-spacing: root.letter-spacing;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        overflow: elide;
+    }
+}
+
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 28px;
+    min-width: 40px;
+    border-radius: 99px;
+    background: root.active ? Palette.overlay-strong : (area.has-hover ? Palette.overlay : Palette.panel-2);
+    animate background { duration: 100ms; }
+
+    area := TouchArea { clicked => { root.clicked(); } }
+
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        alignment: center;
+        Text {
+            text: root.label;
+            color: (root.active || area.has-hover) ? Palette.text : Palette.muted;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
