@@ -1,543 +1,119 @@
-name: Signed Windows release
+name: Windows Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      mode:
-        description: Private preflight or full candidate packages (no publication)
-        type: choice
-        options: [preflight, candidate]
-        default: preflight
+      tag:
+        description: Tag or version to build as a draft release (e.g. v2.0.0)
+        required: false
+        default: ''
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  release-win-x64:
+    name: Build & Package · Windows x64
     runs-on: windows-2022
-    permissions:
-      contents: read
-    outputs:
-      signed: ${{ steps.release.outputs.signed }}
-      preview: ${{ steps.release.outputs.preview }}
-      preflight_only: ${{ steps.release.outputs.preflight_only }}
     steps:
-      # actions/checkout v7, pinned to the verified tag commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      # actions/setup-dotnet v6, pinned to the verified tag commit.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+
+      - name: Resolve version and validate metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $refTag = if ('${{ github.event.inputs.tag }}' -ne '') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $version = $refTag.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version '$version' from ref '$refTag'."
+          }
+          & ./packaging/windows/Test-ReleaseMetadata.ps1 -ExpectedVersion $version
+          "tag=$refTag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: 10.0.x
-      - name: Validate release and privately preflight signing
-        id: release
-        timeout-minutes: 5
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Build release executable
+        run: cargo build --release --bin music-player-app
+
+      - name: Build Inno Setup installer and portable ZIP
         shell: pwsh
         env:
           SIGNING_PFX: ${{ secrets.MUSICPLAYER_SIGNING_PFX_BASE64 }}
           SIGNING_PASSWORD: ${{ secrets.MUSICPLAYER_SIGNING_PFX_PASSWORD }}
-          SIGNING_MODE: self-signed
-          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $preflightOnly = $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and '${{ inputs.mode }}' -ne 'candidate'
-          $version = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version } else { $env:GITHUB_REF_NAME.TrimStart('v') }
-          & packaging/windows/Test-ReleaseMetadata.ps1 -ExpectedVersion $version
-          $preview = $false
-          $notes = ''
-          if ($preflightOnly -and $env:GITHUB_REF_NAME -ne 'main') { throw 'Private signing preflight must run from main.' }
-          if ($preflightOnly -or $env:GITHUB_EVENT_NAME -eq 'push') {
-            $commit = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:GITHUB_SHA" | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0) { throw 'Could not obtain the release commit signature status.' }
-            if (-not $commit.commit.verification.verified -or $commit.commit.verification.reason -ne 'valid' -or $commit.committer.login -ne 'web-flow') {
-              throw 'The final release revision must have a valid GitHub-verified commit signature. Merge the protected PR using GitHub squash merge.'
-            }
-            Write-Host "GitHub verified commit signature confirmed for $($commit.sha)."
-          }
-          if (-not $preflightOnly) {
-            if ($env:GITHUB_EVENT_NAME -eq 'push') {
-              git fetch origin main --no-tags
-              if ($LASTEXITCODE -ne 0) { throw 'Could not verify the main branch before release.' }
-              git merge-base --is-ancestor HEAD origin/main
-              if ($LASTEXITCODE -ne 0) { throw 'Release tags must point to a commit reachable from main.' }
-            }
-            if ($version -notmatch '^\d+\.\d+\.\d+(-preview\.\d+)?$') { throw "Tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N: $env:GITHUB_REF_NAME" }
-            $preview = $version -match '-preview\.\d+$'
-            $changelog = Get-Content CHANGELOG.md -Raw
-            if (-not $changelog.Contains("## [$version]")) { throw "CHANGELOG.md must contain a ## [$version] section before release." }
-            $notes = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($version))\].*?(?=^## \[|\z)").Value
-            if ([string]::IsNullOrWhiteSpace($notes)) { throw 'Could not extract release notes from CHANGELOG.md.' }
-          }
-          $hasPfx = -not [string]::IsNullOrWhiteSpace($env:SIGNING_PFX)
-          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:SIGNING_PASSWORD)
+          $version = '${{ steps.meta.outputs.version }}'
+          $outDir = Join-Path $PWD 'artifacts/release-assets'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-          $signed = $false
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'music-player-signing.pfx'
-          $probePath = Join-Path $env:RUNNER_TEMP ('music-player-signing-probe-' + [Guid]::NewGuid().ToString('N') + '.exe')
-          $preflightPassed = $false
-          $preflightStage = 'read signing material'
-          if ($hasPfx -and $hasPassword) {
-            $certificate = $null
-            $chain = $null
-            try {
-              $preflightStage = 'decode the signing certificate'
-              $pfxBytes = [Convert]::FromBase64String($env:SIGNING_PFX)
-              [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
-              $pfxBytes = $null
-
-              $preflightStage = 'open the signing certificate and validate its identity'
-              Write-Host 'Validating the persistent self-signed project identity.'
-              $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-                $pfxPath,
-                $env:SIGNING_PASSWORD,
-                [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-              )
-              Write-Host 'Opened signing certificate; validating validity, key and purpose.'
-              $now = [DateTime]::UtcNow
-              if ($certificate.NotBefore.ToUniversalTime() -gt $now -or $certificate.NotAfter.ToUniversalTime() -le $now) { throw 'Signing certificate is outside its validity period.' }
-              if (-not $certificate.HasPrivateKey) { throw 'Signing certificate has no private key.' }
-              if ($certificate.Subject -ne 'CN=Kalabhaftu' -or $certificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -ne 'Kalabhaftu') { throw 'Signing certificate subject does not match the MSIX publisher.' }
-              $codeSigningEku = $certificate.Extensions | Where-Object {
-                $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] -and
-                ($_.EnhancedKeyUsages | Where-Object { $_.Value -eq '1.3.6.1.5.5.7.3.3' })
-              } | Select-Object -First 1
-              if (-not $codeSigningEku) { throw 'Signing certificate lacks the Code Signing EKU.' }
-              if ($env:SIGNING_MODE -ne 'self-signed') { throw 'This pipeline explicitly requires the documented self-signed identity.' }
-              $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PWD 'packaging/windows/MusicPlayer-Signing.cer'))
-              if ($certificate.Thumbprint -ne $publicCertificate.Thumbprint -or $certificate.Issuer -ne $certificate.Subject) { throw 'Certificate does not match the persistent project self-signed identity.' }
-              if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Trust setup is restricted to the isolated GitHub runner.' }
-              # These stores exist only on this disposable hosted runner. No end-user
-              # helper installs trust, and the public certificate ships separately.
-              Write-Host 'Installing public trust on the disposable runner.'
-              # LocalMachine import avoids the interactive CurrentUser root warning.
-              Import-Certificate -FilePath packaging/windows/MusicPlayer-Signing.cer -CertStoreLocation Cert:/LocalMachine/Root | Out-Null
-              Import-Certificate -FilePath packaging/windows/MusicPlayer-Signing.cer -CertStoreLocation Cert:/LocalMachine/TrustedPeople | Out-Null
-              Write-Host 'Importing the signing key into the disposable runner personal store.'
-              $secretPassword = ConvertTo-SecureString $env:SIGNING_PASSWORD -AsPlainText -Force
-              Import-PfxCertificate -FilePath $pfxPath -Password $secretPassword -CertStoreLocation Cert:/CurrentUser/My | Out-Null
-              $secretPassword = $null
-
-              $preflightStage = 'validate the signing certificate trust chain'
-              Write-Host 'Validating the explicitly trusted self-signed chain.'
-              $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
-              $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
-              $chain.ChainPolicy.RevocationFlag = [System.Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
-              $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(15)
-              $chain.ChainPolicy.ApplicationPolicy.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
-              if (-not $chain.Build($certificate)) { throw 'Signing certificate chain is not trusted or could not be validated.' }
-
-              $preflightStage = 'locate Windows SDK signing tools'
-              $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
-              $signtool = Get-ChildItem -Path (Join-Path $sdkRoot '*/x64/signtool.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
-              if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
-
-              $preflightStage = 'prepare the disposable executable signing probe'
-              $probeSource = Join-Path $PSHOME 'pwsh.exe'
-              if (-not (Test-Path -LiteralPath $probeSource -PathType Leaf)) { throw 'PowerShell executable was not found for the signing probe.' }
-              Copy-Item -LiteralPath $probeSource -Destination $probePath
-              $preflightStage = 'sign the disposable executable probe'
-              Write-Host 'Signing the disposable executable probe with a timestamp.'
-              & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 $certificate.Thumbprint /s My $probePath
-              if ($LASTEXITCODE -ne 0) { throw 'Disposable signing probe failed.' }
-              $preflightStage = 'verify the disposable executable signature'
-              Write-Host 'Verifying the project signature and timestamp.'
-              & $signtool verify /pa /all /tw $probePath
-              if ($LASTEXITCODE -ne 0) { throw 'Disposable signature verification failed.' }
-              $probeSignature = Get-AuthenticodeSignature -LiteralPath $probePath
-              if ($probeSignature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint -or -not $probeSignature.TimeStamperCertificate) { throw 'Signing probe has the wrong signer or lacks a trusted timestamp.' }
-
-              $preflightStage = 'verify detached SHA-256 manifest signing support'
-              Add-Type -AssemblyName System.Security.Cryptography.Pkcs
-              $probeContent = [System.Security.Cryptography.Pkcs.ContentInfo]::new([Text.Encoding]::UTF8.GetBytes('Music Player manifest signing preflight'))
-              $probeCms = [System.Security.Cryptography.Pkcs.SignedCms]::new($probeContent, $true)
-              $probeSigner = [System.Security.Cryptography.Pkcs.CmsSigner]::new(
-                [System.Security.Cryptography.Pkcs.SubjectIdentifierType]::IssuerAndSerialNumber,
-                $certificate
-              )
-              $probeSigner.IncludeOption = [System.Security.Cryptography.X509Certificates.X509IncludeOption]::EndCertOnly
-              $probeSigner.DigestAlgorithm = [System.Security.Cryptography.Oid]::new('2.16.840.1.101.3.4.2.1')
-              $probeCms.ComputeSignature($probeSigner)
-              $probeVerifier = [System.Security.Cryptography.Pkcs.SignedCms]::new($probeContent, $true)
-              $probeVerifier.Decode($probeCms.Encode())
-              $probeVerifier.CheckSignature($true)
-              if ($probeVerifier.SignerInfos.Count -ne 1 -or $probeVerifier.SignerInfos[0].Certificate.Thumbprint -ne $certificate.Thumbprint) { throw 'Detached manifest probe was not signed by the configured release certificate.' }
-              $preflightPassed = $true
-            } catch {
-              $preflightPassed = $false
-              $exceptionType = $_.Exception.GetType().Name
-              Write-Host "::error::Private signing preflight failed while attempting to $preflightStage ($exceptionType). Details are suppressed to protect signing material."
-            } finally {
-              if ($chain) { $chain.Dispose() }
-              if ($certificate) { $certificate.Dispose() }
-              Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          if (-not $hasPfx -or -not $hasPassword) {
-            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
-            if ($preflightOnly) { throw 'Private signing preflight failed because both signing secrets are required. No release was created.' }
-            throw 'Preview and stable releases require both signing secrets and a successful signing preflight.'
-          }
-          if (-not $preflightPassed) {
-            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
-            if ($preflightOnly) { throw 'Private signing preflight failed. No release was created.' }
-            throw 'Release blocked because certificate validation and disposable-file signature verification did not pass.'
-          }
-          $signed = $true
-
-          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          if (-not $preflightOnly) {
-            Set-Content -Path $notesPath -Value $notes -NoNewline
-          }
-          "signed=$($signed.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "preview=$($preview.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "preflight_only=$($preflightOnly.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          if ($preflightOnly) { Write-Host 'Private signing preflight passed. No release will be built or published.'; exit 0 }
-      - name: Restore and test
-        if: steps.release.outputs.preflight_only != 'true'
-        run: |
-          dotnet restore MusicPlayer.sln
-          dotnet test tests/MusicPlayer.Tests/MusicPlayer.Tests.csproj --configuration Release --no-restore
-      - name: Require verified signing before release packaging
-        if: steps.release.outputs.preflight_only != 'true'
-        shell: pwsh
-        run: |
-          if ('${{ steps.release.outputs.signed }}' -ne 'true') { throw 'Release packaging requires a successful private signing preflight.' }
-      - name: Install Inno Setup 7
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
-          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne '0362A383ED217D4C4239B5933866DD96D3EB2102737DA92F80F6057A4B40DF2F') { throw 'Inno Setup installer digest does not match the immutable official release.' }
-          if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') { throw 'Inno Setup vendor signature is invalid.' }
-          $process = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/ALLUSERS' -WindowStyle Hidden -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw 'Inno Setup installation failed.' }
-          Join-Path $env:ProgramFiles 'Inno Setup 7' | Out-File $env:GITHUB_PATH -Append -Encoding utf8
-      - name: Build signed portable packages and setup installers
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        shell: pwsh
-        env:
-          SIGNING_PASSWORD: ${{ secrets.MUSICPLAYER_SIGNING_PFX_PASSWORD }}
-          RELEASE_SIGNED: ${{ steps.release.outputs.signed }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $signed = $env:RELEASE_SIGNED -eq 'true'
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version }
-          $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PWD 'packaging/windows/MusicPlayer-Signing.cer'))
-          if ($signed) {
-            $pfx = Join-Path $env:RUNNER_TEMP 'music-player-signing.pfx'
-            $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
-            $signtool = Get-ChildItem -Path (Join-Path $sdkRoot '*/x64/signtool.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
-            if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
-          }
-          New-Item artifacts -ItemType Directory -Force | Out-Null
-          foreach ($arch in @(@{ name='x64'; rid='win-x64' }, @{ name='arm64'; rid='win-arm64' })) {
-              $publish = Join-Path $PWD "artifacts/publish-$($arch.name)"
-              dotnet publish src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime $arch.rid --self-contained true --output $publish -p:Platform=$($arch.name) -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:Version=$version
-              if ($LASTEXITCODE -ne 0) { throw "Portable publish failed for $($arch.name)." }
-              $packageName = "MusicPlayer-$version-$($arch.name)-portable"
-              $out = Join-Path $PWD "artifacts/$packageName"
-              & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory $publish -DestinationDirectory $out -Version $version -Architecture $arch.name
-              if ($LASTEXITCODE -ne 0) { throw "Portable package preparation failed for $($arch.name)." }
-              if ($signed) {
-                & packaging/windows/Sign-FirstPartyFiles.ps1 -Directory $out
-                $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
-                $webViewBootstrapper = Join-Path $out 'MicrosoftEdgeWebView2Setup.exe'
-                try {
-                  Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $webViewBootstrapper
-                  $bootstrapperSignature = Get-AuthenticodeSignature -LiteralPath $webViewBootstrapper
-                  if ($bootstrapperSignature.Status -ne 'Valid' -or $bootstrapperSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation') {
-                    throw 'The WebView2 Evergreen bootstrapper did not have a valid Microsoft signature.'
-                  }
-                  $signCommand = '$q' + $signtool + '$q sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 ' + $publicCertificate.Thumbprint + ' /s My $f'
-                  & $iscc "/DAppVersion=$version" "/DArchitecture=$($arch.name)" "/DSourceDir=$out" "/DOutputDir=$PWD\artifacts" '/DSignedBuild' "/Smusicplayer=$signCommand" packaging/windows/MusicPlayer.iss
-                  if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $($arch.name)." }
-                  # Private previous-version fixture exercises a real installer upgrade.
-                  & $iscc '/DAppVersion=0.9.9' "/DArchitecture=$($arch.name)" "/DSourceDir=$out" "/DOutputDir=$PWD\artifacts\upgrade-fixtures" '/DSignedBuild' "/Smusicplayer=$signCommand" packaging/windows/MusicPlayer.iss
-                  if ($LASTEXITCODE -ne 0) { throw 'Previous-version setup fixture failed.' }
-                } finally {
-                  Remove-Item -LiteralPath $webViewBootstrapper -Force -ErrorAction SilentlyContinue
-                }
-                $setup = Join-Path $PWD "artifacts/MusicPlayer-Setup-$($arch.name).exe"
-                & $signtool verify /pa /all $setup
-                if ($LASTEXITCODE -ne 0) { throw "Installer signature verification failed for $($arch.name)." }
-              }
-              $zip = Join-Path $PWD "artifacts/$packageName.zip"
-              Compress-Archive -LiteralPath $out -DestinationPath $zip -CompressionLevel Optimal
-          }
-          Copy-Item ThirdPartyNotices.md artifacts
-          Copy-Item (Join-Path $env:RUNNER_TEMP 'release-notes.md') artifacts/release-notes.md
-      - name: Build signed MSIX bundle
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        shell: pwsh
-        env:
-          SIGNING_PASSWORD: ${{ secrets.MUSICPLAYER_SIGNING_PFX_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $manifestVersion = "$($version.Split('-')[0]).0"
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version; $manifestVersion = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.AppxPackageVersion }
-          $publicCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $PWD 'packaging/windows/MusicPlayer-Signing.cer'))
-          dotnet publish src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release -p:Platform=x64 -p:Version=$version -p:AppxPackageVersion=$manifestVersion -p:AppxPackageSigningEnabled=true -p:SignFirstParty=true -p:PackageCertificateThumbprint=$($publicCertificate.Thumbprint) -p:AppxPackageSigningTimestampServerUrl=http://timestamp.digicert.com -p:AppxPackageSigningTimestampDigestAlgorithm=SHA256 -p:AppxBundle=Always -p:AppxBundlePlatforms="x64|ARM64" -p:GenerateAppxPackageOnBuild=true
-          if ($LASTEXITCODE -ne 0) { throw 'MSIX bundle packaging/signing failed.' }
-          $bundle = Get-ChildItem src/MusicPlayer.App -Recurse -Filter *.msixbundle | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $bundle) { throw 'Windows packaging completed without producing an MSIX bundle.' }
-          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
-          $signtool = Get-ChildItem -Path (Join-Path $sdkRoot '*/x64/signtool.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
-          & $signtool verify /pa /all $bundle.FullName
-          if ($LASTEXITCODE -ne 0) { throw 'MSIX bundle signature verification failed.' }
-          Copy-Item $bundle.FullName "artifacts/MusicPlayer-$version-x64-arm64.msixbundle"
-          & tests/MusicPlayer.Ui.Tests/Build-PreviousMsix.ps1 -BundlePath $bundle.FullName
-      - name: Sign and verify release SHA-256 manifest
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        shell: pwsh
-        env:
-          SIGNING_PASSWORD: ${{ secrets.MUSICPLAYER_SIGNING_PFX_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          & packaging/windows/Sign-ReleaseManifest.ps1 `
-            -ArtifactDirectory artifacts `
-            -Version $(if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version } else { $version }) `
-            -PfxPath "$env:RUNNER_TEMP\music-player-signing.pfx" `
-            -Password $env:SIGNING_PASSWORD
-      # actions/upload-artifact v7, pinned to the verified tag commit.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        with:
-          name: music-player-upgrade-fixtures
-          path: artifacts/upgrade-fixtures/
-          if-no-files-found: error
-          retention-days: 7
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: steps.release.outputs.preflight_only != 'true' && steps.release.outputs.signed == 'true'
-        with:
-          name: music-player-release-assets
-          path: release-assets/
-          if-no-files-found: error
-          retention-days: 7
-      - name: Remove signing material
-        if: always()
-        shell: pwsh
-        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'music-player-signing.pfx') -Force -ErrorAction SilentlyContinue
-
-  validate-installed:
-    needs: build
-    if: needs.build.outputs.preflight_only != 'true' && needs.build.outputs.signed == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            os: windows-2022
-          - arch: arm64
-            os: windows-11-vs2026-arm
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: music-player-release-assets
-          path: artifacts
-      - name: Authenticate candidate assets before isolated trust setup
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $manifest = @(Get-ChildItem artifacts -Filter 'MusicPlayer-*-SHA256SUMS.txt')
-          if ($manifest.Count -ne 1) { throw 'Expected one candidate manifest.' }
-          & packaging/windows/Verify-MusicPlayer-ReleaseManifest.ps1 -ManifestPath $manifest[0].FullName
-          if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Trust changes require the isolated runner.' }
-          Import-Certificate -FilePath artifacts/MusicPlayer-Signing.cer -CertStoreLocation Cert:/LocalMachine/Root | Out-Null
-          Import-Certificate -FilePath artifacts/MusicPlayer-Signing.cer -CertStoreLocation Cert:/LocalMachine/TrustedPeople | Out-Null
-      - name: Install UI driver
-        working-directory: tests/MusicPlayer.Ui.Tests
-        run: npm install --ignore-scripts
-      - name: Restore validated media fixtures
-        id: media-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: artifacts/media-fixtures
-          key: windows-media-${{ hashFiles('tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1') }}
-      - name: Prepare installed video fixture
-        shell: pwsh
-        run: |
-          if ('${{ steps.media-cache.outputs.cache-hit }}' -ne 'true') {
-            if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --yes --no-progress }
-            & tests/MusicPlayer.Playback.Tests/Prepare-MediaFixtures.ps1
-          }
-          "MUSICPLAYER_MEDIA_FIXTURES=$PWD/artifacts/media-fixtures" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: music-player-upgrade-fixtures
-          path: artifacts/upgrade-fixtures
-      - name: Verify signed setup installation, replacement and both uninstall choices
-        shell: pwsh
-        run: |
-          & tests/MusicPlayer.Ui.Tests/Test-SetupPackage.ps1 -SetupPath artifacts/MusicPlayer-Setup-${{ matrix.arch }}.exe -PreviousSetupPath artifacts/upgrade-fixtures/MusicPlayer-Setup-${{ matrix.arch }}.exe -Architecture '${{ matrix.arch }}'
-      - name: Verify signed MSIX installation, upgrade and both uninstall choices
-        if: success() || failure()
-        # The Windows Appx module targets Windows PowerShell/.NET Framework.
-        shell: powershell
-        run: |
-          $bundle = @(Get-ChildItem artifacts -Filter '*.msixbundle')
-          if ($bundle.Count -ne 1) { throw 'Expected one final MSIX bundle.' }
-          & tests/MusicPlayer.Ui.Tests/Test-MsixPackage.ps1 -BundlePath $bundle[0].FullName -PreviousBundlePath artifacts/upgrade-fixtures/MusicPlayer-0.9.9-x64-arm64.msixbundle -Architecture '${{ matrix.arch }}'
-      - name: Upload installed runtime evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: installed-${{ matrix.arch }}-evidence
-          path: artifacts/ui-evidence/
-          if-no-files-found: warn
-
-  validate-performance:
-    needs: build
-    if: needs.build.outputs.preflight_only != 'true' && needs.build.outputs.signed == 'true'
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          dotnet-version: 10.0.x
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: music-player-release-assets
-          path: artifacts
-      - name: Build the preserved pre-optimization baseline
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          git archive 9759726 --format=zip --output=artifacts/baseline-source.zip
-          if ($LASTEXITCODE -ne 0) { throw 'Could not create the preserved baseline source.' }
-          Expand-Archive artifacts/baseline-source.zip artifacts/baseline-source
-          dotnet publish artifacts/baseline-source/src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/baseline-publish -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
-          if ($LASTEXITCODE -ne 0) { throw 'Baseline publish failed.' }
-          & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory artifacts/baseline-publish -DestinationDirectory artifacts/baseline-package -Version baseline -Architecture x64
-          Compress-Archive -LiteralPath artifacts/baseline-package -DestinationPath artifacts/baseline-portable.zip -CompressionLevel Optimal
-          dotnet publish artifacts/baseline-source/src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime win-arm64 --self-contained true --output artifacts/baseline-arm64-publish -p:Platform=ARM64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
-          if ($LASTEXITCODE -ne 0) { throw 'ARM64 baseline publish failed.' }
-          & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory artifacts/baseline-arm64-publish -DestinationDirectory artifacts/baseline-arm64-package -Version baseline -Architecture arm64
-          Compress-Archive -LiteralPath artifacts/baseline-arm64-package -DestinationPath artifacts/baseline-arm64-portable.zip -CompressionLevel Optimal
-      - name: Authenticate and prepare the measured candidate
-        shell: pwsh
-        run: |
-          $manifest = @(Get-ChildItem artifacts -Filter 'MusicPlayer-*-SHA256SUMS.txt')
-          & packaging/windows/Verify-MusicPlayer-ReleaseManifest.ps1 -ManifestPath $manifest[0].FullName
-          $candidate = @(Get-ChildItem artifacts -Filter 'MusicPlayer-*-x64-portable.zip')
-          Expand-Archive $candidate[0].FullName artifacts/measured-candidate
-          $arm = @(Get-ChildItem artifacts -Filter 'MusicPlayer-*-arm64-portable.zip')
-          if ($arm.Count -ne 1) { throw 'Expected one ARM64 candidate archive.' }
-          Expand-Archive $arm[0].FullName artifacts/measured-arm64-candidate
-      - name: Install UI driver
-        working-directory: tests/MusicPlayer.Ui.Tests
-        run: npm install --ignore-scripts
-      - name: Measure small and 100000-track library startup, CPU and combined memory
-        shell: pwsh
-        run: |
-          $candidate = @(Get-ChildItem artifacts/measured-candidate -Recurse -Filter MusicPlayer.exe)
-          if ($candidate.Count -ne 1) { throw 'Expected one candidate executable.' }
-          git archive v1.0.0 --format=zip --output=artifacts/navigation-baseline-source.zip
-          if ($LASTEXITCODE -ne 0) { throw 'Could not obtain the preserved 1.0.0 startup baseline.' }
-          Expand-Archive artifacts/navigation-baseline-source.zip artifacts/navigation-baseline-source
-          dotnet publish artifacts/navigation-baseline-source/src/MusicPlayer.App/MusicPlayer.App.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/navigation-baseline-publish -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
-          if ($LASTEXITCODE -ne 0) { throw 'Navigation baseline publish failed.' }
-          & packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory artifacts/navigation-baseline-publish -DestinationDirectory artifacts/navigation-baseline-package -Version baseline -Architecture x64
-          & tests/MusicPlayer.Ui.Tests/Measure-Startup.ps1 -BaselineExecutable artifacts/navigation-baseline-package/MusicPlayer.exe -CandidateExecutable $candidate[0].FullName
-          $before = (Get-ChildItem artifacts/baseline-package -Recurse -File | Measure-Object Length -Sum).Sum
-          $after = (Get-ChildItem artifacts/measured-candidate -Recurse -File | Measure-Object Length -Sum).Sum
-          $saved = 1 - $after / $before
-          $beforeZip = (Get-Item artifacts/baseline-portable.zip).Length
-          $afterZip = (@(Get-ChildItem artifacts -Filter 'MusicPlayer-*-x64-portable.zip')[0]).Length
-          $zipSaved = 1 - $afterZip / $beforeZip
-          [pscustomobject]@{baseline='9759726';candidate=$env:GITHUB_SHA;beforeBytes=$before;afterBytes=$after;reduction=$saved;beforeZipBytes=$beforeZip;afterZipBytes=$afterZip;zipReduction=$zipSaved} | ConvertTo-Json | Set-Content artifacts/ui-evidence/performance/package-size.json
-          if ($saved -lt 0.10) { throw 'The final candidate did not meet the 10% unpacked package-size target.' }
-          if ($zipSaved -lt 0.10) { throw 'The final candidate did not meet the 10% downloadable package-size target.' }
-          $beforeArm = (Get-ChildItem artifacts/baseline-arm64-package -Recurse -File | Measure-Object Length -Sum).Sum
-          $afterArm = (Get-ChildItem artifacts/measured-arm64-candidate -Recurse -File | Measure-Object Length -Sum).Sum
-          $beforeArmZip = (Get-Item artifacts/baseline-arm64-portable.zip).Length
-          $afterArmZip = (@(Get-ChildItem artifacts -Filter 'MusicPlayer-*-arm64-portable.zip')[0]).Length
-          $armSaved = 1 - $afterArm / $beforeArm
-          $armZipSaved = 1 - $afterArmZip / $beforeArmZip
-          [pscustomobject]@{baseline='9759726';candidate=$env:GITHUB_SHA;beforeBytes=$beforeArm;afterBytes=$afterArm;reduction=$armSaved;beforeZipBytes=$beforeArmZip;afterZipBytes=$afterArmZip;zipReduction=$armZipSaved} | ConvertTo-Json | Set-Content artifacts/ui-evidence/performance/package-size-arm64.json
-          if ($armSaved -lt 0.10 -or $armZipSaved -lt 0.10) { throw 'The ARM64 package did not meet both 10% size-reduction targets.' }
-          # Keep numerical evidence readable without downloading package artifacts.
-          Get-ChildItem artifacts/ui-evidence/performance -Recurse -File -Filter '*.json' | ForEach-Object {
-            Write-Host "Resource evidence: $($_.FullName.Substring($PWD.Path.Length + 1))"
-            Get-Content -LiteralPath $_.FullName -Raw | Write-Host
-          }
-      - name: Upload comparative resource evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: performance-evidence
-          path: artifacts/ui-evidence/performance/
-          if-no-files-found: warn
-
-  publish:
-    needs: [build, validate-installed, validate-performance]
-    if: github.event_name == 'push' && needs.build.outputs.preflight_only != 'true' && needs.build.outputs.signed == 'true'
-    runs-on: windows-2022
-    permissions:
-      contents: write
-    steps:
-      # actions/download-artifact v7, pinned to the verified tag commit.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: music-player-release-assets
-          path: artifacts
-      - name: Verify signed assets before GitHub Release upload
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $manifests = @(Get-ChildItem artifacts -File -Filter 'MusicPlayer-*-SHA256SUMS.txt')
-          if ($manifests.Count -ne 1) { throw 'Expected exactly one signed release manifest.' }
-          $manifest = $manifests[0].FullName
-          $verifier = Join-Path $PWD 'artifacts/Verify-MusicPlayer-ReleaseManifest.ps1'
-          & $verifier -ManifestPath $manifest -SignaturePath "$manifest.p7s"
-      - name: Upload, verify and publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_PREVIEW: ${{ needs.build.outputs.preview }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $assets = Get-ChildItem artifacts -File | Where-Object Name -ne 'release-notes.md' | ForEach-Object FullName
-          if (-not $assets) { throw 'No release assets were downloaded.' }
-          $tag = $env:GITHUB_REF_NAME
-          $title = "Music Player $($tag.TrimStart('v'))"
-          $notes = Join-Path $PWD 'artifacts/release-notes.md'
-          if (-not (Test-Path $notes)) { throw 'Release notes artifact is missing.' }
-          $null = gh release view $tag --json tagName 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            throw "Release $tag already exists. Published release assets are immutable; use a new version for a corrected build."
-          } elseif ($env:RELEASE_PREVIEW -eq 'true') {
-            gh release create $tag @assets --title $title --notes-file $notes --prerelease --draft
+          $skipSigning = [string]::IsNullOrWhiteSpace($env:SIGNING_PFX)
+          if ($skipSigning) {
+            & ./packaging/windows/Build-LocalInstaller.ps1 -Version $version -SkipSigning
           } else {
-            gh release create $tag @assets --title $title --notes-file $notes --draft
+            & ./packaging/windows/Build-LocalInstaller.ps1 -Version $version
           }
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release creation or update failed.' }
-          $download = Join-Path $env:RUNNER_TEMP ('music-player-upload-check-' + [Guid]::NewGuid().ToString('N'))
-          gh release download $tag --dir $download
-          if ($LASTEXITCODE -ne 0) { throw 'Could not download the draft release assets for verification.' }
-          foreach ($asset in $assets) {
-            $uploaded = Join-Path $download ([IO.Path]::GetFileName($asset))
-            if (-not (Test-Path -LiteralPath $uploaded -PathType Leaf) -or
-                (Get-FileHash -LiteralPath $uploaded -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash) {
-              throw "Uploaded asset differs from the validated candidate: $([IO.Path]::GetFileName($asset))"
+
+          $setupSrc = Join-Path $PWD 'artifacts/local-installer/MusicPlayer-Setup-x64.exe'
+          if (!(Test-Path $setupSrc)) { throw "Installer not found at $setupSrc" }
+          Copy-Item -LiteralPath $setupSrc -Destination (Join-Path $outDir 'MusicPlayer-Setup-x64.exe') -Force
+
+          $payloadDir = Join-Path $PWD 'artifacts/local-installer/payload-x64'
+          $portableStage = Join-Path $PWD "artifacts/MusicPlayer-$version-win-x64-portable"
+          & ./packaging/windows/Prepare-PortablePackage.ps1 -PublishDirectory $payloadDir -DestinationDirectory $portableStage -Version $version -Architecture 'x64'
+          Compress-Archive -Path "$portableStage\*" -DestinationPath (Join-Path $outDir 'MusicPlayer-Portable-win-x64.zip') -Force
+
+          Push-Location $outDir
+          try {
+            $lines = Get-ChildItem -File | Sort-Object Name | ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
             }
+            $lines | Set-Content -LiteralPath 'SHA256SUMS.txt' -Encoding ascii
+          } finally {
+            Pop-Location
           }
-          $uploadedManifest = @(Get-ChildItem -LiteralPath $download -Filter 'MusicPlayer-*-SHA256SUMS.txt')
-          if ($uploadedManifest.Count -ne 1) { throw 'The draft release must include exactly one checksum manifest.' }
-          & (Join-Path $PWD 'artifacts/Verify-MusicPlayer-ReleaseManifest.ps1') -ManifestPath $uploadedManifest[0].FullName
-          gh release edit $tag --draft=false
-          if ($LASTEXITCODE -ne 0) { throw 'Verified draft release could not be published.' }
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ steps.meta.outputs.tag }}'
+          $version = '${{ steps.meta.outputs.version }}'
+          $outDir = Join-Path $PWD 'artifacts/release-assets'
+
+          $notesFile = Join-Path $PWD 'artifacts/release-notes.md'
+          $changelog = Get-Content -LiteralPath 'CHANGELOG.md' -Raw
+          $pattern = "(?ms)^## \[\Q$version\E\].*?(?=^## \[|\z)"
+          if ($changelog -match $pattern) {
+            $matches[0].Trim() | Set-Content -LiteralPath $notesFile -Encoding utf8
+          } else {
+            "Release $tag" | Set-Content -LiteralPath $notesFile -Encoding utf8
+          }
+
+          $assets = @(
+            (Join-Path $outDir 'MusicPlayer-Setup-x64.exe'),
+            (Join-Path $outDir 'MusicPlayer-Portable-win-x64.zip'),
+            (Join-Path $outDir 'SHA256SUMS.txt')
+          )
+          $isPrerelease = $version -match '-'
+          if ($isPrerelease) {
+            gh release create $tag @assets --title "Music Player $tag" --notes-file $notesFile --prerelease
+          } else {
+            gh release create $tag @assets --title "Music Player $tag" --notes-file $notesFile
+          }

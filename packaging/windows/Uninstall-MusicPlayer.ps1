@@ -6,26 +6,32 @@ param(
 $ErrorActionPreference = 'Stop'
 $installDirectory = [IO.Path]::GetFullPath($PSScriptRoot)
 $executable = Join-Path $installDirectory 'MusicPlayer.exe'
-$registrationScript = Join-Path $installDirectory 'Register-MusicPlayer-FileActions.ps1'
-
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-    throw 'Run this uninstaller from the portable Music Player folder.'
-}
-
-$runningCopies = Get-CimInstance Win32_Process -Filter "Name = 'MusicPlayer.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath).Equals($executable, [StringComparison]::OrdinalIgnoreCase) }
-foreach ($process in $runningCopies) {
-    $running = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
-    if ($running) {
-        $null = $running.CloseMainWindow()
-        if (-not $running.WaitForExit(15000)) {
-            throw 'Close Music Player before uninstalling so its playback session and library can be saved.'
-        }
+    $alt = Join-Path $installDirectory 'music-player-app.exe'
+    if (Test-Path -LiteralPath $alt -PathType Leaf) {
+        $executable = $alt
     }
 }
 
+# Close any running copies before uninstalling
+$processNames = @('MusicPlayer', 'music-player-app')
+foreach ($pName in $processNames) {
+    $runningCopies = Get-Process -Name $pName -ErrorAction SilentlyContinue
+    foreach ($proc in $runningCopies) {
+        try {
+            $null = $proc.CloseMainWindow()
+            if (-not $proc.WaitForExit(5000)) {
+                $proc.Kill()
+            }
+        } catch { }
+    }
+}
+
+$registrationScript = Join-Path $installDirectory 'Register-MusicPlayer-FileActions.ps1'
 if (Test-Path -LiteralPath $registrationScript -PathType Leaf) {
     & $registrationScript -Unregister -Quiet
+} elseif (Test-Path -LiteralPath $executable -PathType Leaf) {
+    & $executable --unregister-associations
 }
 
 $dataDirectory = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'MusicPlayer'))
@@ -36,9 +42,6 @@ if (-not $Quiet -and -not $RemoveUserData) {
 }
 
 if ($RemoveUserData -and (Test-Path -LiteralPath $dataDirectory -PathType Container)) {
-    if (Get-Process MusicPlayer -ErrorAction SilentlyContinue) {
-        throw 'Close all Music Player copies before deleting their shared saved data.'
-    }
     $expectedData = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'MusicPlayer'))
     if (-not $dataDirectory.Equals($expectedData, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Unexpected saved-data deletion target.'
@@ -50,5 +53,5 @@ if ($RemoveUserData -and (Test-Path -LiteralPath $dataDirectory -PathType Contai
 }
 
 if (-not $Quiet) {
-    Write-Host 'The app has been unregistered and stopped. Delete this portable folder to remove its program files.'
+    Write-Host 'The app has been unregistered and stopped. Delete this folder to remove its program files.'
 }

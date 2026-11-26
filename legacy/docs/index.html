@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Music Player — Documentation</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">♪</div>
+        <div>
+          <div class="brand-title">Music Player</div>
+          <div class="brand-sub">Reference &amp; Notes</div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <input id="doc-search" type="search" placeholder="Search docs… ( / )" aria-label="Search documentation" />
+      </div>
+
+      <nav class="nav" aria-label="Documentation sections">
+        <a class="nav-link active" href="#overview">Overview</a>
+        <a class="nav-link" href="#architecture">Workspace Architecture</a>
+        <a class="nav-link" href="#cold-start">Cold Start &amp; Splash</a>
+        <a class="nav-link" href="#scanner">Library Scanner &amp; Indexer</a>
+        <a class="nav-link" href="#audio-engine">Audio Engine &amp; Equalizer</a>
+        <a class="nav-link" href="#video-playback">Video Playback Window</a>
+        <a class="nav-link" href="#lyrics">Lyrics &amp; LRCLIB Pipeline</a>
+        <a class="nav-link" href="#shortcuts">Keyboard Shortcuts</a>
+        <a class="nav-link" href="#build">Build &amp; Development</a>
+        <a class="nav-link" href="#reference-docs">Markdown Notes</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="theme-toggle" class="theme-btn" type="button">Light / Dark theme</button>
+      </div>
+    </aside>
+
+    <main class="content" id="doc-content">
+      <header class="hero">
+        <span class="badge">Slint + Rust Desktop Edition</span>
+        <h1>Music Player Documentation</h1>
+        <p>
+          Local audio &amp; video library manager built on Windows with a headless Rust core (<code>music-player-core</code>),
+          native Slint UI (<code>music-player-app</code>), SQLite WAL persistence, and bundled LibVLC playback.
+        </p>
+      </header>
+
+      <section id="overview" class="doc-section" data-search="overview features sqlite libvlc slint windows">
+        <h2>Overview</h2>
+        <p>
+          Music Player keeps your entire media library on your device with fast incremental scanning, gap-free / crossfaded audio playback,
+          a 10-band equalizer with custom presets, synchronized lyrics, duplicate detection, and a dedicated native video window.
+        </p>
+        <div class="card-grid">
+          <article class="card">
+            <h3>Headless Core Crate</h3>
+            <p>All SQLite storage, metadata extraction (<code>lofty</code>), scanner pipelines, LRCLIB client, queue logic, and LibVLC FFI live in <code>music-player-core</code>.</p>
+          </article>
+          <article class="card">
+            <h3>Native Slint + Win32 UI</h3>
+            <p><code>music-player-app</code> drives responsive views, dynamic artwork palettes, SMTC media controls, tray integration, and child HWND video hosting.</p>
+          </article>
+          <article class="card">
+            <h3>Shared Database Schema</h3>
+            <p>Uses SQLite in WAL mode (<code>LibraryStore</code>), reading the same library tables, playlists, settings, and scan state seamlessly.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture" class="doc-section" data-search="architecture workspace crates core app tests slint controllers">
+        <h2>Workspace Architecture</h2>
+        <pre><code>music-player-rust/
+├── crates/
+│   ├── core/                     # Headless engine &amp; persistence
+│   │   ├── src/
+│   │   │   ├── audio/            # LibVLC engine, crossfade machine, EQ, volume, queue
+│   │   │   ├── db/               # SQLite WAL store, track queries, playlists, sessions
+│   │   │   ├── duplicates/       # Exact duplicate grouping &amp; paging
+│   │   │   ├── lyrics/           # LRC parser, .lrc sidecar R/W, LRCLIB HTTP client
+│   │   │   ├── metadata/         # Lofty tags, artwork cache &amp; palette extraction
+│   │   │   └── scanner/          # Parallel metadata pipeline, watcher, scan session
+│   │   └── tests/                # Core unit &amp; integration tests
+│   └── app/                      # Desktop host
+│       ├── ui/                   # Slint screens, modals, widgets, VideoWindow
+│       └── src/
+│           ├── controllers/      # Playback, Navigation, Library, Modals, Views, Platform
+│           ├── video_window.rs   # Native Win32 child HWND stage + subtitle/snapshot host
+│           ├── os.rs / os_shell.rs # SMTC, tray, taskbar buttons, MMDevice routing
+│           └── app_tests.rs      # App-level unit tests</code></pre>
+      </section>
+
+      <section id="cold-start" class="doc-section" data-search="cold start splash screen startup launch latency deferred vlc">
+        <h2>Cold Start &amp; Splash Screen Lifecycle</h2>
+        <p>
+          On launch, <code>Splash::try_show()</code> displays a lightweight Win32 splash card while the app initializes.
+          The splash screen has <strong>no fixed sleep duration</strong> &mdash; it closes immediately once <code>ui.show()</code> paints the main window.
+        </p>
+        <ol class="steps">
+          <li><strong>Parallel LibVLC Pre-Warm:</strong> Before constructing <code>AppWindow</code>, a background thread (<code>AudioEngine::prepare_vlc</code>) loads <code>libvlc.dll</code> and LibVLC plugins concurrently while Slint initializes the window and theme.</li>
+          <li><strong>Instant First Frame:</strong> <code>App::startup()</code> populates settings, navigation, folder roots, the current view, and restored queue metadata from SQLite without blocking on LibVLC or Windows COM endpoint enumeration.</li>
+          <li><strong>Immediate Post-Paint Hydration:</strong> Right after <code>ui.show()</code> and dismissing the splash, <code>complete_deferred_startup()</code> attaches the pre-warmed LibVLC handle, enumerates MMDevice outputs, pre-stages the paused session track position, refreshes smart playlist counts, repairs missing artwork cache files, and triggers the background library scan.</li>
+        </ol>
+      </section>
+
+      <section id="scanner" class="doc-section" data-search="library scanner indexer watch filesystem startup scan unchanged">
+        <h2>Library Scanner &amp; Incremental Updates</h2>
+        <p>
+          On startup, Music Player runs an incremental background scan (<code>force_refresh = false</code>) alongside a live <code>LibraryFileWatcher</code> for filesystem edits.
+        </p>
+        <ul>
+          <li><strong>Artwork Cache Snapshot:</strong> <code>LibraryScanSession</code> snapshots cached artwork filenames once in memory rather than calling <code>stat()</code> per track during incremental checks.</li>
+          <li><strong>Mtime + Size Fast Path:</strong> Unchanged files (same byte length, UTC timestamp, valid lyrics flag, and present artwork) are marked seen in batched 1,024-row cached SQLite statements without invoking metadata workers.</li>
+          <li><strong>Bounded Parallel Pipeline:</strong> Changed or newly added files stream into a 2&ndash;4 worker <code>HybridMetadataEngine</code> pool and a dedicated single SQLite batch writer transaction.</li>
+          <li><strong>Safe Pruning &amp; Exclusions:</strong> Unseen tracks are pruned only inside completed, reachable roots while protecting offline drives, reparse points, and user-ignored folders.</li>
+        </ul>
+      </section>
+
+      <section id="audio-engine" class="doc-section" data-search="audio engine equalizer eq crossfade directsound volume curve">
+        <h2>Audio Engine, Equalizer &amp; Crossfade</h2>
+        <ul>
+          <li><strong>Perceived Volume Curve:</strong> Volume steps map cleanly with a quadratic perceptual loudness helper while preserving exact slider sync across the bottom bar, Audio pane, and Video window.</li>
+          <li><strong>10-Band Equalizer:</strong> ISO bands at <code>32, 64, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz</code> plus preamp. Moving any slider automatically switches <code>Off</code> to <code>Custom</code> and updates LibVLC live.</li>
+          <li><strong>Dual-Player Non-Blocking Crossfade:</strong> When 2&ndash;10s crossfade is enabled (audio-only), a non-blocking state machine (<code>Opening &rarr; Holding &rarr; Ramping</code>) pre-buffers the incoming player and ramps equal-power gains cube-law compensated for VLC's Windows mixer.</li>
+          <li><strong>Output Routing:</strong> Music routes via DirectSound (<code>directx</code> endpoint GUID selection), while video playback uses Windows <code>mmdevice</code>.</li>
+        </ul>
+      </section>
+
+      <section id="video-playback" class="doc-section" data-search="video window mp4 mkv avi subtitles srt ass vtt snapshot screenshot fullscreen">
+        <h2>Video Playback Window &amp; Format Defaults</h2>
+        <p>
+          Video extensions (<code>.mp4</code>, <code>.m4v</code>, <code>.mkv</code>, <code>.avi</code>, <code>.mov</code>, <code>.wmv</code>, <code>.webm</code>, etc.) default to <strong>Off</strong> during library scans until enabled in <em>Settings &rarr; Library &rarr; Scan exclusions</em>.
+          You can also open video files directly from File Explorer at any time.
+        </p>
+        <ul>
+          <li><strong>Dedicated Video Window:</strong> Playing a video opens <code>VideoWindow</code> hosting a native Win32 child surface HWND attached via <code>libvlc_media_player_set_hwnd</code>. Switching back to an audio track automatically detaches and closes the video window; closing the video window manually pauses video playback.</li>
+          <li><strong>Sidecar &amp; Embedded Subtitles:</strong> Automatically discovers up to 8 nearby <code>.srt</code>, <code>.ass</code>, <code>.ssa</code>, or <code>.vtt</code> files matching the video stem (exact match first, then <code>stem.*</code>) and lets you switch SPU tracks live.</li>
+          <li><strong>Speed, Repeat, Snapshot &amp; Fullscreen:</strong> Dedicated speed selector (<code>0.5x</code>&ndash;<code>2x</code>), single-video repeat toggle, PNG frame snapshots saved to <code>Pictures\Music Player\Screenshots</code>, and <code>F11</code>/<code>Esc</code> fullscreen.</li>
+          <li><strong>Crossfade &amp; Lyrics Excluded:</strong> Crossfading and automatic/online lyrics lookups are skipped for video files.</li>
+        </ul>
+      </section>
+
+      <section id="lyrics" class="doc-section" data-search="lyrics lrclib timed lrc sidecar embedded sync">
+        <h2>Lyrics &amp; LRCLIB Pipeline</h2>
+        <ol class="steps">
+          <li>Sidecar <code>.lrc</code> file next to the audio file is checked first; timed LRC lines always outrank untimed plain text.</li>
+          <li>Embedded tag lyrics follow if no timed sidecar exists.</li>
+          <li>When enabled in Settings, LRCLIB online matching normalizes featured artists/editions, checks duration proximity, filters censored matches, and saves matched timed lyrics when appropriate.</li>
+        </ol>
+      </section>
+
+      <section id="shortcuts" class="doc-section" data-search="keyboard shortcuts hotkeys f1 space seek volume fullscreen">
+        <h2>Keyboard Shortcuts</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Shortcut</th><th>Scope</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><kbd>Space</kbd> / <kbd>Enter</kbd></td><td>Main &amp; Video</td><td>Play or pause playback</td></tr>
+              <tr><td><kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main &amp; Video</td><td>Seek &minus;5s / +5s (hold <kbd>Shift</kbd> for &plusmn;10s)</td></tr>
+              <tr><td><kbd>Ctrl</kbd> or <kbd>Alt</kbd> + <kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main Window</td><td>Previous / Next track</td></tr>
+              <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>Main Window</td><td>Restart track / Next track</td></tr>
+              <tr><td><kbd>Up</kbd> / <kbd>Down</kbd></td><td>Main &amp; Video</td><td>Volume &plusmn;5% (<kbd>Shift</kbd> for &plusmn;10%)</td></tr>
+              <tr><td><kbd>M</kbd></td><td>Main Window</td><td>Mute / restore volume</td></tr>
+              <tr><td><kbd>S</kbd> / <kbd>R</kbd></td><td>Main Window</td><td>Toggle shuffle / cycle repeat mode</td></tr>
+              <tr><td><kbd>L</kbd></td><td>Main Window</td><td>Toggle Lyrics view or Now Playing lyrics</td></tr>
+              <tr><td><kbd>I</kbd></td><td>Main Window</td><td>Toggle immersive Now Playing mode</td></tr>
+              <tr><td><kbd>Ctrl</kbd> + <kbd>K</kbd></td><td>Main Window</td><td>Focus global search</td></tr>
+              <tr><td><kbd>F11</kbd></td><td>Main &amp; Video</td><td>Toggle fullscreen</td></tr>
+              <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Main Window</td><td>Open in-app Help &amp; Keyboard Shortcuts modal</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>All Windows</td><td>Close popup/modal or exit fullscreen</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="build" class="doc-section" data-search="build cargo test release windows slint">
+        <h2>Build &amp; Development Commands</h2>
+        <pre><code># Run full Rust test suite (core unit/integration tests + app tests)
+cargo test --manifest-path music-player-rust/Cargo.toml --workspace
+
+# Check compilation without producing binaries
+cargo check --manifest-path music-player-rust/Cargo.toml --workspace
+
+# Build optimized local release executable
+cargo build --release --manifest-path music-player-rust/Cargo.toml --bin music-player-app</code></pre>
+      </section>
+
+      <section id="reference-docs" class="doc-section" data-search="markdown design notes crossfade pagination format matrix">
+        <h2>Repository Design Notes</h2>
+        <p>Detailed engineering design documents alongside this static portal inside <code>docs/</code>:</p>
+        <ul class="doc-links">
+          <li><a href="development.md">development.md</a> &mdash; Developer workflow &amp; environment setup</li>
+          <li><a href="music-crossfade.md">music-crossfade.md</a> &mdash; Non-blocking dual-player crossfade state machine</li>
+          <li><a href="format-matrix.md">format-matrix.md</a> &mdash; Audio &amp; container support matrix</li>
+          <li><a href="library-pagination.md">library-pagination.md</a> &mdash; Async keyset / paged library views</li>
+          <li><a href="lyrics-and-artwork-fixes.md">lyrics-and-artwork-fixes.md</a> &mdash; Artwork cache &amp; LRCLIB matching notes</li>
+          <li><a href="optimization-validation.md">optimization-validation.md</a> &mdash; Performance validation benchmarks</li>
+          <li><a href="playback-investigation.md">playback-investigation.md</a> &mdash; LibVLC playback &amp; DirectSound diagnostics</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

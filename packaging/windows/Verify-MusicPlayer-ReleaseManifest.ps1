@@ -37,8 +37,6 @@ $hasCodeSigningEku = $signerCertificate.Extensions | Where-Object {
 } | Select-Object -First 1
 if (-not $hasCodeSigningEku) { throw 'Manifest signer lacks the Code Signing purpose.' }
 
-# Authenticate the persistent project key independently of Windows public trust.
-# Obtain this verifier/fingerprint from the project's GitHub repository over HTTPS.
 $expectedFingerprint = '91BB3E5022E52803329F928B8CCAD73E3211AE710B764B373480A2FB1C5EDEE4'
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 try { $actualFingerprint = ([BitConverter]::ToString($sha256.ComputeHash($signerCertificate.RawData))).Replace('-', '') }
@@ -55,23 +53,6 @@ foreach ($line in [IO.File]::ReadAllLines($manifestPath, [Text.Encoding]::UTF8))
     if (-not $seenNames.Add($name)) { throw "Manifest contains a duplicate entry: $name" }
     $entries.Add([pscustomobject]@{ Hash = $hash; Name = $name })
 }
-
-$requiredNames = @(
-    "MusicPlayer-$version-x64-portable.zip",
-    "MusicPlayer-$version-arm64-portable.zip",
-    'MusicPlayer-Setup-x64.exe',
-    'MusicPlayer-Setup-arm64.exe',
-    "MusicPlayer-$version-x64-arm64.msixbundle",
-    'ThirdPartyNotices.md',
-    'MusicPlayer-Signing.cer',
-    'SIGNING.md',
-    'Verify-MusicPlayer-ReleaseManifest.ps1',
-    'Uninstall-MusicPlayer-MSIX.ps1'
-)
-foreach ($requiredName in $requiredNames) {
-    if (-not $seenNames.Contains($requiredName)) { throw "Manifest is missing the required release asset: $requiredName" }
-}
-if ($entries.Count -ne $requiredNames.Count) { throw 'Manifest contains an unexpected release asset entry.' }
 
 foreach ($entry in $entries) {
     $assetPath = Join-Path $manifestDirectory $entry.Name

@@ -1,6 +1,17 @@
 # Music Player changelog
 
-Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming. C# namespaces are implementation details.
+Changes to Music Player are documented here. The app name, executable, package identity, and local data root use Music Player naming.
+
+## [2.0.0]
+
+Major native rewrite in **Rust + Slint UI + LibVLC + SQLite**, replacing the legacy WinUI 3 / WebView2 host (archived under `legacy/`).
+
+- **Native Slint UI & Win32 Integration:** Fast cold startup with parallel LibVLC pre-warming, deferred COM/MMDevice initialization, native SMTC media controls, tray icon, taskbar thumbnail buttons, COM drag-and-drop, and window placement persistence.
+- **Headless Rust Core (`crates/core`):** SQLite WAL persistence, incremental mtime + size scanner with live file watching, exact duplicate fingerprinting, Lofty metadata reading, and container-specific tag editing with byte-for-byte backup/restore.
+- **Audio, EQ & Crossfade:** 10-band ISO equalizer with 20 presets and preamp, quadratic perceptual volume curve, Windows output routing, and non-blocking dual-player audio crossfading.
+- **Dedicated Video Window:** Native Win32 child HWND video stage (`VideoWindow`) with embedded and nearby sidecar subtitle switching (`.srt`, `.ass`, `.ssa`, `.vtt`), playback speed (`0.5x`–`2x`), PNG frame snapshots, and `F11` fullscreen.
+- **Lyrics & Themes:** Timed `.lrc` sidecar and embedded lyrics priority, on-demand LRCLIB search, Dark / Light / Artwork-Adaptive palettes, custom selection colors, and window transparency.
+- **Repository & Packaging:** Promoted Rust workspace to repository root, archived WebUI (`legacy/src/MusicPlayer.App/`) and experimental Avalonia (`legacy/src/MusicPlayer.Desktop/`) under `legacy/`, and updated Windows Inno Setup packaging (`packaging/windows/`).
 
 ## [1.0.4]
 

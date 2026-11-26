@@ -1,159 +1,468 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Music Player — Documentation</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Music Player — Native Windows Audio &amp; Video Library</title>
+  <meta name="description" content="A fast, local-first Windows music and video player built with Rust, Slint, LibVLC, and SQLite." />
+  <link rel="icon" type="image/png" href="assets/music-player-icon.png" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070807;
+      --surface: #0e100f;
+      --raised: #171917;
+      --text: #f7f8f6;
+      --muted: #a0a79f;
+      --muted-2: #717970;
+      --line: rgba(255, 255, 255, 0.09);
+      --accent: #b7ff2d;
+      --accent-ink: #101210;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.9em;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 8, 7, 0.88);
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(16px);
+      z-index: 20;
+    }
+
+    nav {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .brand img {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .links a {
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .links a:hover {
+      color: var(--text);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--raised);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .button:hover {
+      background: #212421;
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    .button.primary:hover {
+      background: #c7ff59;
+      border-color: #c7ff59;
+    }
+
+    .nav-cta {
+      min-height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .hero {
+      padding: 64px 0 48px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(380px, 1.15fr);
+      gap: 36px;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(183, 255, 45, 0.1);
+      border: 1px solid rgba(183, 255, 45, 0.25);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(36px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+    }
+
+    .lead {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 560px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 24px 0 12px;
+    }
+
+    .note {
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    .screen-frame {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    .screen-frame img {
+      width: 100%;
+      display: block;
+    }
+
+    .screen-placeholder {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    section {
+      padding: 56px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      letter-spacing: -0.01em;
+    }
+
+    .section-sub {
+      margin: 0 0 26px;
+      color: var(--muted);
+      max-width: 680px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      padding: 18px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .shots-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .shot-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .shot-card img {
+      width: 100%;
+      display: block;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      background: var(--raised);
+    }
+
+    .shot-caption {
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .shot-caption strong {
+      display: block;
+      font-size: 14.5px;
+      margin-bottom: 4px;
+    }
+
+    .shot-caption span {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: var(--raised);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    kbd {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 2px 6px;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 28px 0;
+      color: var(--muted-2);
+      font-size: 13px;
+    }
+
+    .footer-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid,
+      .cards,
+      .shots-grid {
+        grid-template-columns: 1fr;
+      }
+      .links .hide-mobile {
+        display: none;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">♪</div>
-        <div>
-          <div class="brand-title">Music Player</div>
-          <div class="brand-sub">Reference &amp; Notes</div>
+  <header>
+    <div class="wrap">
+      <nav>
+        <a class="brand" href="#">
+          <img src="assets/music-player-icon.png" alt="Music Player icon" />
+          <span>Music Player</span>
+        </a>
+        <div class="links">
+          <a class="hide-mobile" href="#features">Features</a>
+          <a class="hide-mobile" href="#screenshots">Screenshots</a>
+          <a class="hide-mobile" href="#shortcuts">Shortcuts</a>
+          <a href="developer.html">Developer Docs</a>
+          <a class="button primary nav-cta" href="https://github.com/kalabhaftu/music-player/releases/latest" target="_blank" rel="noopener">Download</a>
         </div>
-      </div>
-
-      <div class="search-wrap">
-        <input id="doc-search" type="search" placeholder="Search docs… ( / )" aria-label="Search documentation" />
-      </div>
-
-      <nav class="nav" aria-label="Documentation sections">
-        <a class="nav-link active" href="#overview">Overview</a>
-        <a class="nav-link" href="#architecture">Workspace Architecture</a>
-        <a class="nav-link" href="#cold-start">Cold Start &amp; Splash</a>
-        <a class="nav-link" href="#scanner">Library Scanner &amp; Indexer</a>
-        <a class="nav-link" href="#audio-engine">Audio Engine &amp; Equalizer</a>
-        <a class="nav-link" href="#video-playback">Video Playback Window</a>
-        <a class="nav-link" href="#lyrics">Lyrics &amp; LRCLIB Pipeline</a>
-        <a class="nav-link" href="#shortcuts">Keyboard Shortcuts</a>
-        <a class="nav-link" href="#build">Build &amp; Development</a>
-        <a class="nav-link" href="#reference-docs">Markdown Notes</a>
       </nav>
+    </div>
+  </header>
 
-      <div class="sidebar-footer">
-        <button id="theme-toggle" class="theme-btn" type="button">Light / Dark theme</button>
-      </div>
-    </aside>
+  <main>
+    <div class="wrap">
+      <section class="hero" style="border-top: none;">
+        <div class="hero-grid">
+          <div>
+            <span class="badge">Native Windows App · Rust + Slint</span>
+            <h1>Your local music &amp; video library, fast and private.</h1>
+            <p class="lead">
+              A lightweight Windows desktop player with incremental library scanning, a 10-band equalizer,
+              dual-player crossfading, synced lyrics, safe tag editing, and a dedicated video window.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="https://github.com/kalabhaftu/music-player/releases/latest" target="_blank" rel="noopener">Download for Windows</a>
+              <a class="button" href="https://github.com/kalabhaftu/music-player" target="_blank" rel="noopener">View on GitHub</a>
+              <a class="button" href="developer.html">Developer Docs</a>
+            </div>
+            <p class="note">
+              Windows 10 (1809+) &amp; Windows 11 (x64) · Bundled LibVLC · Zero accounts, telemetry, or WebView2 runtime required.
+            </p>
+          </div>
 
-    <main class="content" id="doc-content">
-      <header class="hero">
-        <span class="badge">Slint + Rust Desktop Edition</span>
-        <h1>Music Player Documentation</h1>
-        <p>
-          Local audio &amp; video library manager built on Windows with a headless Rust core (<code>music-player-core</code>),
-          native Slint UI (<code>music-player-app</code>), SQLite WAL persistence, and bundled LibVLC playback.
+          <div class="screen-frame">
+            <img src="screenshots/hero-main.png" alt="Music Player main library window" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+            <div class="screen-placeholder" style="display: none;">
+              Add <code>docs/screenshots/hero-main.png</code> to showcase the main Music Player window here.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <h2>Built for Real Local Libraries</h2>
+        <p class="section-sub">
+          Everything stays on your machine under <code>%LOCALAPPDATA%\MusicPlayer</code> with zero background cloud sync.
         </p>
-      </header>
-
-      <section id="overview" class="doc-section" data-search="overview features sqlite libvlc slint windows">
-        <h2>Overview</h2>
-        <p>
-          Music Player keeps your entire media library on your device with fast incremental scanning, gap-free / crossfaded audio playback,
-          a 10-band equalizer with custom presets, synchronized lyrics, duplicate detection, and a dedicated native video window.
-        </p>
-        <div class="card-grid">
+        <div class="cards">
           <article class="card">
-            <h3>Headless Core Crate</h3>
-            <p>All SQLite storage, metadata extraction (<code>lofty</code>), scanner pipelines, LRCLIB client, queue logic, and LibVLC FFI live in <code>music-player-core</code>.</p>
+            <h3>Fast Incremental Scanning</h3>
+            <p>Scans 19 audio formats using timestamp + size fast paths and watches folders live for additions or edits.</p>
           </article>
           <article class="card">
-            <h3>Native Slint + Win32 UI</h3>
-            <p><code>music-player-app</code> drives responsive views, dynamic artwork palettes, SMTC media controls, tray integration, and child HWND video hosting.</p>
+            <h3>10-Band EQ &amp; Crossfade</h3>
+            <p>20 built-in EQ presets, preamp control, Windows audio output routing, and 2–10s dual-player audio crossfade.</p>
           </article>
           <article class="card">
-            <h3>Shared Database Schema</h3>
-            <p>Uses SQLite in WAL mode (<code>LibraryStore</code>), reading the same library tables, playlists, settings, and scan state seamlessly.</p>
+            <h3>Dedicated Video Window</h3>
+            <p>Opt-in video scanning or direct Explorer open with sidecar/embedded subtitles, speed control, and PNG snapshots.</p>
+          </article>
+          <article class="card">
+            <h3>Synced Lyrics &amp; LRCLIB</h3>
+            <p>Prioritizes timed <code>.lrc</code> sidecars and embedded lyrics, with optional on-demand LRCLIB search and sync editor.</p>
+          </article>
+          <article class="card">
+            <h3>Safe Tag Editing</h3>
+            <p>Edit metadata tags across supported containers with automatic byte-for-byte backups before atomic replacement.</p>
+          </article>
+          <article class="card">
+            <h3>Themes &amp; Transparency</h3>
+            <p>Switch between Dark, Light, Artwork-Adaptive palettes, custom selection colors, and adjustable window transparency.</p>
           </article>
         </div>
       </section>
 
-      <section id="architecture" class="doc-section" data-search="architecture workspace crates core app tests slint controllers">
-        <h2>Workspace Architecture</h2>
-        <pre><code>music-player-rust/
-├── crates/
-│   ├── core/                     # Headless engine &amp; persistence
-│   │   ├── src/
-│   │   │   ├── audio/            # LibVLC engine, crossfade machine, EQ, volume, queue
-│   │   │   ├── db/               # SQLite WAL store, track queries, playlists, sessions
-│   │   │   ├── duplicates/       # Exact duplicate grouping &amp; paging
-│   │   │   ├── lyrics/           # LRC parser, .lrc sidecar R/W, LRCLIB HTTP client
-│   │   │   ├── metadata/         # Lofty tags, artwork cache &amp; palette extraction
-│   │   │   └── scanner/          # Parallel metadata pipeline, watcher, scan session
-│   │   └── tests/                # Core unit &amp; integration tests
-│   └── app/                      # Desktop host
-│       ├── ui/                   # Slint screens, modals, widgets, VideoWindow
-│       └── src/
-│           ├── controllers/      # Playback, Navigation, Library, Modals, Views, Platform
-│           ├── video_window.rs   # Native Win32 child HWND stage + subtitle/snapshot host
-│           ├── os.rs / os_shell.rs # SMTC, tray, taskbar buttons, MMDevice routing
-│           └── app_tests.rs      # App-level unit tests</code></pre>
-      </section>
-
-      <section id="cold-start" class="doc-section" data-search="cold start splash screen startup launch latency deferred vlc">
-        <h2>Cold Start &amp; Splash Screen Lifecycle</h2>
-        <p>
-          On launch, <code>Splash::try_show()</code> displays a lightweight Win32 splash card while the app initializes.
-          The splash screen has <strong>no fixed sleep duration</strong> &mdash; it closes immediately once <code>ui.show()</code> paints the main window.
+      <section id="screenshots">
+        <h2>Inside Music Player</h2>
+        <p class="section-sub">
+          A closer look at the immersive lyrics view, 10-band equalizer, and appearance customization.
         </p>
-        <ol class="steps">
-          <li><strong>Parallel LibVLC Pre-Warm:</strong> Before constructing <code>AppWindow</code>, a background thread (<code>AudioEngine::prepare_vlc</code>) loads <code>libvlc.dll</code> and LibVLC plugins concurrently while Slint initializes the window and theme.</li>
-          <li><strong>Instant First Frame:</strong> <code>App::startup()</code> populates settings, navigation, folder roots, the current view, and restored queue metadata from SQLite without blocking on LibVLC or Windows COM endpoint enumeration.</li>
-          <li><strong>Immediate Post-Paint Hydration:</strong> Right after <code>ui.show()</code> and dismissing the splash, <code>complete_deferred_startup()</code> attaches the pre-warmed LibVLC handle, enumerates MMDevice outputs, pre-stages the paused session track position, refreshes smart playlist counts, repairs missing artwork cache files, and triggers the background library scan.</li>
-        </ol>
+        <div class="cards">
+          <article class="shot-card">
+            <img src="screenshots/immersive-lyrics.png" alt="Immersive Now Playing and synced lyrics view" />
+            <div class="shot-caption">
+              <strong>Immersive Now Playing &amp; Synced Lyrics</strong>
+              <span>Adaptive artwork backdrop with live-scrolling timed LRCLIB lyrics and compact controls.</span>
+            </div>
+          </article>
+          <article class="shot-card">
+            <img src="screenshots/equalizer-audio.png" alt="10-band Equalizer and Crossfade settings" />
+            <div class="shot-caption">
+              <strong>Crossfade &amp; 10-Band Equalizer</strong>
+              <span>20 presets, custom bands (-20 dB to +20 dB), and dual-player audio crossfade timing.</span>
+            </div>
+          </article>
+          <article class="shot-card">
+            <img src="screenshots/settings-themes.png" alt="Settings and Appearance customization" />
+            <div class="shot-caption">
+              <strong>Settings &amp; Theme Customization</strong>
+              <span>System/Light/Dark themes, Album artwork accent mode, custom accents, and library controls.</span>
+            </div>
+          </article>
+        </div>
       </section>
 
-      <section id="scanner" class="doc-section" data-search="library scanner indexer watch filesystem startup scan unchanged">
-        <h2>Library Scanner &amp; Incremental Updates</h2>
-        <p>
-          On startup, Music Player runs an incremental background scan (<code>force_refresh = false</code>) alongside a live <code>LibraryFileWatcher</code> for filesystem edits.
-        </p>
-        <ul>
-          <li><strong>Artwork Cache Snapshot:</strong> <code>LibraryScanSession</code> snapshots cached artwork filenames once in memory rather than calling <code>stat()</code> per track during incremental checks.</li>
-          <li><strong>Mtime + Size Fast Path:</strong> Unchanged files (same byte length, UTC timestamp, valid lyrics flag, and present artwork) are marked seen in batched 1,024-row cached SQLite statements without invoking metadata workers.</li>
-          <li><strong>Bounded Parallel Pipeline:</strong> Changed or newly added files stream into a 2&ndash;4 worker <code>HybridMetadataEngine</code> pool and a dedicated single SQLite batch writer transaction.</li>
-          <li><strong>Safe Pruning &amp; Exclusions:</strong> Unseen tracks are pruned only inside completed, reachable roots while protecting offline drives, reparse points, and user-ignored folders.</li>
-        </ul>
-      </section>
-
-      <section id="audio-engine" class="doc-section" data-search="audio engine equalizer eq crossfade directsound volume curve">
-        <h2>Audio Engine, Equalizer &amp; Crossfade</h2>
-        <ul>
-          <li><strong>Perceived Volume Curve:</strong> Volume steps map cleanly with a quadratic perceptual loudness helper while preserving exact slider sync across the bottom bar, Audio pane, and Video window.</li>
-          <li><strong>10-Band Equalizer:</strong> ISO bands at <code>32, 64, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz</code> plus preamp. Moving any slider automatically switches <code>Off</code> to <code>Custom</code> and updates LibVLC live.</li>
-          <li><strong>Dual-Player Non-Blocking Crossfade:</strong> When 2&ndash;10s crossfade is enabled (audio-only), a non-blocking state machine (<code>Opening &rarr; Holding &rarr; Ramping</code>) pre-buffers the incoming player and ramps equal-power gains cube-law compensated for VLC's Windows mixer.</li>
-          <li><strong>Output Routing:</strong> Music routes via DirectSound (<code>directx</code> endpoint GUID selection), while video playback uses Windows <code>mmdevice</code>.</li>
-        </ul>
-      </section>
-
-      <section id="video-playback" class="doc-section" data-search="video window mp4 mkv avi subtitles srt ass vtt snapshot screenshot fullscreen">
-        <h2>Video Playback Window &amp; Format Defaults</h2>
-        <p>
-          Video extensions (<code>.mp4</code>, <code>.m4v</code>, <code>.mkv</code>, <code>.avi</code>, <code>.mov</code>, <code>.wmv</code>, <code>.webm</code>, etc.) default to <strong>Off</strong> during library scans until enabled in <em>Settings &rarr; Library &rarr; Scan exclusions</em>.
-          You can also open video files directly from File Explorer at any time.
-        </p>
-        <ul>
-          <li><strong>Dedicated Video Window:</strong> Playing a video opens <code>VideoWindow</code> hosting a native Win32 child surface HWND attached via <code>libvlc_media_player_set_hwnd</code>. Switching back to an audio track automatically detaches and closes the video window; closing the video window manually pauses video playback.</li>
-          <li><strong>Sidecar &amp; Embedded Subtitles:</strong> Automatically discovers up to 8 nearby <code>.srt</code>, <code>.ass</code>, <code>.ssa</code>, or <code>.vtt</code> files matching the video stem (exact match first, then <code>stem.*</code>) and lets you switch SPU tracks live.</li>
-          <li><strong>Speed, Repeat, Snapshot &amp; Fullscreen:</strong> Dedicated speed selector (<code>0.5x</code>&ndash;<code>2x</code>), single-video repeat toggle, PNG frame snapshots saved to <code>Pictures\Music Player\Screenshots</code>, and <code>F11</code>/<code>Esc</code> fullscreen.</li>
-          <li><strong>Crossfade &amp; Lyrics Excluded:</strong> Crossfading and automatic/online lyrics lookups are skipped for video files.</li>
-        </ul>
-      </section>
-
-      <section id="lyrics" class="doc-section" data-search="lyrics lrclib timed lrc sidecar embedded sync">
-        <h2>Lyrics &amp; LRCLIB Pipeline</h2>
-        <ol class="steps">
-          <li>Sidecar <code>.lrc</code> file next to the audio file is checked first; timed LRC lines always outrank untimed plain text.</li>
-          <li>Embedded tag lyrics follow if no timed sidecar exists.</li>
-          <li>When enabled in Settings, LRCLIB online matching normalizes featured artists/editions, checks duration proximity, filters censored matches, and saves matched timed lyrics when appropriate.</li>
-        </ol>
-      </section>
-
-      <section id="shortcuts" class="doc-section" data-search="keyboard shortcuts hotkeys f1 space seek volume fullscreen">
+      <section id="shortcuts">
         <h2>Keyboard Shortcuts</h2>
+        <p class="section-sub">Press <kbd>F1</kbd> or <kbd>?</kbd> anytime inside the app to open the shortcuts reference.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -163,48 +472,31 @@
               <tr><td><kbd>Space</kbd> / <kbd>Enter</kbd></td><td>Main &amp; Video</td><td>Play or pause playback</td></tr>
               <tr><td><kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main &amp; Video</td><td>Seek &minus;5s / +5s (hold <kbd>Shift</kbd> for &plusmn;10s)</td></tr>
               <tr><td><kbd>Ctrl</kbd> or <kbd>Alt</kbd> + <kbd>Left</kbd> / <kbd>Right</kbd></td><td>Main Window</td><td>Previous / Next track</td></tr>
-              <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>Main Window</td><td>Restart track / Next track</td></tr>
               <tr><td><kbd>Up</kbd> / <kbd>Down</kbd></td><td>Main &amp; Video</td><td>Volume &plusmn;5% (<kbd>Shift</kbd> for &plusmn;10%)</td></tr>
               <tr><td><kbd>M</kbd></td><td>Main Window</td><td>Mute / restore volume</td></tr>
               <tr><td><kbd>S</kbd> / <kbd>R</kbd></td><td>Main Window</td><td>Toggle shuffle / cycle repeat mode</td></tr>
-              <tr><td><kbd>L</kbd></td><td>Main Window</td><td>Toggle Lyrics view or Now Playing lyrics</td></tr>
-              <tr><td><kbd>I</kbd></td><td>Main Window</td><td>Toggle immersive Now Playing mode</td></tr>
+              <tr><td><kbd>L</kbd> / <kbd>I</kbd></td><td>Main Window</td><td>Toggle Lyrics view / Immersive Now Playing</td></tr>
               <tr><td><kbd>Ctrl</kbd> + <kbd>K</kbd></td><td>Main Window</td><td>Focus global search</td></tr>
               <tr><td><kbd>F11</kbd></td><td>Main &amp; Video</td><td>Toggle fullscreen</td></tr>
-              <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Main Window</td><td>Open in-app Help &amp; Keyboard Shortcuts modal</td></tr>
               <tr><td><kbd>Esc</kbd></td><td>All Windows</td><td>Close popup/modal or exit fullscreen</td></tr>
             </tbody>
           </table>
         </div>
       </section>
+    </div>
+  </main>
 
-      <section id="build" class="doc-section" data-search="build cargo test release windows slint">
-        <h2>Build &amp; Development Commands</h2>
-        <pre><code># Run full Rust test suite (core unit/integration tests + app tests)
-cargo test --manifest-path music-player-rust/Cargo.toml --workspace
-
-# Check compilation without producing binaries
-cargo check --manifest-path music-player-rust/Cargo.toml --workspace
-
-# Build optimized local release executable
-cargo build --release --manifest-path music-player-rust/Cargo.toml --bin music-player-app</code></pre>
-      </section>
-
-      <section id="reference-docs" class="doc-section" data-search="markdown design notes crossfade pagination format matrix">
-        <h2>Repository Design Notes</h2>
-        <p>Detailed engineering design documents alongside this static portal inside <code>docs/</code>:</p>
-        <ul class="doc-links">
-          <li><a href="development.md">development.md</a> &mdash; Developer workflow &amp; environment setup</li>
-          <li><a href="music-crossfade.md">music-crossfade.md</a> &mdash; Non-blocking dual-player crossfade state machine</li>
-          <li><a href="format-matrix.md">format-matrix.md</a> &mdash; Audio &amp; container support matrix</li>
-          <li><a href="library-pagination.md">library-pagination.md</a> &mdash; Async keyset / paged library views</li>
-          <li><a href="lyrics-and-artwork-fixes.md">lyrics-and-artwork-fixes.md</a> &mdash; Artwork cache &amp; LRCLIB matching notes</li>
-          <li><a href="optimization-validation.md">optimization-validation.md</a> &mdash; Performance validation benchmarks</li>
-          <li><a href="playback-investigation.md">playback-investigation.md</a> &mdash; LibVLC playback &amp; DirectSound diagnostics</li>
-        </ul>
-      </section>
-    </main>
-  </div>
-  <script src="app.js"></script>
+  <footer>
+    <div class="wrap">
+      <div class="footer-row">
+        <span>Music Player · MIT License · Local-first Windows desktop player</span>
+        <span>
+          <a href="developer.html">Developer Docs</a> ·
+          <a href="format-matrix.md">Format Matrix</a> ·
+          <a href="https://github.com/kalabhaftu/music-player" target="_blank" rel="noopener">GitHub</a>
+        </span>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

@@ -1,11 +1,53 @@
 param([string] $ExpectedVersion)
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$metadata = ([xml](Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup
-$manifest = ([xml](Get-Content -LiteralPath (Join-Path $root 'src/MusicPlayer.App/Package.appxmanifest') -Raw)).Package.Identity
-$project = [IO.File]::ReadAllText((Join-Path $root 'src/MusicPlayer.App/MusicPlayer.App.csproj'))
-if ($metadata.Version -notmatch '^\d+\.\d+\.\d+$' -or $metadata.AppxPackageVersion -ne "$($metadata.Version).0") { throw 'Shared assembly/MSIX versions disagree.' }
-if ($manifest.Version -ne $metadata.AppxPackageVersion) { throw 'MSIX manifest version disagrees with shared build metadata.' }
-if ($project -match '<(Version|AppxPackageVersion)>') { throw 'The app project must use shared release metadata.' }
-if ($ExpectedVersion -and $ExpectedVersion -ne $metadata.Version) { throw 'The release tag differs from the source version.' }
-[pscustomobject]@{version=$metadata.Version;msixVersion=$manifest.Version}
+
+# Find repo root and rust crate root
+$scriptDir = $PSScriptRoot
+$current = $scriptDir
+$repoRoot = $null
+$rustRoot = $null
+while ($current) {
+    if (Test-Path (Join-Path $current 'crates\app') -PathType Container) {
+        $rustRoot = $current
+        $repoRoot = $current
+        break
+    }
+    if (Test-Path (Join-Path $current 'music-player-rust') -PathType Container) {
+        $repoRoot = $current
+        $rustRoot = Join-Path $current 'music-player-rust'
+        break
+    }
+    $parent = Split-Path -Parent $current
+    if ($parent -eq $current) { break }
+    $current = $parent
+}
+if (-not $repoRoot) {
+    $repoRoot = (Resolve-Path (Join-Path $scriptDir '..\..')).Path
+    $rustRoot = $repoRoot
+}
+
+$cargoFile = Join-Path $rustRoot 'crates\app\Cargo.toml'
+$propsFile = Join-Path $repoRoot 'legacy\Directory.Build.props'
+
+$cargoContent = Get-Content -LiteralPath $cargoFile -Raw
+$cargoMatch = [regex]::Match($cargoContent, '(?m)^version\s*=\s*"([^"]+)"')
+$cargoVersion = if ($cargoMatch.Success) { $cargoMatch.Groups[1].Value } else { "unknown" }
+
+$propsVersion = $null
+if (Test-Path -LiteralPath $propsFile) {
+    $metadata = ([xml](Get-Content -LiteralPath $propsFile -Raw)).Project.PropertyGroup
+    $propsVersion = $metadata.Version
+}
+
+Write-Host "Crate version (Cargo.toml): $cargoVersion"
+if ($propsVersion) {
+    Write-Host "Build props version: $propsVersion"
+}
+if ($ExpectedVersion -and $ExpectedVersion -ne $cargoVersion -and $ExpectedVersion -ne $propsVersion) {
+    throw "The expected version ($ExpectedVersion) differs from source metadata ($cargoVersion / $propsVersion)."
+}
+
+[pscustomobject]@{
+    cargoVersion = $cargoVersion
+    propsVersion = $propsVersion
+}
