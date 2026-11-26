@@ -49,14 +49,15 @@ jobs:
           $vlcDir = Join-Path $env:ProgramFiles 'VideoLAN\VLC'
           $releaseDir = Join-Path $PWD 'target\release'
           New-Item -ItemType Directory -Force -Path $vlcDir, $releaseDir | Out-Null
-          $zipPath = Join-Path $env:RUNNER_TEMP 'vlc-3.0.24-win64.zip'
+          $pkgPath = Join-Path $env:RUNNER_TEMP 'libvlc-3.0.24.zip'
           $extractDir = Join-Path $env:RUNNER_TEMP 'vlc-extract'
-          Invoke-WebRequest -Uri 'https://get.videolan.org/vlc/3.0.24/win64/vlc-3.0.24-win64.zip' -OutFile $zipPath -UseBasicParsing
-          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-          $src = Join-Path $extractDir 'vlc-3.0.24'
+          curl.exe -fSL --retry 3 -o $pkgPath 'https://api.nuget.org/v3-flatcontainer/videolan.libvlc.windows/3.0.24/videolan.libvlc.windows.3.0.24.nupkg'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download VideoLAN.LibVLC.Windows 3.0.24' }
+          7z x $pkgPath 'build/x64/*' "-o$extractDir" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to extract LibVLC runtime' }
+          $src = Join-Path $extractDir 'build\x64'
           foreach ($dest in @($vlcDir, $releaseDir)) {
-            Copy-Item -Path (Join-Path $src 'libvlc.dll'), (Join-Path $src 'libvlccore.dll') -Destination $dest -Force
-            Copy-Item -Path (Join-Path $src 'plugins') -Destination $dest -Recurse -Force
+            Copy-Item -Path (Join-Path $src '*') -Destination $dest -Recurse -Force
           }
 
       - name: Run workspace tests
