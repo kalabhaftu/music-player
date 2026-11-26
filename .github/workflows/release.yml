@@ -117,7 +117,8 @@ jobs:
 
           $notesFile = Join-Path $PWD 'artifacts/release-notes.md'
           $changelog = Get-Content -LiteralPath 'CHANGELOG.md' -Raw
-          $pattern = "(?ms)^## \[\Q$version\E\].*?(?=^## \[|\z)"
+          $escapedVersion = [regex]::Escape($version)
+          $pattern = "(?ms)^## \[$escapedVersion\].*?(?=^## \[|\z)"
           if ($changelog -match $pattern) {
             $matches[0].Trim() | Set-Content -LiteralPath $notesFile -Encoding utf8
           } else {
