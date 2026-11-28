@@ -316,6 +316,7 @@ pub fn get_album_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
         groups.push(LibraryGroup {
             name: row.get(0)?,
             track_count: row.get::<_, i64>(1)? as u32,
+            video_count: 0,
             artwork_path: row.get(2)?,
             artist: row.get(3)?,
             year: row.get::<_, i64>(4).unwrap_or(0) as u32,
@@ -340,6 +341,7 @@ pub fn get_artist_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
         groups.push(LibraryGroup {
             name: row.get(0)?,
             track_count: row.get::<_, i64>(1)? as u32,
+            video_count: 0,
             artwork_path: row.get(2)?,
             artist: None,
             year: 0,
@@ -364,6 +366,7 @@ pub fn get_genre_groups(conn: &Connection) -> Result<Vec<LibraryGroup>> {
         groups.push(LibraryGroup {
             name: row.get(0)?,
             track_count: row.get::<_, i64>(1)? as u32,
+            video_count: 0,
             artwork_path: row.get(2)?,
             artist: None,
             year: 0,
@@ -681,20 +684,27 @@ pub fn query_group_page(
         "COUNT(*)"
     };
 
+    let video_expr = if column == "folder" {
+        "COALESCE(SUM(CASE WHEN LOWER(t.path) LIKE '%.mp4' OR LOWER(t.path) LIKE '%.m4v' OR LOWER(t.path) LIKE '%.mkv' OR LOWER(t.path) LIKE '%.avi' OR LOWER(t.path) LIKE '%.mov' OR LOWER(t.path) LIKE '%.wmv' OR LOWER(t.path) LIKE '%.webm' OR LOWER(t.path) LIKE '%.mpeg' OR LOWER(t.path) LIKE '%.mpg' OR LOWER(t.path) LIKE '%.mts' OR LOWER(t.path) LIKE '%.m2ts' OR LOWER(t.path) LIKE '%.3gp' OR LOWER(t.path) LIKE '%.ogv' THEN 1 ELSE 0 END), 0)"
+    } else {
+        "0"
+    };
+
     let sql = format!(
         r#"
         WITH groups AS (
-            SELECT {} AS value, {} AS cnt, {} AS artwork, {} AS artist, {} AS year
+            SELECT {} AS value, {} AS cnt, {} AS video_cnt, {} AS artwork, {} AS artist, {} AS year
             FROM tracks t
             WHERE {}
             GROUP BY value COLLATE NOCASE
         )
-        SELECT value, cnt, artwork, artist, year FROM groups
+        SELECT value, cnt, video_cnt, artwork, artist, year FROM groups
         ORDER BY value COLLATE NOCASE ASC
         LIMIT ?{} OFFSET ?{}
         "#,
         value_expr,
         count_expr,
+        video_expr,
         artwork_expr,
         artist_expr,
         year_expr,
@@ -719,9 +729,10 @@ pub fn query_group_page(
         groups.push(LibraryGroup {
             name: row.get(0)?,
             track_count: row.get::<_, i64>(1)? as u32,
-            artwork_path: row.get(2)?,
-            artist: row.get(3)?,
-            year: row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0) as u32,
+            video_count: row.get::<_, i64>(2).unwrap_or(0) as u32,
+            artwork_path: row.get(3)?,
+            artist: row.get(4)?,
+            year: row.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0) as u32,
         });
     }
 

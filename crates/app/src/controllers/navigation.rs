@@ -67,6 +67,7 @@ impl App {
         };
         state.set_view_group_title(ss(group_title));
         state.set_view_playlist_id(ss(playlist_id));
+        state.set_view_scroll_y(0.0);
         let (sort, desc) = if matches!(view, "Album" | "Artist" | "Genre" | "Folder") {
             detail_sort_for_column(match view {
                 "Album" => "album",

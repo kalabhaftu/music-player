@@ -155,6 +155,21 @@ pub fn group_to_ui(group: &music_player_core::LibraryGroup) -> GroupItem {
             if group.track_count == 1 { "" } else { "s" },
             group.year
         )
+    } else if group.video_count > 0 && group.video_count >= group.track_count {
+        format!(
+            "{} video{}",
+            group.track_count,
+            if group.track_count == 1 { "" } else { "s" }
+        )
+    } else if group.video_count > 0 {
+        let audio_count = group.track_count.saturating_sub(group.video_count);
+        format!(
+            "{} song{} · {} video{}",
+            audio_count,
+            if audio_count == 1 { "" } else { "s" },
+            group.video_count,
+            if group.video_count == 1 { "" } else { "s" }
+        )
     } else {
         format!(
             "{} song{}",

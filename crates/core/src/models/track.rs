@@ -151,6 +151,8 @@ impl Track {
 pub struct LibraryGroup {
     pub name: String,
     pub track_count: u32,
+    #[serde(default)]
+    pub video_count: u32,
     pub artwork_path: Option<String>,
     pub artist: Option<String>,
     pub year: u32,

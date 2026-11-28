@@ -14,6 +14,7 @@ export global State {
     in-out property <string> view-group-value: "";
     in-out property <string> view-group-title: "";
     in-out property <string> view-playlist-id: "";
+    in-out property <float> view-scroll-y: 0.0;
     in-out property <string> view-sort: "Title";
     in-out property <bool> view-descending: false;
     in-out property <int> window-width: 1024;
@@ -506,5 +507,6 @@ export global Actions {
     callback save-lyrics-modal();
     callback window-resized(int, int);
     callback cleanup-tag-backups();
+    callback restart-app();
     pure callback setting-matches(string, string) -> bool;
 }

@@ -32,6 +32,13 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         background: @linear-gradient(180deg, #00000038 0%, #00000050 55%, #00000094 100%);
     }
 
+    // Window-wide pointer tracker so top controls appear anywhere inside the
+    // immersive window and fade out when the pointer leaves the window.
+    bg-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
     // Hover-reveal / clear top bar (.immersive-topbar)
     top-area := Rectangle {
         x: 0px;
@@ -39,6 +46,8 @@ export component ImmersivePlayerOverlay inherits Rectangle {
         z: 10;
         width: 100%;
         height: root.width <= 600px ? 52px : 60px;
+        opacity: (bg-ta.has-hover || fs-ta.has-hover || close-ta.has-hover || imm-eq-btn.hovered || imm-lyrics-btn.hovered || imm-queue-btn.hovered) ? 1.0 : 0.0;
+        animate opacity { duration: 180ms; }
 
         HorizontalLayout {
             padding-left: root.width <= 600px ? 16px : 28px;
@@ -759,7 +768,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                 height: root.short-height ? 36px : 44px;
                 spacing: root.short-height ? 18px : 30px;
                 alignment: center;
-                IcBtn {
+                imm-eq-btn := IcBtn {
                     icon: @image-url("../../assets/icons/equalizer.svg");
                     icon-size: 20px;
                     width: root.short-height ? 36px : 44px;
@@ -774,7 +783,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                     height: self.width;
                     border-radius: self.width / 2;
                     background: root.show-lyrics ? #ffffff24 : transparent;
-                    IcBtn {
+                    imm-lyrics-btn := IcBtn {
                         width: 100%;
                         height: 100%;
                         icon: @image-url("../../assets/icons/lyrics.svg");
@@ -785,7 +794,7 @@ export component ImmersivePlayerOverlay inherits Rectangle {
                         clicked => { Actions.toggle-immersive-lyrics(); }
                     }
                 }
-                IcBtn {
+                imm-queue-btn := IcBtn {
                     icon: @image-url("../../assets/icons/queue.svg");
                     icon-size: 20px;
                     width: root.short-height ? 36px : 44px;

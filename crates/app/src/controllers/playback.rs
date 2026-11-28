@@ -612,6 +612,7 @@ impl App {
                         .queue_mut()
                         .append(&recommendations, Some(&current.path));
                     self.publish_queue(true);
+                    self.prefetch_upcoming_tracks();
                     let resolver = self.resolver();
                     let result = self
                         .coordinator

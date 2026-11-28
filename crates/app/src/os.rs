@@ -190,6 +190,9 @@ pub fn poll_activations() -> Vec<ActivationPayload> {
     collected
 }
 
+static SINGLE_INSTANCE_MUTEX: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
+
 /// Returns `false` when another instance owns the named mutex. In that case a
 /// "show window" broadcast is sent so the running instance is restored, and any
 /// command-line files are handed off via `%LOCALAPPDATA%\MusicPlayer\Activations`.
@@ -223,8 +226,19 @@ pub fn acquire_single_instance(args: &[String]) -> bool {
             CloseHandle(mutex);
             return false;
         }
-        // The mutex and its handle deliberately live for the process lifetime.
+        SINGLE_INSTANCE_MUTEX.store(mutex as isize, std::sync::atomic::Ordering::SeqCst);
         true
+    }
+}
+
+/// Releases the single-instance mutex so a freshly spawned restart process can
+/// acquire ownership immediately before the current process exits.
+pub fn release_single_instance() {
+    let raw = SINGLE_INSTANCE_MUTEX.swap(0, std::sync::atomic::Ordering::SeqCst);
+    if raw != 0 {
+        unsafe {
+            CloseHandle(raw as windows_sys::Win32::Foundation::HANDLE);
+        }
     }
 }
 

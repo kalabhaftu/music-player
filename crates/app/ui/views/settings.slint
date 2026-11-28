@@ -1046,6 +1046,7 @@ export component SettingsView inherits Rectangle {
                                 spacing: 8px;
                                 ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
                                 ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                                ActionBtn { label: "Restart app"; clicked => { Actions.restart-app(); } }
                             }
                         }
                         if State.content-width > 600 : HorizontalLayout {
@@ -1054,6 +1055,7 @@ export component SettingsView inherits Rectangle {
                             ActionBtn { label: "Choose default music player"; clicked => { Actions.open-default-apps(); } }
                             ActionBtn { label: "Open logs"; clicked => { Actions.open-log-folder(); } }
                             ActionBtn { label: "Export logs"; clicked => { Actions.export-logs(); } }
+                            ActionBtn { label: "Restart app"; clicked => { Actions.restart-app(); } }
                         }
                         Rectangle { height: 10px; }
                         row-nav-order := Rectangle {

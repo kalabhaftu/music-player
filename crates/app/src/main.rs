@@ -82,6 +82,7 @@ pub(crate) struct NavContext {
     group_column: String,
     group_value: String,
     playlist_id: String,
+    scroll_y: f32,
 }
 
 impl NavContext {
@@ -92,6 +93,7 @@ impl NavContext {
             group_column: state.get_view_group_column().to_string(),
             group_value: state.get_view_group_value().to_string(),
             playlist_id: state.get_view_playlist_id().to_string(),
+            scroll_y: state.get_view_scroll_y(),
         }
     }
     fn restore(&self, state: &State<'_>) {
@@ -100,6 +102,7 @@ impl NavContext {
         state.set_view_group_column(ss(&self.group_column));
         state.set_view_group_value(ss(&self.group_value));
         state.set_view_playlist_id(ss(&self.playlist_id));
+        state.set_view_scroll_y(self.scroll_y);
     }
 }
 

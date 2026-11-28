@@ -13,6 +13,9 @@ pub(crate) struct VideoHost {
 impl VideoHost {
     pub(crate) fn create() -> Result<Self, String> {
         let window = VideoWindow::new().map_err(|e| format!("Failed to create video window: {e}"))?;
+        // Show/realize the Slint window before reading its Win32 HWND so
+        // `parent_hwnd` is valid and `create_child_surface` succeeds.
+        let _ = window.show();
         let parent_hwnd = window
             .window()
             .window_handle()

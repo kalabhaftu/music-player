@@ -76,6 +76,23 @@ export component GridView inherits Rectangle {
 
     grid-sv := ScrollView {
         content-width: self.visible-width;
+        property <length> tracked-y: self.content-y;
+        property <bool> loading: State.page-loading;
+        changed tracked-y => {
+            if (!State.page-loading) {
+                State.view-scroll-y = max(0.0, -self.tracked-y / 1px);
+            }
+        }
+        changed loading => {
+            if (!self.loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
+        init => {
+            if (!State.page-loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
         VerticalLayout {
             width: grid-sv.visible-width;
             padding-left: State.window-width <= 650 ? 14px : 24px;
@@ -120,6 +137,23 @@ export component ArtistsView inherits GridView {
 export component FoldersView inherits Rectangle {
     folders-sv := ScrollView {
         content-width: self.visible-width;
+        property <length> tracked-y: self.content-y;
+        property <bool> loading: State.page-loading;
+        changed tracked-y => {
+            if (!State.page-loading) {
+                State.view-scroll-y = max(0.0, -self.tracked-y / 1px);
+            }
+        }
+        changed loading => {
+            if (!self.loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
+        init => {
+            if (!State.page-loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
         VerticalLayout {
             width: folders-sv.visible-width;
             padding-left: folders-sv.visible-width <= 460px ? 14px : 24px;
@@ -398,6 +432,23 @@ export component DetailView inherits Rectangle {
     detail-sv := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
+        property <length> tracked-y: self.content-y;
+        property <bool> loading: State.page-loading;
+        changed tracked-y => {
+            if (!State.page-loading) {
+                State.view-scroll-y = max(0.0, -self.tracked-y / 1px);
+            }
+        }
+        changed loading => {
+            if (!self.loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
+        init => {
+            if (!State.page-loading && State.view-scroll-y > 0.0) {
+                self.content-y = -(State.view-scroll-y * 1px);
+            }
+        }
 
         VerticalLayout {
             width: detail-sv.visible-width;

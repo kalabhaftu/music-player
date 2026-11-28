@@ -159,6 +159,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 app.invalidate_view_caches();
                 app.refresh_playlists();
                 app.refresh_view();
+                if enabled && !roots.is_empty() && !app.scan.is_running() {
+                    app.start_scan(&roots, false);
+                }
             });
     }
     {
@@ -198,6 +201,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
             app.engine.set_video_extensions(&video_exts);
             let roots = app.settings.library_roots();
             app.reconfigure_watcher(&roots);
+            if !roots.is_empty() && !app.scan.is_running() {
+                app.start_scan(&roots, false);
+            }
         });
     }
     {
@@ -485,6 +491,40 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 )
             };
             app.show_notice(message, NoticeSeverity::Informational);
+        });
+    }
+    {
+        let a = app.clone();
+        ui.global::<Actions>().on_restart_app(move || {
+            let exe = match std::env::current_exe() {
+                Ok(p) => p,
+                Err(err) => {
+                    a.borrow_mut().show_notice(
+                        format!("Could not locate executable to restart: {err}"),
+                        NoticeSeverity::Error,
+                    );
+                    return;
+                }
+            };
+            {
+                let mut app = a.borrow_mut();
+                app.save_session();
+                app.close_video_window(false);
+                let _ = app.engine.stop();
+            }
+            crate::os::release_single_instance();
+            match std::process::Command::new(exe).spawn() {
+                Ok(_) => {
+                    let _ = slint::quit_event_loop();
+                }
+                Err(err) => {
+                    let _ = crate::os::acquire_single_instance(&[]);
+                    a.borrow_mut().show_notice(
+                        format!("Could not restart Music Player: {err}"),
+                        NoticeSeverity::Error,
+                    );
+                }
+            }
         });
     }
 }
