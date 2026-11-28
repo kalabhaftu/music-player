@@ -25,7 +25,7 @@ use ui::*;
 
 use chrono::Timelike;
 use music_player_core::audio::coordinator::{
-    Notice, NoticeSeverity, PlaybackCommandKind, PlaybackCommandResult,
+    NoticeSeverity, PlaybackCommandKind, PlaybackCommandResult,
 };
 use music_player_core::audio::engine::CrossfadeOutcome;
 use music_player_core::audio::equalizer::NEUTRAL_EQUALIZER_PREAMP;

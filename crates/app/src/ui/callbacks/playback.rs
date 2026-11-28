@@ -191,26 +191,9 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
         let a = app.clone();
         ui.global::<Actions>().on_play_queue_entry(move |index| {
             let mut app = a.borrow_mut();
-            let path = app
-                .coordinator
-                .queue()
-                .entries()
-                .get(index as usize)
-                .cloned();
-            if let Some(path) = path {
-                if let Some(_track) = app.store.get_track(&path).ok().flatten() {
-                    let resolver = app.resolver();
-                    let result = app.coordinator.play_queue_entry(index as usize, &resolver);
-                    app.apply_result(result);
-                } else {
-                    let notice = Notice::warning("That queued file is no longer available.");
-                    app.apply_result(PlaybackCommandResult {
-                        kind: PlaybackCommandKind::TrackUnavailable,
-                        notice: Some(notice),
-                        ..PlaybackCommandResult::no_change()
-                    });
-                }
-            }
+            let resolver = app.resolver();
+            let result = app.coordinator.play_queue_entry(index as usize, &resolver);
+            app.apply_result(result);
         });
     }
     {

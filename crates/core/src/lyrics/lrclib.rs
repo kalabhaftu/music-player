@@ -588,6 +588,57 @@ impl LrclibSearchClient {
         };
         self.search_raw(&combined, "")
     }
+
+    /// Searches LRCLIB and selects the best match for `(title, artist)`.
+    /// If no match is found, retries once with `(artist, title)` swapped to
+    /// recover tracks whose metadata tags have inverted title and artist fields.
+    pub fn search_best_match(
+        &mut self,
+        title: &str,
+        artist: &str,
+        duration_secs: f64,
+    ) -> Result<Option<LyricsMatch>, String> {
+        let results = self.search(title, artist)?;
+        if let Some(matched) = select_lyrics_match(title, artist, duration_secs, &results) {
+            return Ok(Some(matched));
+        }
+        let Some((swapped_title, swapped_artist)) = swapped_query_pair(title, artist) else {
+            return Ok(None);
+        };
+        if let Some(matched) = select_lyrics_match(artist, title, duration_secs, &results) {
+            return Ok(Some(matched));
+        }
+        let swapped_results = self.search_raw(&swapped_title, &swapped_artist)?;
+        Ok(select_lyrics_match(
+            artist,
+            title,
+            duration_secs,
+            &swapped_results,
+        ))
+    }
+}
+
+/// Returns `(swapped_title, swapped_artist)` when both fields are valid,
+/// distinct, and non-placeholder values suitable for an inverted fallback search.
+pub fn swapped_query_pair(title: &str, artist: &str) -> Option<(String, String)> {
+    let raw_title = title.trim();
+    let raw_artist = artist.trim();
+    if raw_title.is_empty()
+        || raw_artist.is_empty()
+        || raw_title.eq_ignore_ascii_case("Unknown")
+        || raw_title.eq_ignore_ascii_case("Unknown title")
+        || raw_artist.eq_ignore_ascii_case("Unknown")
+        || raw_artist.eq_ignore_ascii_case("Unknown artist")
+    {
+        return None;
+    }
+    let (swapped_title, swapped_artist) = normalize_query(raw_artist, raw_title);
+    let title_words = normalized_words(&swapped_title);
+    let artist_words = normalized_words(&swapped_artist);
+    if title_words.is_empty() || artist_words.is_empty() || title_words == artist_words {
+        return None;
+    }
+    Some((swapped_title, swapped_artist))
 }
 
 fn urlencoding(s: &str) -> String {

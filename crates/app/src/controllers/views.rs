@@ -2194,14 +2194,7 @@ impl App {
 
         std::thread::spawn(move || {
             let mut client = music_player_core::lyrics::LrclibSearchClient::new();
-            let result = client.search(&track_title, &track_artist).map(|results| {
-                music_player_core::lyrics::select_lyrics_match(
-                    &track_title,
-                    &track_artist,
-                    track_duration,
-                    &results,
-                )
-            });
+            let result = client.search_best_match(&track_title, &track_artist, track_duration);
             let _ = tx.send((track_path, result));
             let _ = slint::invoke_from_event_loop(|| {
                 crate::with_app(|app| {

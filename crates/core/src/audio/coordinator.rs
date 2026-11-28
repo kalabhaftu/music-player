@@ -400,10 +400,12 @@ impl PlaybackCoordinator {
         index: usize,
         resolver: &dyn Fn(&str) -> Option<Track>,
     ) -> PlaybackCommandResult {
+        let target_path = self.queue.entries().get(index).cloned();
         match self.resolve_queue_track(index, resolver) {
             Some(track) => self.start_track(&track, false, Some(index), &[], resolver),
             None => PlaybackCommandResult {
                 kind: PlaybackCommandKind::TrackUnavailable,
+                track_path: target_path,
                 notice: Some(Notice::warning(
                     "That queued file is no longer available.",
                 )),
