@@ -316,7 +316,13 @@ export component PlayerBar inherits Rectangle {
                     tint: Palette.icon-muted;
                     active: State.view == "Lyrics";
                     tooltip: "Lyrics";
-                    clicked => { Actions.set-view("Lyrics", "", "", ""); }
+                    clicked => {
+                        if (State.view == "Lyrics") {
+                            if (State.can-go-back) { Actions.go-back(); } else { Actions.set-view("Home", "", "", ""); }
+                        } else {
+                            Actions.set-view("Lyrics", "", "", "");
+                        }
+                    }
                 }
             }
             VerticalLayout {
@@ -329,7 +335,13 @@ export component PlayerBar inherits Rectangle {
                     tint: Palette.icon-muted;
                     active: State.view == "Queue";
                     tooltip: "Queue";
-                    clicked => { Actions.set-view("Queue", "", "", ""); }
+                    clicked => {
+                        if (State.view == "Queue") {
+                            if (State.can-go-back) { Actions.go-back(); } else { Actions.set-view("Home", "", "", ""); }
+                        } else {
+                            Actions.set-view("Queue", "", "", "");
+                        }
+                    }
                 }
             }
             if State.window-width > 860 : VerticalLayout {
@@ -342,7 +354,13 @@ export component PlayerBar inherits Rectangle {
                     tint: Palette.icon-muted;
                     active: State.view == "Audio";
                     tooltip: "Equalizer";
-                    clicked => { Actions.set-view("Audio", "", "", ""); }
+                    clicked => {
+                        if (State.view == "Audio") {
+                            if (State.can-go-back) { Actions.go-back(); } else { Actions.set-view("Home", "", "", ""); }
+                        } else {
+                            Actions.set-view("Audio", "", "", "");
+                        }
+                    }
                 }
             }
             if State.window-width > 480 : VerticalLayout {

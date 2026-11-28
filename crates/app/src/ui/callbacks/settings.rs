@@ -346,10 +346,11 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
     {
         let a = app.clone();
         ui.global::<Actions>().on_open_immersive_player(move || {
-            let app = a.borrow();
+            let mut app = a.borrow_mut();
             let state = app.ui.global::<State>();
+            let was_lyrics_open = state.get_view() == "Lyrics";
             state.set_immersive_player_open(true);
-            state.set_immersive_lyrics_open(false);
+            state.set_immersive_lyrics_open(was_lyrics_open);
             let blurred = app
                 .current
                 .as_ref()
@@ -358,6 +359,11 @@ pub fn register(ui: &AppWindow, app: Rc<RefCell<App>>) {
                 .unwrap_or_else(slint::Image::default);
             state.set_current_blurred_backdrop(blurred);
             drop(state);
+            if was_lyrics_open && app.lyrics_doc.is_none() && app.lyrics_raw.is_none() {
+                if let Some(track) = app.current.clone() {
+                    app.load_lyrics(&track);
+                }
+            }
             app.sync_window_mode();
             app.publish_appearance();
             let a2 = a.clone();

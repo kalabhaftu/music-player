@@ -26,6 +26,7 @@ impl App {
             let prepared = handle.join().ok().flatten();
             self.engine.attach_prepared_vlc(prepared);
         }
+        let _ = self.engine.set_volume(self.volume);
         let video_exts = self.all_video_extensions();
         self.engine.set_video_extensions(&video_exts);
 

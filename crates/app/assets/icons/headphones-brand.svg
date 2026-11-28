@@ -1,14 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
-  <!-- Outer headband rim highlight (matches the neon band silhouette of MusicPlayer-dark.png) -->
-  <path d="M36 124C36 67 76 28 128 28C180 28 220 67 220 124" stroke="#ffffff" stroke-opacity="0.55" stroke-width="10" stroke-linecap="round"/>
-  <!-- Main headband arc -->
-  <path d="M46 124C46 76 82 42 128 42C174 42 210 76 210 124" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
-  <!-- Left earcup outer shell & cushion -->
-  <rect x="28" y="122" width="46" height="84" rx="23" transform="rotate(-8 51 164)" fill="#ffffff"/>
-  <rect x="70" y="128" width="24" height="70" rx="12" transform="rotate(-8 82 163)" fill="#ffffff" fill-opacity="0.72"/>
-  <path d="M33 136C27 154 29 176 38 194" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
-  <!-- Right earcup outer shell & cushion -->
-  <rect x="182" y="122" width="46" height="84" rx="23" transform="rotate(8 205 164)" fill="#ffffff"/>
-  <rect x="162" y="128" width="24" height="70" rx="12" transform="rotate(8 174 163)" fill="#ffffff" fill-opacity="0.72"/>
-  <path d="M223 136C229 154 227 176 218 194" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+  
+  <path d="M38 134C35.5 128 33.2 121 34.43 114A95 104 0 0 1 221.57 114C222.8 121 220.5 128 218 134H214A86 90 0 0 0 42 134Z" fill="#ffffff" fill-opacity="0.48" />
+
+  
+  <path d="M38 144V132A90 94 0 0 1 218 132V144H204V132A76 72 0 0 0 52 132V144Z" fill="#ffffff" />
+
+  
+  <g transform="rotate(-7 54 174)">
+    <path d="M35.5 138C26 149 22 161 22 174C22 187 26 199 35.5 210H44V138Z" fill="#ffffff" fill-opacity="0.45" />
+    <path d="M56 126H63Q72 126 72 135V213Q72 222 63 222H56C35 222 28 202 28 174C28 146 35 126 56 126Z" fill="#ffffff" />
+    <path d="M82 132H84C91.5 132 96 137 96 145V203C96 211 91.5 216 84 216H82C79 216 77 214 77 211V137C77 134 79 132 82 132Z" fill="#ffffff" fill-opacity="0.72" />
+  </g>
+
+  
+  <g transform="rotate(7 202 174)">
+    <path d="M220.5 138C230 149 234 161 234 174C234 187 230 199 220.5 210H212V138Z" fill="#ffffff" fill-opacity="0.45" />
+    <path d="M200 126H193Q184 126 184 135V213Q184 222 193 222H200C221 222 228 202 228 174C228 146 221 126 200 126Z" fill="#ffffff" />
+    <path d="M174 132H172C164.5 132 160 137 160 145V203C160 211 164.5 216 172 216H174C177 216 179 214 179 211V137C179 134 177 132 174 132Z" fill="#ffffff" fill-opacity="0.72" />
+  </g>
 </svg>

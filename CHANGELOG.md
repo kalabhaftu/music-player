@@ -4,6 +4,10 @@ Changes to Music Player are documented here. The app name, executable, package i
 
 ## [Unreleased]
 
+- **Inverted Lyrics Auto-Fetch Fallback:** When online lyrics auto-fetching and queue prefetch find no match for a track, automatically retry with swapped artist/title fields (checking existing `?q=` results first and sending at most one targeted fallback query) so songs with inverted tags still resolve lyrics.
+- **Unavailable Queue Cleanup:** Clean stale or missing tracks from the active queue whenever playing a queue entry reports it unavailable instead of leaving the unplayable item stuck in the queue list.
+- **Immersive Lyrics Continuity & Player Bar Toggles:** Opening Immersive Player while Lyrics are open in the main view now keeps Lyrics visible in Immersive mode, and clicking Lyrics, Queue, or Equalizer in the player bar while already on that view toggles it closed.
+- **Startup Volume Synchronization:** Sync the persisted volume setting to `AudioEngine` at startup, upon deferred LibVLC attachment, and on resume so playback volume always matches the volume slider before the user adjusts it.
 - **Artwork Isolation & Repair:** Prevent tracks without embedded cover art from inheriting or persisting artwork from `"Unknown Album"` or neighboring files, add a one-time background verification to heal previously polluted artwork references, and fix async thumbnail decoding cancellations/throttles that could leave valid album covers blank.
 - **Branded Now Playing Fallback:** Replace placeholder initials in the Now Playing panel, Now Playing hero, Bottom Player Bar, and Immersive View with a monochrome Music Player headphones vector icon and fall back to the active default theme palette when no cover art is present (keeping letter badges in track/album lists).
 - **Library Root Track Counts:** Count all tracks recursively across subdirectories in the **Library folders** manager instead of counting only loose files in the top directory.

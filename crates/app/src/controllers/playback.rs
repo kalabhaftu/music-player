@@ -184,16 +184,9 @@ impl App {
                         // Untimed local lyrics exist, check LRCLIB for timed lyrics if auto-load is on
                         let t_duration = (track.duration_ms as f64) / 1000.0;
                         let matched = client.as_mut().and_then(|c| {
-                            c.search(&track.title, &track.artist)
+                            c.search_best_match(&track.title, &track.artist, t_duration)
                                 .ok()
-                                .and_then(|results| {
-                                    music_player_core::lyrics::select_lyrics_match(
-                                        &track.title,
-                                        &track.artist,
-                                        t_duration,
-                                        &results,
-                                    )
-                                })
+                                .flatten()
                         });
                         if let Some(online) = matched.filter(|o| o.timed) {
                             let _ = tx.send((track.path.clone(), Some(online), false));
@@ -204,16 +197,9 @@ impl App {
                     }
                     let t_duration = (track.duration_ms as f64) / 1000.0;
                     let matched = client.as_mut().and_then(|c| {
-                        c.search(&track.title, &track.artist)
+                        c.search_best_match(&track.title, &track.artist, t_duration)
                             .ok()
-                            .and_then(|results| {
-                                music_player_core::lyrics::select_lyrics_match(
-                                    &track.title,
-                                    &track.artist,
-                                    t_duration,
-                                    &results,
-                                )
-                            })
+                            .flatten()
                     });
                     let _ = tx.send((track.path.clone(), matched, false));
                 }
@@ -405,6 +391,9 @@ impl App {
             K::TrackUnavailable => {
                 let missing = result.track_path.clone();
                 if let Some(path) = missing {
+                    self.coordinator
+                        .queue_mut()
+                        .remove_paths(std::slice::from_ref(&path));
                     if !Path::new(&path).exists() {
                         let removed = self.reconcile_missing(&path);
                         let name = file_name(&path);

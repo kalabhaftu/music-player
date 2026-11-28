@@ -277,6 +277,42 @@ fn test_lyrics_match_scoring() {
 }
 
 #[test]
+fn test_swapped_lyrics_fallback_validation() {
+    use music_player_core::lyrics::{select_lyrics_match, swapped_query_pair, LyricsSearchResult};
+
+    // Placeholder, empty, or identical title/artist should never trigger swapped retries
+    assert_eq!(swapped_query_pair("", "Linkin Park"), None);
+    assert_eq!(swapped_query_pair("In The End", ""), None);
+    assert_eq!(swapped_query_pair("In The End", "Unknown Artist"), None);
+    assert_eq!(swapped_query_pair("Unknown", "Linkin Park"), None);
+    assert_eq!(swapped_query_pair("Echoes", "Echoes"), None);
+
+    // Inverted tags normalize cleanly when swapped (decorations stripped from actual title)
+    assert_eq!(
+        swapped_query_pair("Linkin Park", "In The End (Official Video)"),
+        Some(("In The End".to_string(), "Linkin Park".to_string()))
+    );
+
+    // Scoring already-returned results with swapped (artist, title) recovers inverted tags
+    let candidate = LyricsSearchResult {
+        id: 42,
+        track_name: "In The End".to_string(),
+        artist_name: "Linkin Park".to_string(),
+        album_name: Some("Hybrid Theory".to_string()),
+        duration: 216.0,
+        instrumental: false,
+        plain_lyrics: None,
+        synced_lyrics: Some("[00:10.50] It starts with one thing".to_string()),
+    };
+    let results = vec![candidate];
+    let normal = select_lyrics_match("Linkin Park", "In The End", 216.0, &results);
+    assert!(normal.is_none());
+    let swapped = select_lyrics_match("In The End", "Linkin Park", 216.0, &results);
+    assert!(swapped.is_some());
+    assert_eq!(swapped.unwrap().result.id, 42);
+}
+
+#[test]
 fn test_tag_editor_backup_history() {
     use music_player_core::metadata::TagEditor;
     use music_player_core::models::TagEdit;
@@ -523,6 +559,16 @@ fn coordinator_start_toggle_previous_play_queue_entry() {
     let result = coordinator.play_queue_entry(7, &any_resolver);
     assert_eq!(result.kind, PlaybackCommandKind::TrackUnavailable);
     assert!(result.notice.is_some());
+    assert_eq!(result.track_path, None);
+
+    // An in-bounds unavailable queue entry returns its path so the UI/controller can clean it.
+    let missing_path = "C:\\definitely_missing_queue_item_12345.mp3".to_string();
+    let mut missing_queue = NavQueue::new();
+    missing_queue.replace(vec![missing_path.clone()], None);
+    let mut missing_coord = PlaybackCoordinator::new(missing_queue);
+    let result = missing_coord.play_queue_entry(0, &any_resolver);
+    assert_eq!(result.kind, PlaybackCommandKind::TrackUnavailable);
+    assert_eq!(result.track_path, Some(missing_path));
 
     // Prepare crossfade requires a resolvable target.
     let mut queue = NavQueue::new();
