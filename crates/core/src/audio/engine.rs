@@ -1081,12 +1081,15 @@ impl AudioEngine {
     }
 
     pub fn resume(&mut self) -> Result<(), String> {
+        let volume = self.volume;
         if let Some(ref vlc) = self.vlc {
             if let Some(ref active) = vlc.active {
                 unsafe {
+                    (vlc.fn_audio_set_volume)(active.player, volume as i32);
                     (vlc.fn_player_set_pause)(active.player, 0);
                 }
                 self.status = PlaybackStatus::Playing;
+                self.reconcile_start = Some((self.media_generation, Instant::now()));
                 return Ok(());
             }
         }

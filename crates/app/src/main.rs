@@ -244,7 +244,8 @@ impl App {
         let crossfade_ms = settings.crossfade_seconds() as u64 * 1000;
         let coordinator =
             PlaybackCoordinator::with_crossfade_ms(QueueCoordinator::new(), crossfade_ms);
-        let engine = music_player_core::AudioEngine::deferred();
+        let mut engine = music_player_core::AudioEngine::deferred();
+        let _ = engine.set_volume(volume);
         let mut eq_preset = settings.eq_current();
         if eq_preset.trim().is_empty() {
             eq_preset = "Off".into();
